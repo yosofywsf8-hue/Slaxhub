@@ -17,29 +17,77 @@ local Tabs = {
     Settings = Window:AddTab({ Title = "الإعدادات", Icon = "settings" })
 }
 
-local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local Stats = game:GetService("Stats")
+local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParry = false
 local AutoSpam = false
+local ManualSpamActive = false
 local SpamSpeed = 0.01
+local LastParryTime = 0
 
-local function triggerParry()
+-- دالة الصد المحمية
+local function safeParry()
+    if tick() - LastParryTime < 0.12 then return end
+    LastParryTime = tick()
+    
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-    task.wait(0.01)
+    task.wait(math.random(15, 25) / 1000)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
 end
 
+-- ==================== [ إنشاء زر الشاشة المتنقل للمانوال سبام ] ====================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SlaxSpamGui"
+ScreenGui.Parent = CoreGui:FindFirstChild("RobloxGui") or CoreGui
+ScreenGui.ResetOnSpawn = false
+
+local SpamButton = Instance.new("TextButton")
+SpamButton.Name = "SpamToggleButton"
+SpamButton.Size = UDim2.new(0, 110, 0, 50)
+SpamButton.Position = UDim2.new(0.5, -55, 0.2, 0)
+SpamButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+SpamButton.TextColor3 = Color3.fromRGB(255, 60, 60)
+SpamButton.Text = "SPAM: OFF"
+SpamButton.TextSize = 16
+SpamButton.Font = Enum.Font.SourceSansBold
+SpamButton.Active = true
+SpamButton.Draggable = true
+SpamButton.Visible = false
+SpamButton.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.Parent = SpamButton
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(255, 60, 60)
+UIStroke.Thickness = 2
+UIStroke.Parent = SpamButton
+
+SpamButton.MouseButton1Click:Connect(function()
+    ManualSpamActive = not ManualSpamActive
+    if ManualSpamActive then
+        SpamButton.Text = "SPAM: ON"
+        SpamButton.TextColor3 = Color3.fromRGB(60, 255, 60)
+        UIStroke.Color = Color3.fromRGB(60, 255, 60)
+    else
+        SpamButton.Text = "SPAM: OFF"
+        SpamButton.TextColor3 = Color3.fromRGB(255, 60, 60)
+        UIStroke.Color = Color3.fromRGB(255, 60, 60)
+    end
+end)
+
 -- ==================== [ قسم الصد - Parry ] ====================
-Tabs.Parry:AddSection("نظام الصد الدقيق الحركي")
+Tabs.Parry:AddSection("نظام الصد المحمي")
 
 local AutoParryToggle = Tabs.Parry:AddToggle("AutoParry", {
     Title = "تفعيل Auto Accuracy Parry",
     Default = false,
-    Description = "صد تلقائي ذكي يحسب مسافة واقتراب وسرعة الكرة بدقة"
+    Description = "صد ذكي ومحمي من كشف الأنتي تشيت"
 })
 
 AutoParryToggle:OnChanged(function(Value)
@@ -47,33 +95,38 @@ AutoParryToggle:OnChanged(function(Value)
 end)
 
 -- ==================== [ قسم السبام - Spam ] ====================
-Tabs.Spam:AddSection("خيارات تكرار الصد (Spam)")
+Tabs.Spam:AddSection("خيارات السبام")
 
 local AutoSpamToggle = Tabs.Spam:AddToggle("AutoSpam", {
     Title = "تفعيل Auto Spam",
     Default = false,
-    Description = "صد متكرر وسريع عند الاشتباك القريب جداً"
+    Description = "صد متكرر آمن عند الاشتباك القريب"
 })
 
 AutoSpamToggle:OnChanged(function(Value)
     AutoSpam = Value
 end)
 
-Tabs.Spam:AddKeybind("ManualSpamKey", {
-    Title = "زر السبام اليدوي (Manual Spam Key)",
-    Mode = "Hold",
-    Default = "E",
-    Callback = function(Value)
-        if Value then
-            triggerParry()
-        end
-    end
+local ManualSpamButtonToggle = Tabs.Spam:AddToggle("ShowManualSpamButton", {
+    Title = "إظهار زر السبام على الشاشة (Manual Spam Button)",
+    Default = false,
+    Description = "يظهر زر عائم يمكنك تحريكه والضغط عليه لتشغيل/إيقاف السبام"
 })
 
+ManualSpamButtonToggle:OnChanged(function(Value)
+    SpamButton.Visible = Value
+    if not Value then
+        ManualSpamActive = false
+        SpamButton.Text = "SPAM: OFF"
+        SpamButton.TextColor3 = Color3.fromRGB(255, 60, 60)
+        UIStroke.Color = Color3.fromRGB(255, 60, 60)
+    end
+end)
+
 Tabs.Spam:AddSlider("SpamDelay", {
-    Title = "سرعة السبام (Spam Speed Delay)",
-    Default = 10,
-    Min = 1,
+    Title = "سرعة السبام",
+    Default = 15,
+    Min = 5,
     Max = 50,
     Rounding = 0,
     Callback = function(Value)
@@ -82,10 +135,10 @@ Tabs.Spam:AddSlider("SpamDelay", {
 })
 
 -- ==================== [ قسم اللاعب - Player ] ====================
-Tabs.Player:AddSection("قدرات وميزات الشخصية")
+Tabs.Player:AddSection("قدرات الشخصية")
 
 Tabs.Player:AddSlider("WalkSpeed", {
-    Title = "سرعة المشي (WalkSpeed)",
+    Title = "سرعة المشي",
     Default = 16,
     Min = 16,
     Max = 200,
@@ -97,41 +150,43 @@ Tabs.Player:AddSlider("WalkSpeed", {
     end
 })
 
--- ==================== [ نظام Auto Accuracy القائم على اتجاه وسرعة الكرة ] ====================
+-- ==================== [ الحلقات البرمجية ] ====================
 
-RunService.RenderStepped:Connect(function()
-    if not AutoParry then return end
-    
-    local character = LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local rootPart = character.HumanoidRootPart
-    local ballsFolder = workspace:FindFirstChild("Balls")
-    if not ballsFolder then return end
-    
-    for _, ball in pairs(ballsFolder:GetChildren()) do
-        if ball:GetAttribute("target") == LocalPlayer.Name or ball:GetAttribute("Target") == LocalPlayer.Name then
-            local ballPosition = ball.Position
-            local ballVelocity = ball.AssemblyLinearVelocity
-            local distance = (ballPosition - rootPart.Position).Magnitude
-            
-            -- حساب اتجاه حركة الكرة (هل تقترب أم تبتعد)
-            local directionToPlayer = (rootPart.Position - ballPosition).Unit
-            local ballDirection = ballVelocity.Unit
-            local dotProduct = ballDirection:Dot(directionToPlayer)
-            
-            -- تنفيذ الصد فقط إذا كانت الكرة متجهة نحو اللاعب (Dot > 0)
-            if dotProduct > 0 then
-                local speed = ballVelocity.Magnitude
-                local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+task.spawn(function()
+    while true do
+        task.wait(0.015)
+        if AutoParry then
+            pcall(function()
+                local character = LocalPlayer.Character
+                if not character or not character:FindFirstChild("HumanoidRootPart") then return end
                 
-                -- معادلة الدقة الديناميكية (Dynamic Auto Accuracy)
-                local dynamicParryDistance = math.clamp((speed * (0.28 + ping)), 12, 90)
+                local rootPart = character.HumanoidRootPart
+                local ballsFolder = workspace:FindFirstChild("Balls")
+                if not ballsFolder then return end
                 
-                if distance <= dynamicParryDistance then
-                    triggerParry()
+                for _, ball in pairs(ballsFolder:GetChildren()) do
+                    local target = ball:GetAttribute("target") or ball:GetAttribute("Target")
+                    if target == LocalPlayer.Name then
+                        local ballPosition = ball.Position
+                        local ballVelocity = ball.AssemblyLinearVelocity
+                        local distance = (ballPosition - rootPart.Position).Magnitude
+                        
+                        local directionToPlayer = (rootPart.Position - ballPosition).Unit
+                        local ballDirection = ballVelocity.Unit
+                        local dotProduct = ballDirection:Dot(directionToPlayer)
+                        
+                        if dotProduct > 0 then
+                            local speed = ballVelocity.Magnitude
+                            local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+                            local dynamicParryDistance = math.clamp((speed * (0.22 + ping)), 10, 75)
+                            
+                            if distance <= dynamicParryDistance then
+                                safeParry()
+                            end
+                        end
+                    end
                 end
-            end
+            end)
         end
     end
 end)
@@ -139,25 +194,14 @@ end)
 task.spawn(function()
     while true do
         task.wait(SpamSpeed)
-        if AutoSpam then
-            local character = LocalPlayer.Character
-            if character and character:FindFirstChild("HumanoidRootPart") then
-                local ballsFolder = workspace:FindFirstChild("Balls")
-                if ballsFolder then
-                    for _, ball in pairs(ballsFolder:GetChildren()) do
-                        local distance = (ball.Position - character.HumanoidRootPart.Position).Magnitude
-                        if distance <= 12 then
-                            triggerParry()
-                        end
-                    end
-                end
-            end
+        if AutoSpam or ManualSpamActive then
+            safeParry()
         end
     end
 end)
 
 Fluent:Notify({
-    Title = "Slax Hub Loaded",
-    Content = "تم تفعيل نظام Auto Accuracy بنجاح!",
+    Title = "Slax Hub",
+    Content = "تم إضافة زر السبام اليدوي للشاشة بنجاح!",
     Duration = 4
 })
