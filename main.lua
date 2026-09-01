@@ -26,20 +26,23 @@ local LocalPlayer = Players.LocalPlayer
 local AutoParry = false
 local AutoSpam = false
 local ManualSpamActive = false
-local SpamSpeed = 0.01
+local SpamSpeed = 0.02
 local LastParryTime = 0
 
--- دالة الصد المحمية
+-- دالة الصد الآمنة المحاكاة للبشر لتفادي الطرد
 local function safeParry()
-    if tick() - LastParryTime < 0.12 then return end
-    LastParryTime = tick()
+    local currentTime = tick()
+    if currentTime - LastParryTime < 0.15 then return end
+    LastParryTime = currentTime
     
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-    task.wait(math.random(15, 25) / 1000)
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+        task.wait(math.random(25, 45) / 1000) -- تأخير بشري عشوائي بين الضغطة والرفع
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+    end)
 end
 
--- ==================== [ إنشاء زر الشاشة المتنقل للمانوال سبام ] ====================
+-- ==================== [ إنشاء زر الشاشة للمانوال سبام ] ====================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SlaxSpamGui"
 ScreenGui.Parent = CoreGui:FindFirstChild("RobloxGui") or CoreGui
@@ -87,7 +90,7 @@ Tabs.Parry:AddSection("نظام الصد المحمي")
 local AutoParryToggle = Tabs.Parry:AddToggle("AutoParry", {
     Title = "تفعيل Auto Accuracy Parry",
     Default = false,
-    Description = "صد ذكي ومحمي من كشف الأنتي تشيت"
+    Description = "صد ذكي آمن من حظر الأنتي تشيت"
 })
 
 AutoParryToggle:OnChanged(function(Value)
@@ -125,9 +128,9 @@ end)
 
 Tabs.Spam:AddSlider("SpamDelay", {
     Title = "سرعة السبام",
-    Default = 15,
-    Min = 5,
-    Max = 50,
+    Default = 20,
+    Min = 10,
+    Max = 60,
     Rounding = 0,
     Callback = function(Value)
         SpamSpeed = Value / 1000
@@ -150,11 +153,11 @@ Tabs.Player:AddSlider("WalkSpeed", {
     end
 })
 
--- ==================== [ الحلقات البرمجية ] ====================
+-- ==================== [ الحلقات البرمجية آمنة التوقيت ] ====================
 
 task.spawn(function()
     while true do
-        task.wait(0.015)
+        task.wait(0.03) -- تخفيف معدل التكرار لتفادي كشف الـ High Frequency Spam
         if AutoParry then
             pcall(function()
                 local character = LocalPlayer.Character
@@ -165,6 +168,7 @@ task.spawn(function()
                 if not ballsFolder then return end
                 
                 for _, ball in pairs(ballsFolder:GetChildren()) do
+                    -- فحص كائن الكرة وتحديد النوايا
                     local target = ball:GetAttribute("target") or ball:GetAttribute("Target")
                     if target == LocalPlayer.Name then
                         local ballPosition = ball.Position
@@ -178,7 +182,8 @@ task.spawn(function()
                         if dotProduct > 0 then
                             local speed = ballVelocity.Magnitude
                             local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-                            local dynamicParryDistance = math.clamp((speed * (0.22 + ping)), 10, 75)
+                            -- حساب المسافة المحمية ديناميكياً
+                            local dynamicParryDistance = math.clamp((speed * (0.18 + ping)), 8, 60)
                             
                             if distance <= dynamicParryDistance then
                                 safeParry()
@@ -202,6 +207,6 @@ end)
 
 Fluent:Notify({
     Title = "Slax Hub",
-    Content = "تم إضافة زر السبام اليدوي للشاشة بنجاح!",
+    Content = "تم تحديث الحماية وتخطي الطرد بنجاح!",
     Duration = 4
 })
