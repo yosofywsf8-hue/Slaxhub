@@ -1,77 +1,64 @@
--- Slax Hub | Ultimate Auto Parry & Clash Spam Engine
-local Players = game:GetService("Players")
+-- Slax Hub | Optimized Auto Parry Logic (From MyCompiler)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local Stats = game:GetService("Stats")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 
-local LocalPlayer = Players.LocalPlayer
+local Player = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 9e9)
+local Balls = Workspace:WaitForChild("Balls", 9e9)
 
--- المتغيرات الأساسية للتحكم
-getgenv().AutoParry = true
-getgenv().AutoSpam = true
-getgenv().SpamDistance = 18 -- المسافة القريبة لتفعيل السبام السريع جداً
-getgenv().ParryAccuracy = 3.5
-
--- ==================== [ محرك إرسال الضربات المباشر ] ====================
-
-local function sendParrySignal()
-    local remotes = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
-    for _, obj in ipairs(remotes:GetDescendants()) do
-        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("parry") or obj.Name:lower():find("ability") or obj.Name:lower():find("hit")) then
-            obj:FireServer()
-            break
-        end
+-- دالة التحقق من أن الكائن هو الكرة الحقيقية المستهدفة
+local function VerifyBall(Ball)
+    if typeof(Ball) == "Instance" and Ball:IsA("BasePart") and Ball:IsDescendantOf(Balls) and Ball:GetAttribute("realBall") == true then
+        return true
     end
 end
 
--- ==================== [ البحث عن الكرة والهدف ] ====================
-
-local function getTargetBall()
-    local ballsFolder = workspace:FindFirstChild("Balls") or workspace
-    for _, ball in ipairs(ballsFolder:GetChildren()) do
-        if ball:IsA("BasePart") or ball:FindFirstChild("RealBall") then
-            return ball
-        end
-    end
-    return nil
+-- دالة التحقق مما إذا كان اللاعب مستهدفاً عبر الـ Highlight
+local function IsTarget()
+    return (Player.Character and Player.Character:FindFirstChild("Highlight") ~= nil)
 end
 
--- ==================== [ Auto Parry & High-Speed Spam Loop ] ====================
+-- دالة إرسال ريموت ParryButtonPress الخاص باللعبة
+local function Parry()
+    local parryRemote = Remotes:FindFirstChild("ParryButtonPress")
+    if parryRemote then
+        parryRemote:Fire()
+    end
+end
 
-RunService.RenderStepped:Connect(function()
-    if not (getgenv().AutoParry or getgenv().AutoSpam) then return end
+-- ربط منطق الحسابات عند ظهور الكرة
+local function TrackBall(Ball)
+    if not VerifyBall(Ball) then return end
     
-    local character = LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    local OldPosition = Ball.Position
+    local OldTick = tick()
     
-    local rootPart = character.HumanoidRootPart
-    local ball = getTargetBall()
-    
-    if ball then
-        local ballPosition = ball.Position
-        local ballVelocity = ball.AssemblyLinearVelocity
-        local distance = (ballPosition - rootPart.Position).Magnitude
-        
-        -- التحقق مما إذا كانت الكرة تستهدف اللاعب الحالي
-        local target = ball:GetAttribute("target") or ball:GetAttribute("Target") or ball:GetAttribute("realTarget")
-        local isTargetingMe = (target == LocalPlayer.Name or target == LocalPlayer.DisplayName)
-        
-        if isTargetingMe then
-            local speed = ballVelocity.Magnitude
-            local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+    Ball:GetPropertyChangedSignal("Position"):Connect(function()
+        if IsTarget() then
+            local Distance = (Ball.Position - Workspace.CurrentCamera.Focus.Position).Magnitude
+            local Velocity = (OldPosition - Ball.Position).Magnitude
             
-            -- حساب مسافة الضرب الفائقة حسب سرعة الكرة والبنق
-            local dynamicParryDistance = math.clamp((speed * (0.35 + ping)) * (getgenv().ParryAccuracy / 3.3), 12, 150)
-            
-            -- 1. تفعيل الـ Spam عند الاقتراب المباشر (Clash Spam)
-            if getgenv().AutoSpam and distance <= getgenv().SpamDistance then
-                for i = 1, 3 do
-                    sendParrySignal()
+            if Velocity > 0 then
+                local TimeToReach = Distance / Velocity
+                if TimeToReach <= 10 then
+                    Parry()
                 end
-            -- 2. تفعيل الـ Auto Parry عند الوصول لمسافة الحسابات
-            elseif getgenv().AutoParry and distance <= dynamicParryDistance then
-                sendParrySignal()
             end
         end
-    end
+        
+        if (tick() - OldTick >= 1/60) then
+            OldTick = tick()
+            OldPosition = Ball.Position
+        end
+    end)
+end
+
+-- تفعيل الفحص على الكرات الحالية والجديدة
+for _, ball in ipairs(Balls:GetChildren()) do
+    TrackBall(ball)
+end
+
+Balls.ChildAdded:Connect(function(Ball)
+    TrackBall(Ball)
 end)
