@@ -7,7 +7,7 @@ local Window = Fluent:CreateWindow({
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
     Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
+    MinimizeKey = Enum.KeyCode.Unknown
 })
 
 local Tabs = {
@@ -20,7 +20,7 @@ local Tabs = {
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local CoreGui = game:GetService("CoreGui")
 local Stats = game:GetService("Stats")
 local LocalPlayer = Players.LocalPlayer
 
@@ -28,21 +28,81 @@ local AutoParry = false
 local AutoSpam = false
 local SpamSpeed = 0.01
 
--- البحث عن الحدث المباشر للصد أو محاكاة المفتاح
+-- ==================== [ إنشاء زر فتح وإغلاق النافذة ] ====================
+local ScreenGui = Instance.new("ScreenGui")
+local ToggleButton = Instance.new("TextButton")
+local UICorner1 = Instance.new("UICorner")
+
+ScreenGui.Name = "SlaxHubGui"
+ScreenGui.Parent = CoreGui
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Parent = ScreenGui
+ToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+ToggleButton.Position = UDim2.new(0, 15, 0.35, 0)
+ToggleButton.Size = UDim2.new(0, 50, 0, 50)
+ToggleButton.Font = Enum.Font.SourceSansBold
+ToggleButton.Text = "Slax"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 18.000
+ToggleButton.Active = true
+ToggleButton.Draggable = true
+
+UICorner1.CornerRadius = UDim.new(0, 12)
+UICorner1.Parent = ToggleButton
+
+local isWindowVisible = true
+ToggleButton.MouseButton1Click:Connect(function()
+    isWindowVisible = not isWindowVisible
+    if Window.Root then
+        Window.Root.Visible = isWindowVisible
+    end
+end)
+
+-- ==================== [ إنشاء زر السبام العائم (Spam UI Button) ] ====================
+local SpamButton = Instance.new("TextButton")
+local UICorner2 = Instance.new("UICorner")
+
+SpamButton.Name = "SpamButton"
+SpamButton.Parent = ScreenGui
+SpamButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40) -- أحمر (معطل)
+SpamButton.Position = UDim2.new(0, 15, 0.45, 0)
+SpamButton.Size = UDim2.new(0, 60, 0, 50)
+SpamButton.Font = Enum.Font.SourceSansBold
+SpamButton.Text = "Spam: OFF"
+SpamButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpamButton.TextSize = 14.000
+SpamButton.Active = true
+SpamButton.Draggable = true
+
+UICorner2.CornerRadius = UDim.new(0, 12)
+UICorner2.Parent = SpamButton
+
+local function updateSpamState(state)
+    AutoSpam = state
+    if AutoSpam then
+        SpamButton.BackgroundColor3 = Color3.fromRGB(40, 180, 80) -- أخضر (مفعل)
+        SpamButton.Text = "Spam: ON"
+    else
+        SpamButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40) -- أحمر (معطل)
+        SpamButton.Text = "Spam: OFF"
+    end
+end
+
+SpamButton.MouseButton1Click:Connect(function()
+    updateSpamState(not AutoSpam)
+end)
+
+-- نظام الصد المباشر عبر RemoteEvent
 local function triggerParry()
-    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-    if remotes then
-        for _, remote in pairs(remotes:GetChildren()) do
-            if remote:IsA("RemoteEvent") and (remote.Name:lower():find("parry") or remote.Name:lower():find("ability")) then
-                remote:FireServer()
-                return
-            end
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
+    for _, obj in pairs(remotes:GetDescendants()) do
+        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("parry") or obj.Name:lower():find("ability")) then
+            obj:FireServer()
+            break
         end
     end
-    -- في حال عدم العثور على RemoteEvent يتم استخدام المحاكاة
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-    task.wait(0.005)
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
 end
 
 -- ==================== [ قسم الصد - Parry ] ====================
@@ -68,7 +128,7 @@ local AutoSpamToggle = Tabs.Spam:AddToggle("AutoSpam", {
 })
 
 AutoSpamToggle:OnChanged(function(Value)
-    AutoSpam = Value
+    updateSpamState(Value)
 end)
 
 Tabs.Spam:AddKeybind("ManualSpamKey", {
@@ -122,7 +182,6 @@ RunService.RenderStepped:Connect(function()
     if not ballsFolder then return end
     
     for _, ball in pairs(ballsFolder:GetChildren()) do
-        -- التحقق من استهداف الكرة للاعب بأكثر من طريقة
         local target = ball:GetAttribute("target") or ball:GetAttribute("Target") or ball:GetAttribute("realTarget")
         if target == LocalPlayer.Name or target == LocalPlayer.DisplayName then
             local ballPosition = ball.Position
@@ -137,7 +196,7 @@ RunService.RenderStepped:Connect(function()
                 local speed = ballVelocity.Magnitude
                 local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
                 
-                local dynamicParryDistance = math.clamp((speed * (0.35 + ping)), 15, 120)
+                local dynamicParryDistance = math.clamp((speed * (0.32 + ping)), 14, 100)
                 
                 if distance <= dynamicParryDistance then
                     triggerParry()
@@ -157,7 +216,7 @@ task.spawn(function()
                 if ballsFolder then
                     for _, ball in pairs(ballsFolder:GetChildren()) do
                         local distance = (ball.Position - character.HumanoidRootPart.Position).Magnitude
-                        if distance <= 15 then
+                        if distance <= 14 then
                             triggerParry()
                         end
                     end
@@ -169,6 +228,6 @@ end)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "تم تحديث نظام الصد بنجاح!",
+    Content = "تم إضافة زر السبام العائم بنجاح!",
     Duration = 4
 })
