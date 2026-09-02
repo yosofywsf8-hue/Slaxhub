@@ -20,6 +20,7 @@ local Tabs = {
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 local Stats = game:GetService("Stats")
 local LocalPlayer = Players.LocalPlayer
 
@@ -27,17 +28,21 @@ local AutoParry = false
 local AutoSpam = false
 local SpamSpeed = 0.01
 
--- البحث عن الحدث الخاص بالصد داخل اللعبة لإرساله بشكل آمن ودون استخدام VirtualInputManager
-local function getParryRemote()
-    return ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("ParryButtonPress") 
-        or ReplicatedStorage:FindFirstChild("Parry")
-end
-
+-- البحث عن الحدث المباشر للصد أو محاكاة المفتاح
 local function triggerParry()
-    local remote = getParryRemote()
-    if remote and remote:IsA("RemoteEvent") then
-        remote:FireServer()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if remotes then
+        for _, remote in pairs(remotes:GetChildren()) do
+            if remote:IsA("RemoteEvent") and (remote.Name:lower():find("parry") or remote.Name:lower():find("ability")) then
+                remote:FireServer()
+                return
+            end
+        end
     end
+    -- في حال عدم العثور على RemoteEvent يتم استخدام المحاكاة
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+    task.wait(0.005)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
 end
 
 -- ==================== [ قسم الصد - Parry ] ====================
@@ -117,7 +122,9 @@ RunService.RenderStepped:Connect(function()
     if not ballsFolder then return end
     
     for _, ball in pairs(ballsFolder:GetChildren()) do
-        if ball:GetAttribute("target") == LocalPlayer.Name or ball:GetAttribute("Target") == LocalPlayer.Name then
+        -- التحقق من استهداف الكرة للاعب بأكثر من طريقة
+        local target = ball:GetAttribute("target") or ball:GetAttribute("Target") or ball:GetAttribute("realTarget")
+        if target == LocalPlayer.Name or target == LocalPlayer.DisplayName then
             local ballPosition = ball.Position
             local ballVelocity = ball.AssemblyLinearVelocity
             local distance = (ballPosition - rootPart.Position).Magnitude
@@ -130,7 +137,7 @@ RunService.RenderStepped:Connect(function()
                 local speed = ballVelocity.Magnitude
                 local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
                 
-                local dynamicParryDistance = math.clamp((speed * (0.28 + ping)), 12, 90)
+                local dynamicParryDistance = math.clamp((speed * (0.35 + ping)), 15, 120)
                 
                 if distance <= dynamicParryDistance then
                     triggerParry()
@@ -150,7 +157,7 @@ task.spawn(function()
                 if ballsFolder then
                     for _, ball in pairs(ballsFolder:GetChildren()) do
                         local distance = (ball.Position - character.HumanoidRootPart.Position).Magnitude
-                        if distance <= 12 then
+                        if distance <= 15 then
                             triggerParry()
                         end
                     end
@@ -162,6 +169,6 @@ end)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "تم تفعيل نظام Auto Accuracy الآمن بنجاح!",
+    Content = "تم تحديث نظام الصد بنجاح!",
     Duration = 4
 })
