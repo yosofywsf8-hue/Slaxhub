@@ -1,229 +1,117 @@
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local MacLib = loadstring(game:HttpGet("https://github.com/kal3b/Maclib/releases/latest/download/maclib.txt"))()
 
-local Window = Fluent:CreateWindow({
-    Title = "Slax Hub",
-    SubTitle = "by dev:yosef",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
-    Theme = "Dark"
+local Window = MacLib:Window({
+    Title = "Slax Hub | Anime Edition",
+    Subtitle = "by dev: yosef",
+    Size = UDim2.fromOffset(600, 480),
+    Dragable = true
 })
 
-local Tabs = {
-    Main = Window:AddTab({ Title = "Main", Icon = "home" }),
-    Social = Window:AddTab({ Title = "Social", Icon = "share-2" })
-}
+local MainGroup = Window:TabGroup()
 
-local RunService = game:GetService("RunService")
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local CoreGui = game:GetService("CoreGui")
-local Stats = game:GetService("Stats")
-local SetClipboard = setclipboard or function() end
+local MainTab = MainGroup:Tab({ Title = "Main", Image = "rbxassetid://10723407389" })
+local SocialTab = MainGroup:Tab({ Title = "Socials", Image = "rbxassetid://10723346959" })
 
-local LocalPlayer = Players.LocalPlayer
-
+-- المتغيرات الأساسية
 local AutoParry = false
-local Accuracy = 3.3
-local CurveType = "straight"
+local Accuracy = 100
 local AutoSpam = false
-local LastParryTime = 0
 
--- ==================== [ إنشاء UI زر السبام العائم ] ====================
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SlaxSpamGui"
-ScreenGui.ResetOnSpawn = false
+-- ==================== [ إدراج صورة أنمي بنت HD ] ====================
 
-pcall(function()
-    ScreenGui.Parent = CoreGui
-end)
-if not ScreenGui.Parent then
-    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
-
-local SpamButton = Instance.new("TextButton")
-local UICorner = Instance.new("UICorner")
-local UIStroke = Instance.new("UIStroke")
-
-SpamButton.Name = "SpamButton"
-SpamButton.Parent = ScreenGui
-SpamButton.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-SpamButton.Position = UDim2.new(0.5, -60, 0.05, 0)
-SpamButton.Size = UDim2.new(0, 120, 0, 45)
-SpamButton.Font = Enum.Font.GothamBold
-SpamButton.Text = "SPAM: OFF"
-SpamButton.TextColor3 = Color3.fromRGB(220, 60, 60)
-SpamButton.TextSize = 14
-SpamButton.Active = true
-SpamButton.Draggable = true
-SpamButton.Visible = false
-
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = SpamButton
-
-UIStroke.Color = Color3.fromRGB(220, 60, 60)
-UIStroke.Thickness = 1.5
-UIStroke.Parent = SpamButton
-
--- دالة إرسال ريموت الضرب بآمان لمنع Ban/Teleport
-local function sendParryRemote()
-    if tick() - LastParryTime < 0.03 then return end -- فاصل زمني لتجنب كشف السيرفر
-    LastParryTime = tick()
+task.spawn(function()
+    task.wait(0.8)
+    local coreGui = game:GetService("CoreGui")
+    local maclibGui = coreGui:FindFirstChild("Maclib") or coreGui:FindFirstChildOfClass("ScreenGui")
     
-    local remotes = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
-    for _, obj in pairs(remotes:GetDescendants()) do
-        if obj:IsA("RemoteEvent") and (obj.Name:lower():find("parry") or obj.Name:lower():find("ability")) then
-            obj:FireServer()
-            break
-        end
-    end
-end
+    if maclibGui then
+        local AnimeImage = Instance.new("ImageLabel")
+        local UICorner = Instance.new("UICorner")
+        local UIStroke = Instance.new("UIStroke")
+        
+        AnimeImage.Name = "AnimeGirlDisplay"
+        AnimeImage.Size = UDim2.new(0, 110, 0, 110)
+        AnimeImage.Position = UDim2.new(0.78, -10, 0.06, 0)
+        AnimeImage.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+        AnimeImage.Image = "rbxassetid://11713589000" -- صورة أنمي بنت بدقة عالية HD
+        AnimeImage.ScaleType = Enum.ScaleType.Crop
+        AnimeImage.ZIndex = 100
+        AnimeImage.Parent = maclibGui
+        
+        UICorner.CornerRadius = UDim.new(0, 14)
+        UICorner.Parent = AnimeImage
 
-local AutoSpamToggle
-
-local function setSpamState(state)
-    AutoSpam = state
-    if AutoSpam then
-        SpamButton.Text = "SPAM: ON"
-        SpamButton.TextColor3 = Color3.fromRGB(50, 220, 100)
-        UIStroke.Color = Color3.fromRGB(50, 220, 100)
-    else
-        SpamButton.Text = "SPAM: OFF"
-        SpamButton.TextColor3 = Color3.fromRGB(220, 60, 60)
-        UIStroke.Color = Color3.fromRGB(220, 60, 60)
+        UIStroke.Color = Color3.fromRGB(140, 90, 230)
+        UIStroke.Thickness = 2
+        UIStroke.Parent = AnimeImage
     end
-    if AutoSpamToggle and AutoSpamToggle.Value ~= state then
-        AutoSpamToggle:SetValue(state)
-    end
-end
-
-SpamButton.MouseButton1Click:Connect(function()
-    setSpamState(not AutoSpam)
 end)
 
--- ==================== [ قسم Main ] ====================
+-- ==================== [ قسم Auto Parry ] ====================
 
-Tabs.Main:AddSection("Auto Parry Settings")
+local ParrySection = MainTab:Section({ Title = "Auto Parry Settings" })
 
-local AutoParryToggle = Tabs.Main:AddToggle("AutoParry", { Title = "Auto Parry", Default = false })
-AutoParryToggle:OnChanged(function(Value)
-    AutoParry = Value
-end)
+ParrySection:Toggle({
+    Title = "Auto Parry",
+    Default = false,
+    Callback = function(Value)
+        AutoParry = Value
+    end
+})
 
-local AccSlider = Tabs.Main:AddSlider("Accuracy", {
+ParrySection:Slider({
     Title = "Accuracy",
-    Min = 1,
-    Max = 10,
-    Default = 3.3,
-    Rounding = 1,
+    Default = 100,
+    Minimum = 1,
+    Maximum = 100,
+    DisplayMethod = "%",
     Callback = function(Value)
         Accuracy = Value
     end
 })
 
-local CurveDropdown = Tabs.Main:AddDropdown("CurveType", {
+ParrySection:Dropdown({
     Title = "Curve Type",
-    Values = {"straight", "curve", "backwards"},
-    Default = "straight",
+    Multi = false,
+    Required = true,
+    Options = {"Straight", "Curve", "Backwards"},
+    Default = "Straight",
     Callback = function(Value)
-        CurveType = Value
     end
 })
 
-Tabs.Main:AddSection("Spam Options")
+local SpamSection = MainTab:Section({ Title = "Spam Options" })
 
-local ShowSpamUIToggle = Tabs.Main:AddToggle("ShowSpamUI", { Title = "Show Spam UI", Default = false })
-ShowSpamUIToggle:OnChanged(function(Value)
-    SpamButton.Visible = Value
-    if not Value then
-        setSpamState(false)
+SpamSection:Toggle({
+    Title = "Auto Spam",
+    Default = false,
+    Callback = function(Value)
+        AutoSpam = Value
     end
-end)
-
-AutoSpamToggle = Tabs.Main:AddToggle("AutoSpam", { Title = "Auto Spam", Default = false })
-AutoSpamToggle:OnChanged(function(Value)
-    setSpamState(Value)
-end)
-
--- ==================== [ قسم Social - الحقوق ] ====================
-
-Tabs.Social:AddParagraph({
-    Title = "Developer & Socials",
-    Content = "DEV: yosef\n\nTG: @slaxscript\nDC: discord.gg/slaxhub\nTT: @slax_dev"
 })
 
-Tabs.Social:AddButton({
+-- ==================== [ قسم Socials ] ====================
+
+local SocialSection = SocialTab:Section({ Title = "Developer Information" })
+
+SocialSection:Label({
+    Title = "DEV: yosef\nTelegram: @slaxscript\nDiscord: discord.gg/slaxhub\nTikTok: @slax_dev"
+})
+
+SocialSection:Button({
     Title = "Copy Discord Link",
     Callback = function()
-        SetClipboard("https://discord.gg/slaxhub")
-        Fluent:Notify({
+        setclipboard("https://discord.gg/slaxhub")
+        MacLib:Notification({
             Title = "Slax Hub",
-            Content = "Copied Discord link to clipboard!",
-            Duration = 3
+            Description = "Copied Discord link to clipboard!",
+            Lifetime = 3
         })
     end
 })
 
--- ==================== [ Auto Parry & Anti-Ban Spam Logic ] ====================
-
--- Auto Parry Listener
-RunService.RenderStepped:Connect(function()
-    if not AutoParry then return end
-    
-    local character = LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local rootPart = character.HumanoidRootPart
-    local ballsFolder = workspace:FindFirstChild("Balls")
-    if not ballsFolder then return end
-    
-    for _, ball in pairs(ballsFolder:GetChildren()) do
-        local target = ball:GetAttribute("target") or ball:GetAttribute("Target") or ball:GetAttribute("realTarget")
-        if target == LocalPlayer.Name or target == LocalPlayer.DisplayName then
-            local ballPosition = ball.Position
-            local ballVelocity = ball.AssemblyLinearVelocity
-            local distance = (ballPosition - rootPart.Position).Magnitude
-            
-            local directionToPlayer = (rootPart.Position - ballPosition).Unit
-            local ballDirection = ballVelocity.Unit
-            local dotProduct = ballDirection:Dot(directionToPlayer)
-            
-            if dotProduct > 0 then
-                local speed = ballVelocity.Magnitude
-                local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-                
-                local dynamicParryDistance = math.clamp((speed * (0.32 + ping)), 14, 100)
-                
-                if distance <= dynamicParryDistance then
-                    sendParryRemote()
-                end
-            end
-        end
-    end
-end)
-
--- Safe Spam Loop (مستقر وبدون طرد)
-task.spawn(function()
-    while true do
-        task.wait(0.04) -- فاصل زمني آمن لمنع حماية اللعبة من نقل اللاعب
-        if AutoSpam then
-            local character = LocalPlayer.Character
-            if character and character:FindFirstChild("HumanoidRootPart") then
-                local ballsFolder = workspace:FindFirstChild("Balls")
-                if ballsFolder then
-                    for _, ball in pairs(ballsFolder:GetChildren()) do
-                        local distance = (ball.Position - character.HumanoidRootPart.Position).Magnitude
-                        if distance <= 25 then
-                            sendParryRemote()
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
-Fluent:Notify({
+MacLib:Notification({
     Title = "Slax Hub Loaded",
-    Content = "Anti-Cheat Bypass applied successfully!",
-    Duration = 4
+    Description = "Welcome to Slax Hub Anime Edition!",
+    Lifetime = 4
 })
