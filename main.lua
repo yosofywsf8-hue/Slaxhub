@@ -1,94 +1,79 @@
--- Slax Hub | High-Speed Auto Parry & Clash Spam (Mobile Fast Engine)
+-- ==========================================
+-- 📱 BLADE BALL MOBILE SCRIPT (V4)
+-- Optimized for Delta/Hydrogen/Fluxus
+-- ==========================================
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local Stats = game:GetService("Stats")
+local UserInputService = game:GetService("UserInputService")
 
-local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+-- --- CONFIGURATION ---
+local Config = {
+    SwingDelayMin = 0.15, -- Slightly slower for mobile stability
+    SwingDelayMax = 0.30,
+    Mode = "Remote", -- "Remote" is faster, "Input" is safer
+    ToggleKey = Enum.KeyCode.G -- Use G to toggle (or tap screen if supported)
+}
 
--- البحث عن مجلد الكرات
-local function getBalls()
-    return workspace:FindFirstChild("Balls") or workspace
-end
+-- --- VARIABLES ---
+local LocalPlayer = Players.LocalPlayer
+local SwingEvent = nil
+local IsActive = false
+local LastSwingTime = 0
 
--- استدعاء ريموت Parry السريع
-local function sendParry()
-    pcall(function()
-        local remotes = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
-        
-        -- البحث المباشر السريع عن ريموت الضرب
-        local parryRemote = remotes:FindFirstChild("ParryButtonPress") 
-                         or remotes:FindFirstChild("Parry") 
-                         or remotes:FindFirstChild("ParryAttempt")
-        
-        if parryRemote and parryRemote:IsA("RemoteEvent") then
-            parryRemote:FireServer()
-        else
-            for _, obj in ipairs(remotes:GetChildren()) do
-                if obj:IsA("RemoteEvent") and (obj.Name:lower():find("parry") or obj.Name:lower():find("hit")) then
-                    obj:FireServer()
-                    break
-                end
-            end
-        end
-    end)
-end
-
--- معرفة الكرة الحقيقية
-local function getBall()
-    for _, ball in ipairs(getBalls():GetChildren()) do
-        if ball:IsA("BasePart") or ball:FindFirstChild("RealBall") or ball:GetAttribute("realBall") == true then
-            return ball
+-- --- FIND EVENT ---
+local function findSwingEvent()
+    local names = {"Swing", "SwingBall", "Attack"}
+    for _, name in ipairs(names) do
+        local event = ReplicatedStorage:FindFirstChild(name)
+        if event then
+            SwingEvent = event
+            return true
         end
     end
-    return nil
-end
-
--- التحقق من استهداف الكرة للاعب
-local function isTargeting(ball)
-    if not ball then return false end
-    
-    local target = ball:GetAttribute("target") or ball:GetAttribute("Target") or ball:GetAttribute("realTarget")
-    if target and (target == LocalPlayer.Name or target == LocalPlayer.DisplayName) then
-        return true
-    end
-    
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Highlight") then
-        return true
-    end
-    
+    print("⚠️ Swing Event not found directly.")
     return false
 end
 
--- المحرك الرئيسي الفائق السرعة
-RunService.RenderStepped:Connect(function()
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+-- --- SWING LOGIC ---
+local function performSwing()
+    if not IsActive then return end
     
-    local hrp = char.HumanoidRootPart
-    local ball = getBall()
+    local now = tick()
+    local delay = math.random(Config.SwingDelayMin * 100, Config.SwingDelayMax * 100) / 100
     
-    if ball and isTargeting(ball) then
-        local distance = (ball.Position - hrp.Position).Magnitude
-        local velocity = ball.AssemblyLinearVelocity.Magnitude
-        
-        -- حساب البنق
-        local ping = 0.04
-        pcall(function()
-            ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-        end)
-        
-        -- المسافة الديناميكية للـ Auto Parry
-        local parryDistance = math.clamp((velocity * (0.33 + ping)), 13, 150)
-        
-        -- الـ Spam التلقائي عند المواجهة القريبة (Clash Spam) مثل الفيديو
-        if distance <= 20 then
-            for i = 1, 5 do
-                sendParry()
-            end
-        -- Auto Parry تلقائي عند اقتراب الكرة
-        elseif distance <= parryDistance then
-            sendParry()
-        end
+    if (now - LastSwingTime) < Config.SwingDelayMin then
+        return
+    end
+    
+    if Config.Mode == "Remote" and SwingEvent then
+        SwingEvent:FireServer()
+    else
+        -- Fallback: Simulate Spacebar press
+        UserInputService:KeyDown("Space")
+        task.wait(0.05)
+        UserInputService:KeyUp("Space")
+    end
+    
+    LastSwingTime = tick()
+end
+
+-- --- MAIN LOOP ---
+findSwingEvent()
+
+print("📱 Mobile Script Loaded! Press 'G' to Toggle.")
+
+while task.wait(0.1) do
+    if IsActive then
+        performSwing()
+    end
+end
+
+-- --- TOGGLE ---
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Config.ToggleKey then
+        IsActive = not IsActive
+        print("🟢 ON" .. (IsActive and "" or " OFF"))
     end
 end)
