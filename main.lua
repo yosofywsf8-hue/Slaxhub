@@ -1,64 +1,93 @@
--- Slax Hub | Optimized Auto Parry Logic (From MyCompiler)
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+-- Slax Hub | Universal Blade Ball Auto Parry & Spam
 local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Stats = game:GetService("Stats")
 
-local Player = Players.LocalPlayer or Players.PlayerAdded:Wait()
-local Remotes = ReplicatedStorage:WaitForChild("Remotes", 9e9)
-local Balls = Workspace:WaitForChild("Balls", 9e9)
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
--- دالة التحقق من أن الكائن هو الكرة الحقيقية المستهدفة
-local function VerifyBall(Ball)
-    if typeof(Ball) == "Instance" and Ball:IsA("BasePart") and Ball:IsDescendantOf(Balls) and Ball:GetAttribute("realBall") == true then
-        return true
-    end
+-- البحث عن مجلد الكرات باللعبة
+local function getBallsFolder()
+    return workspace:FindFirstChild("Balls") or workspace
 end
 
--- دالة التحقق مما إذا كان اللاعب مستهدفاً عبر الـ Highlight
-local function IsTarget()
-    return (Player.Character and Player.Character:FindFirstChild("Highlight") ~= nil)
-end
-
--- دالة إرسال ريموت ParryButtonPress الخاص باللعبة
-local function Parry()
-    local parryRemote = Remotes:FindFirstChild("ParryButtonPress")
-    if parryRemote then
-        parryRemote:Fire()
-    end
-end
-
--- ربط منطق الحسابات عند ظهور الكرة
-local function TrackBall(Ball)
-    if not VerifyBall(Ball) then return end
-    
-    local OldPosition = Ball.Position
-    local OldTick = tick()
-    
-    Ball:GetPropertyChangedSignal("Position"):Connect(function()
-        if IsTarget() then
-            local Distance = (Ball.Position - Workspace.CurrentCamera.Focus.Position).Magnitude
-            local Velocity = (OldPosition - Ball.Position).Magnitude
-            
-            if Velocity > 0 then
-                local TimeToReach = Distance / Velocity
-                if TimeToReach <= 10 then
-                    Parry()
-                end
+-- استدعاء ريموت الضرب بجميع الأساليب المحتملة
+local function triggerParry()
+    pcall(function()
+        local remotes = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
+        
+        -- البحث عن الريموت المباشر
+        for _, obj in ipairs(remotes:GetDescendants()) do
+            if obj:IsA("RemoteEvent") and (obj.Name:find("Parry") or obj.Name:find("parry") or obj.Name:find("Hit")) then
+                obj:FireServer()
+                return
             end
         end
         
-        if (tick() - OldTick >= 1/60) then
-            OldTick = tick()
-            OldPosition = Ball.Position
+        -- طريقة احتياطية لقراءة الأزرار
+        if remotes:FindFirstChild("ParryButtonPress") then
+            remotes.ParryButtonPress:FireServer()
         end
     end)
 end
 
--- تفعيل الفحص على الكرات الحالية والجديدة
-for _, ball in ipairs(Balls:GetChildren()) do
-    TrackBall(ball)
+-- معرفة الكرة النشطة حالياً
+local function getCurrentBall()
+    local ballsFolder = getBallsFolder()
+    for _, ball in ipairs(ballsFolder:GetChildren()) do
+        if ball:IsA("BasePart") or ball:FindFirstChild("RealBall") or ball:GetAttribute("realBall") then
+            return ball
+        end
+    end
+    return nil
 end
 
-Balls.ChildAdded:Connect(function(Ball)
-    TrackBall(Ball)
+-- فحص استهداف الكرة للاعب
+local function isPlayerTargeted(ball)
+    if not ball then return false end
+    
+    -- 1. فحص Target Attribute
+    local target = ball:GetAttribute("target") or ball:GetAttribute("Target") or ball:GetAttribute("realTarget")
+    if target and (target == LocalPlayer.Name or target == LocalPlayer.DisplayName) then
+        return true
+    end
+    
+    -- 2. فحص Highlight الشخصية
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Highlight") then
+        return true
+    end
+    
+    return false
+end
+
+-- المحرك الرئيسي المباشر (Auto Parry + Spam)
+RunService.RenderStepped:Connect(function()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    
+    local hrp = char.HumanoidRootPart
+    local ball = getCurrentBall()
+    
+    if ball and isPlayerTargeted(ball) then
+        local distance = (ball.Position - hrp.Position).Magnitude
+        local velocity = ball.AssemblyLinearVelocity.Magnitude
+        
+        -- حساب البنق والمسافة الفعالة للضرب
+        local ping = 0.05
+        pcall(function()
+            ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+        end)
+        
+        local parryRange = math.clamp((velocity * (0.32 + ping)), 14, 120)
+        
+        -- الـ Spam التلقائي عند المسافة القريبة جداً (Clash)
+        if distance <= 18 then
+            for i = 1, 4 do
+                triggerParry()
+            end
+        -- الـ Auto Parry التلقائي عند وصول الكرة لمسافة الحساب
+        elseif distance <= parryRange then
+            triggerParry()
+        end
+    end
 end)
