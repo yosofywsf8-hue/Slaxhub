@@ -1,154 +1,94 @@
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-
-local Window = Fluent:CreateWindow({
-    Title = "Slax Hub",
-    SubTitle = "by dev: yosef",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
-    Theme = "Dark"
-})
-
-local Tabs = {
-    Main = Window:AddTab({ Title = "Main", Icon = "home" }),
-    Social = Window:AddTab({ Title = "Social", Icon = "share-2" })
-}
-
-local RunService = game:GetService("RunService")
+-- Slax Hub | High-Speed Auto Parry & Clash Spam (Mobile Fast Engine)
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local Stats = game:GetService("Stats")
 
-local LocalPlayer = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
--- المتغيرات الأساسية
-local AutoParry = false
-local Accuracy = 100
-local AutoSpam = false
-local CurveType = "straight"
+-- البحث عن مجلد الكرات
+local function getBalls()
+    return workspace:FindFirstChild("Balls") or workspace
+end
 
--- ==================== [ محرك الـ Parry والـ Spam ] ====================
-
-local function triggerParry()
+-- استدعاء ريموت Parry السريع
+local function sendParry()
     pcall(function()
         local remotes = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
-        for _, obj in ipairs(remotes:GetDescendants()) do
-            if obj:IsA("RemoteEvent") and (obj.Name:find("Parry") or obj.Name:find("parry") or obj.Name:find("Hit")) then
-                obj:FireServer()
-                return
+        
+        -- البحث المباشر السريع عن ريموت الضرب
+        local parryRemote = remotes:FindFirstChild("ParryButtonPress") 
+                         or remotes:FindFirstChild("Parry") 
+                         or remotes:FindFirstChild("ParryAttempt")
+        
+        if parryRemote and parryRemote:IsA("RemoteEvent") then
+            parryRemote:FireServer()
+        else
+            for _, obj in ipairs(remotes:GetChildren()) do
+                if obj:IsA("RemoteEvent") and (obj.Name:lower():find("parry") or obj.Name:lower():find("hit")) then
+                    obj:FireServer()
+                    break
+                end
             end
         end
     end)
 end
 
-local function getCurrentBall()
-    local ballsFolder = workspace:FindFirstChild("Balls") or workspace
-    for _, ball in ipairs(ballsFolder:GetChildren()) do
-        if ball:IsA("BasePart") or ball:FindFirstChild("RealBall") or ball:GetAttribute("realBall") then
+-- معرفة الكرة الحقيقية
+local function getBall()
+    for _, ball in ipairs(getBalls():GetChildren()) do
+        if ball:IsA("BasePart") or ball:FindFirstChild("RealBall") or ball:GetAttribute("realBall") == true then
             return ball
         end
     end
     return nil
 end
 
-local function isPlayerTargeted(ball)
+-- التحقق من استهداف الكرة للاعب
+local function isTargeting(ball)
     if not ball then return false end
+    
     local target = ball:GetAttribute("target") or ball:GetAttribute("Target") or ball:GetAttribute("realTarget")
     if target and (target == LocalPlayer.Name or target == LocalPlayer.DisplayName) then
         return true
     end
+    
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Highlight") then
         return true
     end
+    
     return false
 end
 
+-- المحرك الرئيسي الفائق السرعة
 RunService.RenderStepped:Connect(function()
-    if not (AutoParry or AutoSpam) then return end
-    
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     
     local hrp = char.HumanoidRootPart
-    local ball = getCurrentBall()
+    local ball = getBall()
     
-    if ball and isPlayerTargeted(ball) then
+    if ball and isTargeting(ball) then
         local distance = (ball.Position - hrp.Position).Magnitude
         local velocity = ball.AssemblyLinearVelocity.Magnitude
         
-        local ping = 0.05
+        -- حساب البنق
+        local ping = 0.04
         pcall(function()
             ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
         end)
         
-        local parryRange = math.clamp((velocity * (0.32 + ping)) * (Accuracy / 100), 14, 120)
+        -- المسافة الديناميكية للـ Auto Parry
+        local parryDistance = math.clamp((velocity * (0.33 + ping)), 13, 150)
         
-        if AutoSpam and distance <= 18 then
-            for i = 1, 4 do
-                triggerParry()
+        -- الـ Spam التلقائي عند المواجهة القريبة (Clash Spam) مثل الفيديو
+        if distance <= 20 then
+            for i = 1, 5 do
+                sendParry()
             end
-        elseif AutoParry and distance <= parryRange then
-            triggerParry()
+        -- Auto Parry تلقائي عند اقتراب الكرة
+        elseif distance <= parryDistance then
+            sendParry()
         end
     end
 end)
-
--- ==================== [ قسم Main Tab ] ====================
-
-Tabs.Main:AddSection("Auto Parry Settings")
-
-local AutoParryToggle = Tabs.Main:AddToggle("AutoParry", { Title = "Auto Parry", Default = false })
-AutoParryToggle:OnChanged(function(Value)
-    AutoParry = Value
-end)
-
-local AccSlider = Tabs.Main:AddSlider("Accuracy", {
-    Title = "Accuracy",
-    Min = 1,
-    Max = 100,
-    Default = 100,
-    Rounding = 1,
-    Callback = function(Value)
-        Accuracy = Value
-    end
-})
-
-local CurveDropdown = Tabs.Main:AddDropdown("CurveType", {
-    Title = "Curve Type",
-    Values = {"straight", "curve", "backwards"},
-    Default = "straight",
-    Callback = function(Value)
-        CurveType = Value
-    end
-})
-
-Tabs.Main:AddSection("Spam Options")
-
-local AutoSpamToggle = Tabs.Main:AddToggle("AutoSpam", { Title = "Auto Spam", Default = false })
-AutoSpamToggle:OnChanged(function(Value)
-    AutoSpam = Value
-end)
-
--- ==================== [ قسم Social Tab ] ====================
-
-Tabs.Social:AddParagraph({
-    Title = "Developer & Socials",
-    Content = "DEV: yosef\n\nTG: @slaxscript\nDC: discord.gg/slaxhub\nTT: @slax_dev"
-})
-
-Tabs.Social:AddButton({
-    Title = "Copy Discord Link",
-    Callback = function()
-        setclipboard("https://discord.gg/slaxhub")
-        Fluent:Notify({
-            Title = "Slax Hub",
-            Content = "Copied Discord link to clipboard!",
-            Duration = 3
-        })
-    end
-})
-
-Fluent:Notify({
-    Title = "Slax Hub Loaded",
-    Content = "Fluent UI loaded with 100% Accuracy and Auto Parry Engine.",
-    Duration = 4
-})
