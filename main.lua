@@ -1,6 +1,6 @@
 -- ==========================================
--- 📱 BLADE BALL MANUAL SPAM + AUTO PARRY (V7)
--- Fully Manual Controlled UI
+-- 📱 BLADE BALL FULL UI SCRIPT (V8)
+-- Custom UI with Auto Parry & Manual Spam Toggles
 -- ==========================================
 
 local Players = game:GetService("Players")
@@ -11,9 +11,9 @@ local LocalPlayer = Players.LocalPlayer
 
 -- --- CONFIGURATION ---
 local Settings = {
-    AutoParry = false,
+    AutoParry = true,
     ManualSpam = false,
-    SpamDelay = 0.005, -- سرعة الضغط أثناء التفعيل (بالثواني)
+    SpamDelay = 0.005,
     ParryRange = 35,
     DynamicTiming = true,
     PingOffset = 0.05
@@ -93,71 +93,87 @@ RunService.PreRender:Connect(function()
     end
 end)
 
--- --- UI PANEL ---
-local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
+-- ==========================================
+-- 🎨 CUSTOM GUI CREATION
+-- ==========================================
 
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BladeBallCustomUI"
+ScreenGui.Parent = game.CoreGui
+
+-- Main Container (Window)
 local MainFrame = Instance.new("Frame", ScreenGui)
-MainFrame.Size = UDim2.new(0, 150, 0, 110)
-MainFrame.Position = UDim2.new(0.02, 0, 0.35, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.Size = UDim2.new(0, 220, 0, 180)
+MainFrame.Position = UDim2.new(0.05, 0, 0.3, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
 
-local Title = Instance.new("TextLabel", MainFrame)
-Title.Size = UDim2.new(1, 0, 0, 25)
-Title.Text = "BLADE BALL MENU"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 12
-Title.BackgroundTransparency = 1
+-- Title Bar
+local TitleBar = Instance.new("Frame", MainFrame)
+TitleBar.Size = UDim2.new(1, 0, 0, 35)
+TitleBar.BackgroundColor3 = Color3.fromRGB(28, 28, 35)
+TitleBar.BorderSizePixel = 0
+Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 12)
 
--- Toggle 1: Manual Spam
-local SpamToggle = Instance.new("TextButton", MainFrame)
-SpamToggle.Size = UDim2.new(0.9, 0, 0, 32)
-SpamToggle.Position = UDim2.new(0.05, 0, 0.28, 0)
-SpamToggle.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-SpamToggle.TextColor3 = Color3.fromRGB(255, 50, 50)
-SpamToggle.Text = "MANUAL SPAM: OFF"
-SpamToggle.Font = Enum.Font.SourceSansBold
-SpamToggle.TextSize = 12
-Instance.new("UICorner", SpamToggle).CornerRadius = UDim.new(0, 6)
+local TitleText = Instance.new("TextLabel", TitleBar)
+TitleText.Size = UDim2.new(1, -10, 1, 0)
+TitleText.Position = UDim2.new(0, 10, 0, 0)
+TitleText.Text = "⚔️ Blade Ball Hub"
+TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleText.Font = Enum.Font.SourceSansBold
+TitleText.TextSize = 15
+TitleText.TextXAlignment = Enum.TextXAlignment.Left
+TitleText.BackgroundTransparency = 1
 
-SpamToggle.MouseButton1Click:Connect(function()
-    Settings.ManualSpam = not Settings.ManualSpam
-    if Settings.ManualSpam then
-        SpamToggle.Text = "MANUAL SPAM: ON 🔥"
-        SpamToggle.TextColor3 = Color3.fromRGB(0, 255, 127)
-        SpamToggle.BackgroundColor3 = Color3.fromRGB(20, 60, 30)
-    else
-        SpamToggle.Text = "MANUAL SPAM: OFF"
-        SpamToggle.TextColor3 = Color3.fromRGB(255, 50, 50)
-        SpamToggle.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    end
-end)
+-- Toggle 1: Auto Parry Button
+local AutoBtn = Instance.new("TextButton", MainFrame)
+AutoBtn.Size = UDim2.new(0.9, 0, 0, 40)
+AutoBtn.Position = UDim2.new(0.05, 0, 0.28, 0)
+AutoBtn.BackgroundColor3 = Color3.fromRGB(20, 60, 30)
+AutoBtn.TextColor3 = Color3.fromRGB(0, 255, 127)
+AutoBtn.Text = "AUTO PARRY: ON ✅"
+AutoBtn.Font = Enum.Font.SourceSansBold
+AutoBtn.TextSize = 13
+Instance.new("UICorner", AutoBtn).CornerRadius = UDim.new(0, 8)
 
--- Toggle 2: Auto Parry
-local AutoToggle = Instance.new("TextButton", MainFrame)
-AutoToggle.Size = UDim2.new(0.9, 0, 0, 32)
-AutoToggle.Position = UDim2.new(0.05, 0, 0.63, 0)
-AutoToggle.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-AutoToggle.TextColor3 = Color3.fromRGB(255, 50, 50)
-AutoToggle.Text = "AUTO PARRY: OFF"
-AutoToggle.Font = Enum.Font.SourceSansBold
-AutoToggle.TextSize = 12
-Instance.new("UICorner", AutoToggle).CornerRadius = UDim.new(0, 6)
-
-AutoToggle.MouseButton1Click:Connect(function()
+AutoBtn.MouseButton1Click:Connect(function()
     Settings.AutoParry = not Settings.AutoParry
     if Settings.AutoParry then
-        AutoToggle.Text = "AUTO PARRY: ON"
-        AutoToggle.TextColor3 = Color3.fromRGB(0, 255, 127)
-        AutoToggle.BackgroundColor3 = Color3.fromRGB(20, 60, 30)
+        AutoBtn.Text = "AUTO PARRY: ON ✅"
+        AutoBtn.TextColor3 = Color3.fromRGB(0, 255, 127)
+        AutoBtn.BackgroundColor3 = Color3.fromRGB(20, 60, 30)
     else
-        AutoToggle.Text = "AUTO PARRY: OFF"
-        AutoToggle.TextColor3 = Color3.fromRGB(255, 50, 50)
-        AutoToggle.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        AutoBtn.Text = "AUTO PARRY: OFF ❌"
+        AutoBtn.TextColor3 = Color3.fromRGB(255, 60, 60)
+        AutoBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 25)
     end
 end)
 
-print("✅ UI Loaded Successfully!")
+-- Toggle 2: Manual Spam Button
+local SpamBtn = Instance.new("TextButton", MainFrame)
+SpamBtn.Size = UDim2.new(0.9, 0, 0, 40)
+SpamBtn.Position = UDim2.new(0.05, 0, 0.58, 0)
+SpamBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 25)
+SpamBtn.TextColor3 = Color3.fromRGB(255, 60, 60)
+SpamBtn.Text = "MANUAL SPAM: OFF ❌"
+SpamBtn.Font = Enum.Font.SourceSansBold
+SpamBtn.TextSize = 13
+Instance.new("UICorner", SpamBtn).CornerRadius = UDim.new(0, 8)
+
+SpamBtn.MouseButton1Click:Connect(function()
+    Settings.ManualSpam = not Settings.ManualSpam
+    if Settings.ManualSpam then
+        SpamBtn.Text = "MANUAL SPAM: ON 🔥"
+        SpamBtn.TextColor3 = Color3.fromRGB(255, 170, 0)
+        SpamBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 10)
+    else
+        SpamBtn.Text = "MANUAL SPAM: OFF ❌"
+        SpamBtn.TextColor3 = Color3.fromRGB(255, 60, 60)
+        SpamBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 25)
+    end
+end)
+
+print("✅ Blade Ball Full UI Loaded Successfully!")
