@@ -1,117 +1,207 @@
-local MacLib = loadstring(game:HttpGet("https://github.com/kal3b/Maclib/releases/latest/download/maclib.txt"))()
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
-local Window = MacLib:Window({
-    Title = "Slax Hub | Anime Edition",
-    Subtitle = "by dev: yosef",
-    Size = UDim2.fromOffset(600, 480),
-    Dragable = true
+local Window = Fluent:CreateWindow({
+    Title = "Slax Hub",
+    SubTitle = "by dev:yosef",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
 })
 
-local MainGroup = Window:TabGroup()
+local Tabs = {
+    Parry = Window:AddTab({ Title = "الصد (Parry)", Icon = "shield" }),
+    Spam = Window:AddTab({ Title = "السبام (Spam)", Icon = "zap" }),
+    Player = Window:AddTab({ Title = "اللاعب (Player)", Icon = "user" }),
+    Settings = Window:AddTab({ Title = "الإعدادات", Icon = "settings" })
+}
 
-local MainTab = MainGroup:Tab({ Title = "Main", Image = "rbxassetid://10723407389" })
-local SocialTab = MainGroup:Tab({ Title = "Socials", Image = "rbxassetid://10723346959" })
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Stats = game:GetService("Stats")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
 
--- المتغيرات الأساسية
 local AutoParry = false
-local Accuracy = 100
 local AutoSpam = false
+local ManualSpamActive = false
+local SpamSpeed = 0.01
+local LastParryTime = 0
 
--- ==================== [ إدراج صورة أنمي بنت HD ] ====================
-
-task.spawn(function()
-    task.wait(0.8)
-    local coreGui = game:GetService("CoreGui")
-    local maclibGui = coreGui:FindFirstChild("Maclib") or coreGui:FindFirstChildOfClass("ScreenGui")
+-- دالة الصد المحمية
+local function safeParry()
+    if tick() - LastParryTime < 0.12 then return end
+    LastParryTime = tick()
     
-    if maclibGui then
-        local AnimeImage = Instance.new("ImageLabel")
-        local UICorner = Instance.new("UICorner")
-        local UIStroke = Instance.new("UIStroke")
-        
-        AnimeImage.Name = "AnimeGirlDisplay"
-        AnimeImage.Size = UDim2.new(0, 110, 0, 110)
-        AnimeImage.Position = UDim2.new(0.78, -10, 0.06, 0)
-        AnimeImage.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-        AnimeImage.Image = "rbxassetid://11713589000" -- صورة أنمي بنت بدقة عالية HD
-        AnimeImage.ScaleType = Enum.ScaleType.Crop
-        AnimeImage.ZIndex = 100
-        AnimeImage.Parent = maclibGui
-        
-        UICorner.CornerRadius = UDim.new(0, 14)
-        UICorner.Parent = AnimeImage
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+    task.wait(math.random(15, 25) / 1000)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+end
 
-        UIStroke.Color = Color3.fromRGB(140, 90, 230)
-        UIStroke.Thickness = 2
-        UIStroke.Parent = AnimeImage
+-- ==================== [ إنشاء زر الشاشة المتنقل للمانوال سبام ] ====================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SlaxSpamGui"
+ScreenGui.Parent = CoreGui:FindFirstChild("RobloxGui") or CoreGui
+ScreenGui.ResetOnSpawn = false
+
+local SpamButton = Instance.new("TextButton")
+SpamButton.Name = "SpamToggleButton"
+SpamButton.Size = UDim2.new(0, 110, 0, 50)
+SpamButton.Position = UDim2.new(0.5, -55, 0.2, 0)
+SpamButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+SpamButton.TextColor3 = Color3.fromRGB(255, 60, 60)
+SpamButton.Text = "SPAM: OFF"
+SpamButton.TextSize = 16
+SpamButton.Font = Enum.Font.SourceSansBold
+SpamButton.Active = true
+SpamButton.Draggable = true
+SpamButton.Visible = false
+SpamButton.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.Parent = SpamButton
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(255, 60, 60)
+UIStroke.Thickness = 2
+UIStroke.Parent = SpamButton
+
+SpamButton.MouseButton1Click:Connect(function()
+    ManualSpamActive = not ManualSpamActive
+    if ManualSpamActive then
+        SpamButton.Text = "SPAM: ON"
+        SpamButton.TextColor3 = Color3.fromRGB(60, 255, 60)
+        UIStroke.Color = Color3.fromRGB(60, 255, 60)
+    else
+        SpamButton.Text = "SPAM: OFF"
+        SpamButton.TextColor3 = Color3.fromRGB(255, 60, 60)
+        UIStroke.Color = Color3.fromRGB(255, 60, 60)
     end
 end)
 
--- ==================== [ قسم Auto Parry ] ====================
+-- ==================== [ قسم الصد - Parry ] ====================
+Tabs.Parry:AddSection("نظام الصد المحمي")
 
-local ParrySection = MainTab:Section({ Title = "Auto Parry Settings" })
-
-ParrySection:Toggle({
-    Title = "Auto Parry",
+local AutoParryToggle = Tabs.Parry:AddToggle("AutoParry", {
+    Title = "تفعيل Auto Accuracy Parry",
     Default = false,
-    Callback = function(Value)
-        AutoParry = Value
-    end
+    Description = "صد ذكي ومحمي من كشف الأنتي تشيت"
 })
 
-ParrySection:Slider({
-    Title = "Accuracy",
-    Default = 100,
-    Minimum = 1,
-    Maximum = 100,
-    DisplayMethod = "%",
-    Callback = function(Value)
-        Accuracy = Value
-    end
-})
+AutoParryToggle:OnChanged(function(Value)
+    AutoParry = Value
+end)
 
-ParrySection:Dropdown({
-    Title = "Curve Type",
-    Multi = false,
-    Required = true,
-    Options = {"Straight", "Curve", "Backwards"},
-    Default = "Straight",
-    Callback = function(Value)
-    end
-})
+-- ==================== [ قسم السبام - Spam ] ====================
+Tabs.Spam:AddSection("خيارات السبام")
 
-local SpamSection = MainTab:Section({ Title = "Spam Options" })
-
-SpamSection:Toggle({
-    Title = "Auto Spam",
+local AutoSpamToggle = Tabs.Spam:AddToggle("AutoSpam", {
+    Title = "تفعيل Auto Spam",
     Default = false,
+    Description = "صد متكرر آمن عند الاشتباك القريب"
+})
+
+AutoSpamToggle:OnChanged(function(Value)
+    AutoSpam = Value
+end)
+
+local ManualSpamButtonToggle = Tabs.Spam:AddToggle("ShowManualSpamButton", {
+    Title = "إظهار زر السبام على الشاشة (Manual Spam Button)",
+    Default = false,
+    Description = "يظهر زر عائم يمكنك تحريكه والضغط عليه لتشغيل/إيقاف السبام"
+})
+
+ManualSpamButtonToggle:OnChanged(function(Value)
+    SpamButton.Visible = Value
+    if not Value then
+        ManualSpamActive = false
+        SpamButton.Text = "SPAM: OFF"
+        SpamButton.TextColor3 = Color3.fromRGB(255, 60, 60)
+        UIStroke.Color = Color3.fromRGB(255, 60, 60)
+    end
+end)
+
+Tabs.Spam:AddSlider("SpamDelay", {
+    Title = "سرعة السبام",
+    Default = 15,
+    Min = 5,
+    Max = 50,
+    Rounding = 0,
     Callback = function(Value)
-        AutoSpam = Value
+        SpamSpeed = Value / 1000
     end
 })
 
--- ==================== [ قسم Socials ] ====================
+-- ==================== [ قسم اللاعب - Player ] ====================
+Tabs.Player:AddSection("قدرات الشخصية")
 
-local SocialSection = SocialTab:Section({ Title = "Developer Information" })
-
-SocialSection:Label({
-    Title = "DEV: yosef\nTelegram: @slaxscript\nDiscord: discord.gg/slaxhub\nTikTok: @slax_dev"
-})
-
-SocialSection:Button({
-    Title = "Copy Discord Link",
-    Callback = function()
-        setclipboard("https://discord.gg/slaxhub")
-        MacLib:Notification({
-            Title = "Slax Hub",
-            Description = "Copied Discord link to clipboard!",
-            Lifetime = 3
-        })
+Tabs.Player:AddSlider("WalkSpeed", {
+    Title = "سرعة المشي",
+    Default = 16,
+    Min = 16,
+    Max = 200,
+    Rounding = 0,
+    Callback = function(Value)
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = Value
+        end
     end
 })
 
-MacLib:Notification({
-    Title = "Slax Hub Loaded",
-    Description = "Welcome to Slax Hub Anime Edition!",
-    Lifetime = 4
+-- ==================== [ الحلقات البرمجية ] ====================
+
+task.spawn(function()
+    while true do
+        task.wait(0.015)
+        if AutoParry then
+            pcall(function()
+                local character = LocalPlayer.Character
+                if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+                
+                local rootPart = character.HumanoidRootPart
+                local ballsFolder = workspace:FindFirstChild("Balls")
+                if not ballsFolder then return end
+                
+                for _, ball in pairs(ballsFolder:GetChildren()) do
+                    local target = ball:GetAttribute("target") or ball:GetAttribute("Target")
+                    if target == LocalPlayer.Name then
+                        local ballPosition = ball.Position
+                        local ballVelocity = ball.AssemblyLinearVelocity
+                        local distance = (ballPosition - rootPart.Position).Magnitude
+                        
+                        local directionToPlayer = (rootPart.Position - ballPosition).Unit
+                        local ballDirection = ballVelocity.Unit
+                        local dotProduct = ballDirection:Dot(directionToPlayer)
+                        
+                        if dotProduct > 0 then
+                            local speed = ballVelocity.Magnitude
+                            local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+                            local dynamicParryDistance = math.clamp((speed * (0.22 + ping)), 10, 75)
+                            
+                            if distance <= dynamicParryDistance then
+                                safeParry()
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(SpamSpeed)
+        if AutoSpam or ManualSpamActive then
+            safeParry()
+        end
+    end
+end)
+
+Fluent:Notify({
+    Title = "Slax Hub",
+    Content = "تم إضافة زر السبام اليدوي للشاشة بنجاح!",
+    Duration = 4
 })
