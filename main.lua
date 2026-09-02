@@ -26,6 +26,7 @@ local AutoParry = false
 local Accuracy = 3.3
 local CurveType = "straight"
 local AutoSpam = false
+local LastParryTime = 0
 
 -- ==================== [ إنشاء UI زر السبام العائم ] ====================
 local ScreenGui = Instance.new("ScreenGui")
@@ -63,12 +64,16 @@ UIStroke.Color = Color3.fromRGB(220, 60, 60)
 UIStroke.Thickness = 1.5
 UIStroke.Parent = SpamButton
 
--- دالة إرسال ريموت الضرب
+-- دالة إرسال ريموت الضرب بآمان لمنع Ban/Teleport
 local function sendParryRemote()
+    if tick() - LastParryTime < 0.03 then return end -- فاصل زمني لتجنب كشف السيرفر
+    LastParryTime = tick()
+    
     local remotes = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
     for _, obj in pairs(remotes:GetDescendants()) do
         if obj:IsA("RemoteEvent") and (obj.Name:lower():find("parry") or obj.Name:lower():find("ability")) then
             obj:FireServer()
+            break
         end
     end
 end
@@ -158,14 +163,7 @@ Tabs.Social:AddButton({
     end
 })
 
--- ==================== [ Auto Parry & Spam Logic ] ====================
-
-local function triggerParryBurst()
-    for i = 1, 4 do
-        sendParryRemote()
-        task.wait(0.005)
-    end
-end
+-- ==================== [ Auto Parry & Anti-Ban Spam Logic ] ====================
 
 -- Auto Parry Listener
 RunService.RenderStepped:Connect(function()
@@ -196,22 +194,36 @@ RunService.RenderStepped:Connect(function()
                 local dynamicParryDistance = math.clamp((speed * (0.32 + ping)), 14, 100)
                 
                 if distance <= dynamicParryDistance then
-                    triggerParryBurst()
+                    sendParryRemote()
                 end
             end
         end
     end
 end)
 
--- Spam Execution Loop (High Speed)
-RunService.Heartbeat:Connect(function()
-    if AutoSpam then
-        sendParryRemote()
+-- Safe Spam Loop (مستقر وبدون طرد)
+task.spawn(function()
+    while true do
+        task.wait(0.04) -- فاصل زمني آمن لمنع حماية اللعبة من نقل اللاعب
+        if AutoSpam then
+            local character = LocalPlayer.Character
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                local ballsFolder = workspace:FindFirstChild("Balls")
+                if ballsFolder then
+                    for _, ball in pairs(ballsFolder:GetChildren()) do
+                        local distance = (ball.Position - character.HumanoidRootPart.Position).Magnitude
+                        if distance <= 25 then
+                            sendParryRemote()
+                        end
+                    end
+                end
+            end
+        end
     end
 end)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "Spam UI and logic fixed successfully!",
+    Content = "Anti-Cheat Bypass applied successfully!",
     Duration = 4
 })
