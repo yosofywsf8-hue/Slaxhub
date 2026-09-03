@@ -1,7 +1,7 @@
 --==================================================--
 --                    SLAX HUB                      --
 --               Created By: yossef                 --
---        VBL - Rayfield UI Edition                 --
+--        VBL - Ground Circle & Line Indicators     --
 --==================================================--
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -10,213 +10,177 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
-getgenv().HitboxConfig = {
-    Enabled = false,
-    Size = 15
-}
-
 getgenv().VisualConfig = {
-    EnemyLookIndicators = false,
-    Distance = 60
+    PlayerCircleEnabled = true,
+    PlayerCircleRadius = 15,
+    BallCircleEnabled = true,
+    BallCircleRadius = 8,
+    ConnectLineEnabled = true
 }
 
-local EnemyVisuals = {}
-local ColorList = {
-    Color3.fromRGB(255, 50, 50),
-    Color3.fromRGB(50, 255, 50),
-    Color3.fromRGB(50, 150, 255),
-    Color3.fromRGB(255, 255, 50),
-    Color3.fromRGB(255, 50, 255),
-    Color3.fromRGB(255, 150, 0),
-    Color3.fromRGB(0, 255, 255)
-}
+local CachedBall = nil
 
--- البحث عن الكرة الحقيقية المفعّلة بالماب
-local function getActiveBall()
+-- دالة سريعة ومحسنة للبحث عن الكرة
+local function findBall()
+    if CachedBall and CachedBall.Parent and CachedBall:IsDescendantOf(workspace) then
+        return CachedBall
+    end
+    for _, obj in pairs(workspace:GetChildren()) do
+        if obj:IsA("BasePart") and obj.Name:lower():find("ball") then
+            CachedBall = obj
+            return obj
+        end
+    end
     for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and obj.Parent then
-            local pName = obj.Parent.Name:lower()
-            local oName = obj.Name:lower()
-            if (oName:find("ball") or pName:find("ball")) and not obj:IsDescendantOf(Players) then
-                if obj.Size.Magnitude > 0 and obj.Transparency < 1 then
-                    return obj
-                end
-            end
+        if obj:IsA("BasePart") and obj.Name:lower():find("ball") and not obj:IsDescendantOf(Players) then
+            CachedBall = obj
+            return obj
         end
     end
     return nil
 end
 
--- إنشاء مجسم الهيتبوكس المرئي
-local HitboxPart = Instance.new("Part")
-HitboxPart.Name = "SlaxHitboxVisualPart"
-HitboxPart.Shape = Enum.PartType.Ball
-HitboxPart.Color = Color3.fromRGB(0, 170, 255)
-HitboxPart.Material = Enum.Material.SmoothPlastic
-HitboxPart.Transparency = 0.5
-HitboxPart.CanCollide = false
-HitboxPart.Anchored = true
-HitboxPart.Size = Vector3.new(15, 15, 15)
-HitboxPart.Parent = nil
+-- 1. دائرة اللاعب المسطحة على الأرض
+local PlayerCircle = Instance.new("CylinderHandleAdornment")
+PlayerCircle.Name = "SlaxPlayerCircle"
+PlayerCircle.Height = 0.1
+PlayerCircle.Color3 = Color3.fromRGB(200, 200, 255)
+PlayerCircle.Transparency = 0.7
+PlayerCircle.AlwaysOnTop = true
+PlayerCircle.CFrame = CFrame.Angles(math.rad(90), 0, 0)
+PlayerCircle.Parent = workspace.Terrain
 
--- إنشـاء النافذة الرئيسية عبر Rayfield
+-- 2. دائرة الكرة الخضراء المسطحة على الأرض
+local BallCircle = Instance.new("CylinderHandleAdornment")
+BallCircle.Name = "SlaxBallCircle"
+BallCircle.Height = 0.1
+BallCircle.Color3 = Color3.fromRGB(50, 255, 100)
+BallCircle.Transparency = 0.5
+BallCircle.AlwaysOnTop = true
+BallCircle.CFrame = CFrame.Angles(math.rad(90), 0, 0)
+BallCircle.Parent = workspace.Terrain
+
+-- 3. خط ليزر واصل بين الكرة واللاعب على الأرض
+local Att0 = Instance.new("Attachment", workspace.Terrain)
+local Att1 = Instance.new("Attachment", workspace.Terrain)
+local ConnectBeam = Instance.new("Beam", workspace.Terrain)
+ConnectBeam.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+ConnectBeam.Width0 = 0.3
+ConnectBeam.Width1 = 0.3
+ConnectBeam.FaceCamera = true
+ConnectBeam.Attachment0 = Att0
+ConnectBeam.Attachment1 = Att1
+ConnectBeam.Enabled = false
+
+-- إنشـاء النافذة بـ Rayfield
 local Window = Rayfield:CreateWindow({
    Name = "SLAX HUB | VBL",
-   LoadingTitle = "Slax Hub Loading...",
+   LoadingTitle = "Slax Hub Loaded",
    LoadingSubtitle = "by yossef",
-   ConfigurationSaving = {
-      Enabled = false
-   },
+   ConfigurationSaving = { Enabled = false },
    KeySystem = false
 })
 
-local MainTab = Window:CreateTab("Main Features", 4483362458)
+local MainTab = Window:CreateTab("Visual Indicators", 4483362458)
 
--- خيارات الهيتبوكس
-MainTab:CreateSection("Ball Hitbox Settings")
+MainTab:CreateSection("Player & Ball Circles")
 
 MainTab:CreateToggle({
-   Name = "3D Ball Hitbox",
-   CurrentValue = false,
-   Flag = "BallHitboxToggle",
+   Name = "Player Ground Circle",
+   CurrentValue = true,
+   Flag = "PlayerCircleToggle",
    Callback = function(Value)
-      getgenv().HitboxConfig.Enabled = Value
-      if not Value then
-         HitboxPart.Parent = nil
-      end
+      getgenv().VisualConfig.PlayerCircleEnabled = Value
+      PlayerCircle.Visible = Value
    end,
 })
 
 MainTab:CreateSlider({
-   Name = "Hitbox Size (Width/Height/Length)",
-   Range = {5, 40},
+   Name = "Player Circle Radius (Studs)",
+   Range = {5, 30},
    Increment = 1,
    Suffix = "Studs",
    CurrentValue = 15,
-   Flag = "HitboxSizeSlider",
+   Flag = "PlayerRadiusSlider",
    Callback = function(Value)
-      getgenv().HitboxConfig.Size = Value
+      getgenv().VisualConfig.PlayerCircleRadius = Value
    end,
 })
 
--- خيارات خطوط النظر
-MainTab:CreateSection("Enemy Look Lines")
-
-local function cleanupEnemyVisuals()
-    for _, item in pairs(EnemyVisuals) do
-        if item.Beam then item.Beam:Destroy() end
-        if item.Attachment0 then item.Attachment0:Destroy() end
-        if item.Attachment1 then item.Attachment1:Destroy() end
-    end
-    EnemyVisuals = {}
-end
-
 MainTab:CreateToggle({
-   Name = "Enemy Look Lines (Ground Locked)",
-   CurrentValue = false,
-   Flag = "EnemyLinesToggle",
+   Name = "Ball Target Ground Circle",
+   CurrentValue = true,
+   Flag = "BallCircleToggle",
    Callback = function(Value)
-      getgenv().VisualConfig.EnemyLookIndicators = Value
-      if not Value then
-         cleanupEnemyVisuals()
-      end
+      getgenv().VisualConfig.BallCircleEnabled = Value
+      BallCircle.Visible = Value
    end,
 })
 
 MainTab:CreateSlider({
-   Name = "Line Distance",
-   Range = {20, 120},
-   Increment = 5,
+   Name = "Ball Circle Radius",
+   Range = {3, 20},
+   Increment = 1,
    Suffix = "Studs",
-   CurrentValue = 60,
-   Flag = "LineDistanceSlider",
+   CurrentValue = 8,
+   Flag = "BallRadiusSlider",
    Callback = function(Value)
-      getgenv().VisualConfig.Distance = Value
+      getgenv().VisualConfig.BallCircleRadius = Value
    end,
 })
 
--- الحلقة البرمجية المستمرة (RenderStepped)
+MainTab:CreateToggle({
+   Name = "Line Between Player & Ball",
+   CurrentValue = true,
+   Flag = "ConnectLineToggle",
+   Callback = function(Value)
+      getgenv().VisualConfig.ConnectLineEnabled = Value
+   end,
+})
+
+-- الحلقة البرمجية لتحديث المترجمات المرئية بدون لاق
 RunService.RenderStepped:Connect(function()
-    -- 1. تحديث الهيتبوكس
-    if getgenv().HitboxConfig.Enabled then
-        local ball = getActiveBall()
-        if ball then
-            local sz = getgenv().HitboxConfig.Size
-            ball.Size = Vector3.new(sz, sz, sz)
-            ball.CanCollide = false
-            
-            HitboxPart.Size = Vector3.new(sz, sz, sz)
-            HitboxPart.CFrame = ball.CFrame
-            HitboxPart.Parent = workspace
-        else
-            HitboxPart.Parent = nil
-        end
-    else
-        HitboxPart.Parent = nil
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    
+    if not hrp then
+        PlayerCircle.Adornee = nil
+        BallCircle.Adornee = nil
+        ConnectBeam.Enabled = false
+        return
     end
 
-    -- 2. تحديث خطوط الليزر المثبتة على الأرض
-    if getgenv().VisualConfig.EnemyLookIndicators then
-        local activePlayers = {}
-        local idx = 0
+    -- الارتفاع الثابت للأرضية لعدم الارتفاع عند القفز
+    local groundY = 3.2
 
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and (player.Team == nil or player.Team ~= LocalPlayer.Team) then
-                idx = idx + 1
-                activePlayers[player] = true
+    -- 1. تحديث دائرة اللاعب
+    if getgenv().VisualConfig.PlayerCircleEnabled then
+        PlayerCircle.Radius = getgenv().VisualConfig.PlayerCircleRadius
+        PlayerCircle.InnerRadius = PlayerCircle.Radius - 0.2
+        PlayerCircle.Adornee = workspace.Terrain
+        PlayerCircle.CFrame = CFrame.new(hrp.Position.X, groundY, hrp.Position.Z) * CFrame.Angles(math.rad(90), 0, 0)
+    else
+        PlayerCircle.Adornee = nil
+    end
 
-                local char = player.Character
-                local head = char and char:FindFirstChild("Head")
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    -- 2. تحديث دائرة الكرة والخط
+    local ball = findBall()
+    if ball and getgenv().VisualConfig.BallCircleEnabled then
+        BallCircle.Radius = getgenv().VisualConfig.BallCircleRadius
+        BallCircle.InnerRadius = BallCircle.Radius - 0.2
+        BallCircle.Adornee = workspace.Terrain
+        BallCircle.CFrame = CFrame.new(ball.Position.X, groundY, ball.Position.Z) * CFrame.Angles(math.rad(90), 0, 0)
 
-                if head and hrp then
-                    if not EnemyVisuals[player] then
-                        local att0 = Instance.new("Attachment", workspace.Terrain)
-                        local att1 = Instance.new("Attachment", workspace.Terrain)
-                        local beam = Instance.new("Beam", workspace.Terrain)
-
-                        local color = ColorList[((idx - 1) % #ColorList) + 1]
-                        beam.Color = ColorSequence.new(color)
-                        beam.Width0 = 0.6
-                        beam.Width1 = 0.6
-                        beam.FaceCamera = true
-                        beam.Attachment0 = att0
-                        beam.Attachment1 = att1
-
-                        EnemyVisuals[player] = {
-                            Beam = beam,
-                            Attachment0 = att0,
-                            Attachment1 = att1
-                        }
-                    end
-
-                    local rayParams = RaycastParams.new()
-                    rayParams.FilterType = RaycastFilterType.Exclude
-                    rayParams.FilterDescendantsInstances = {char}
-                    
-                    local rayResult = workspace:Raycast(hrp.Position, Vector3.new(0, -100, 0), rayParams)
-                    local groundY = rayResult and (rayResult.Position.Y + 0.5) or (hrp.Position.Y - 3)
-
-                    local lookVector = head.CFrame.LookVector
-                    local flatLook = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
-
-                    local startPos = Vector3.new(hrp.Position.X, groundY, hrp.Position.Z)
-                    local endPos = startPos + (flatLook * getgenv().VisualConfig.Distance)
-
-                    EnemyVisuals[player].Attachment0.WorldPosition = startPos
-                    EnemyVisuals[player].Attachment1.WorldPosition = endPos
-                    EnemyVisuals[player].Beam.Enabled = true
-                end
-            end
+        -- 3. تحديث الخط الرابط بينهما على الأرض
+        if getgenv().VisualConfig.ConnectLineEnabled then
+            Att0.WorldPosition = Vector3.new(hrp.Position.X, groundY + 0.1, hrp.Position.Z)
+            Att1.WorldPosition = Vector3.new(ball.Position.X, groundY + 0.1, ball.Position.Z)
+            ConnectBeam.Enabled = true
+        else
+            ConnectBeam.Enabled = false
         end
-
-        for player, data in pairs(EnemyVisuals) do
-            if not activePlayers[player] then
-                if data.Beam then data.Beam:Destroy() end
-                if data.Attachment0 then data.Attachment0:Destroy() end
-                if data.Attachment1 then data.Attachment1:Destroy() end
-                EnemyVisuals[player] = nil
-            end
-        end
+    else
+        BallCircle.Adornee = nil
+        ConnectBeam.Enabled = false
     end
 end)
