@@ -1,149 +1,239 @@
--- ==========================================
--- 📱 BLADE BALL FIXED FOR DELTA (V9)
--- Anti-Error + Manual Spam UI + Auto Parry
--- ==========================================
+--==================================================--
+--                    SLAX HUB                      --
+--               Created By: yossef                 --
+--       VBL - Ball Hitbox & Enemy Look Indicators  --
+--==================================================--
+
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/main/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/main/Addons/InterfaceManager.lua"))()
 
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
--- --- CONFIGURATION ---
-local Settings = {
-    AutoParry = true,
-    ManualSpam = false,
-    SpamDelay = 0.005,
-    ParryRange = 35
+-- إنشاء النافذة الرئيسية
+local Window = Fluent:CreateWindow({
+    Title = "Slax Hub | Volleyball Legends",
+    SubTitle = "by yossef",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+-- إضافة التبويبات
+local Tabs = {
+    Hitbox = Window:AddTab({ Title = "Ball Hitbox", Icon = "target" }),
+    Visuals = Window:AddTab({ Title = "Visuals", Icon = "eye" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
--- --- ADVANCED EVENT FINDER (FIXED) ---
-local function getParryRemote()
-    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-    if remotes then
-        local p = remotes:FindFirstChild("ParryButtonPress") or remotes:FindFirstChild("ParryAttempt")
-        if p then return p end
-    end
-    for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
-        if v:IsA("RemoteEvent") and (v.Name:lower():find("parry") or v.Name:lower():find("swing")) then
-            return v
-        end
-    end
-    return nil
-end
+-- المتغيرات العامة
+getgenv().HitboxConfig = {
+    Enabled = false,
+    Size = 15,
+    Transparency = 0.5,
+    CanCollide = false
+}
 
-local ParryRemote = getParryRemote()
+getgenv().VisualConfig = {
+    EnemyLookIndicators = false,
+    Distance = 60 -- مسافة 60 Studs
+}
 
-local function executeParry()
-    if ParryRemote then
-        ParryRemote:FireServer()
-    else
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-        task.wait(0.001)
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
-    end
-end
+-- جدول حفظ المؤشرات والألوان الخاصة بكل منافس
+local EnemyIndicators = {}
 
--- --- MANUAL SPAM LOOP ---
-task.spawn(function()
-    while true do
-        if Settings.ManualSpam then
-            executeParry()
-            task.wait(Settings.SpamDelay)
-        else
-            task.wait(0.05)
+-- قائمة الألوان المتاحة للمنافسين لضمان اختلاف الألوان
+local ColorList = {
+    Color3.fromRGB(255, 50, 50),   -- أحمر
+    Color3.fromRGB(50, 255, 50),   -- أخضر
+    Color3.fromRGB(50, 150, 255),  -- أزرق
+    Color3.fromRGB(255, 255, 50),  -- أصفر
+    Color3.fromRGB(255, 50, 255),  -- وردي / بنفسجي
+    Color3.fromRGB(255, 150, 0),   -- برتقالي
+    Color3.fromRGB(0, 255, 255)    -- تركوازي
+}
+
+----------------------------------------------------
+-- [قسم الهيتبوكس - Ball Hitbox Tab]
+----------------------------------------------------
+
+local HitboxToggle = Tabs.Hitbox:AddToggle("HitboxToggle", {
+    Title = "Enable Ball Hitbox",
+    Default = false,
+    Description = "تكبير نطاق لمس الكرة للضرب بسهولة"
+})
+
+HitboxToggle:OnChanged(function(Value)
+    getgenv().HitboxConfig.Enabled = Value
+    if not Value then
+        local ball = workspace:FindFirstChild("Ball") or workspace:FindFirstChild("CLIENT_BALL_")
+        if ball then
+            ball.Size = Vector3.new(2, 2, 2)
+            ball.Transparency = 0
+            ball.CanCollide = true
         end
     end
 end)
 
--- --- AUTO PARRY LOOP ---
-local function getTargetBall()
-    local ballsFolder = workspace:FindFirstChild("Balls")
-    if not ballsFolder then return nil end
-    for _, ball in ipairs(ballsFolder:GetChildren()) do
-        if ball:GetAttribute("realBall") == true or ball:FindFirstChild("Ball") then
-            return ball
+Tabs.Hitbox:AddSlider("HitboxSize", {
+    Title = "Hitbox Size",
+    Description = "تحديد حجم هيتبوكس الكرة (5 إلى 30)",
+    Default = 15,
+    Min = 5,
+    Max = 30,
+    Rounding = 0,
+    Callback = function(Value)
+        getgenv().HitboxConfig.Size = Value
+    end
+})
+
+Tabs.Hitbox:AddSlider("HitboxTransparency", {
+    Title = "Hitbox Transparency",
+    Description = "التحكم في درجة رؤية الهيتبوكس",
+    Default = 5,
+    Min = 0,
+    Max = 10,
+    Rounding = 1,
+    Callback = function(Value)
+        getgenv().HitboxConfig.Transparency = Value / 10
+    end
+end)
+
+----------------------------------------------------
+-- [قسم المؤشرات البصرية - Visuals Tab]
+----------------------------------------------------
+
+local EnemyToggle = Tabs.Visuals:AddToggle("EnemyLookToggle", {
+    Title = "Enemies Look Indicators (60 Studs)",
+    Default = false,
+    Description = "إظهار مؤشر اتجاه نظر اللاعبين المنافسين فقط (لكل منافس لون مختلف)"
+})
+
+-- تنظيف جميع المؤشرات عند إيقاف الخيار
+local function clearIndicators()
+    for _, item in pairs(EnemyIndicators) do
+        if item.Part then
+            item.Part:Destroy()
         end
     end
-    return ballsFolder:GetChildren()[1]
+    EnemyIndicators = {}
 end
 
-RunService.PreRender:Connect(function()
-    if not Settings.AutoParry or Settings.ManualSpam then return end
-    
-    local character = LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local rootPart = character.HumanoidRootPart
-    local ball = getTargetBall()
-    
-    if ball and ball:FindFirstChild("AssemblyLinearVelocity") then
-        local ballTarget = ball:GetAttribute("target") or ball:GetAttribute("Target")
-        
-        if ballTarget == LocalPlayer.Name or (ball:FindFirstChild("Highlight") and ball.Highlight.FillColor == Color3.fromRGB(255, 0, 0)) then
-            local distance = (rootPart.Position - ball.Position).Magnitude
-            if distance <= Settings.ParryRange then
-                executeParry()
+EnemyToggle:OnChanged(function(Value)
+    getgenv().VisualConfig.EnemyLookIndicators = Value
+    if not Value then
+        clearIndicators()
+    end
+end)
+
+----------------------------------------------------
+-- [قسم الحقوق والإعدادات - Settings Tab]
+----------------------------------------------------
+
+Tabs.Settings:AddParagraph({
+    Title = "Slax Hub Rights",
+    Content = "Developed exclusively by yossef.\nAll Rights Reserved © 2026."
+})
+
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+InterfaceManager:SetFolder("SlaxHubConfig")
+SaveManager:SetFolder("SlaxHubConfig/configs")
+
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
+
+Window:SelectTab(1)
+
+Fluent:Notify({
+    Title = "Slax Hub Loaded",
+    Content = "تم تحميل السكربت بنجاح! الحقوق لـ yossef.",
+    Duration = 5
+})
+
+----------------------------------------------------
+-- [دوال وإدارة مؤشرات الأعداء]
+----------------------------------------------------
+
+local function getOrCreateIndicator(player, colorIndex)
+    if not EnemyIndicators[player] then
+        local part = Instance.new("Part")
+        part.Name = "EnemyLookIndicator_" .. player.Name
+        part.Size = Vector3.new(1.5, 1.5, 1.5)
+        part.Shape = Enum.PartType.Ball
+        part.Material = Enum.Material.Neon
+        local assignedColor = ColorList[((colorIndex - 1) % #ColorList) + 1]
+        part.Color = assignedColor
+        part.CanCollide = false
+        part.Anchored = true
+        part.Transparency = 0.3
+        part.Parent = workspace
+
+        EnemyIndicators[player] = {
+            Part = part,
+            Color = assignedColor
+        }
+    end
+    return EnemyIndicators[player].Part
+end
+
+----------------------------------------------------
+-- [المحرك الأساسي - Main Loop]
+----------------------------------------------------
+
+RunService.RenderStepped:Connect(function()
+    -- 1. تحديث هيتبوكس الكرة
+    if getgenv().HitboxConfig.Enabled then
+        local ball = workspace:FindFirstChild("Ball") or workspace:FindFirstChild("CLIENT_BALL_")
+        if ball and ball:IsA("BasePart") then
+            local size = getgenv().HitboxConfig.Size
+            ball.Size = Vector3.new(size, size, size)
+            ball.Transparency = getgenv().HitboxConfig.Transparency
+            ball.CanCollide = getgenv().HitboxConfig.CanCollide
+        end
+    end
+
+    -- 2. تحديث مؤشرات اتجاه نظر المنافسين (Enemies Only)
+    if getgenv().VisualConfig.EnemyLookIndicators then
+        local activePlayers = {}
+        local enemyIndex = 0
+
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and (player.Team == nil or player.Team ~= LocalPlayer.Team) then
+                enemyIndex = enemyIndex + 1
+                activePlayers[player] = true
+
+                local char = player.Character
+                local head = char and char:FindFirstChild("Head")
+
+                if head then
+                    local indicatorPart = getOrCreateIndicator(player, enemyIndex)
+                    indicatorPart.Transparency = 0.3
+                    
+                    local lookDirection = head.CFrame.LookVector
+                    local targetPosition = head.CFrame.Position + (lookDirection * getgenv().VisualConfig.Distance)
+                    indicatorPart.Position = targetPosition
+                else
+                    if EnemyIndicators[player] and EnemyIndicators[player].Part then
+                        EnemyIndicators[player].Part.Transparency = 1
+                    end
+                end
+            end
+        end
+
+        for player, data in pairs(EnemyIndicators) do
+            if not activePlayers[player] then
+                if data.Part then
+                    data.Part:Destroy()
+                end
+                EnemyIndicators[player] = nil
             end
         end
     end
 end)
-
--- --- GUI WINDOW ---
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "DeltaBladeBallUI"
-ScreenGui.Parent = game.CoreGui
-
-local MainFrame = Instance.new("Frame", ScreenGui)
-MainFrame.Size = UDim2.new(0, 210, 0, 160)
-MainFrame.Position = UDim2.new(0.05, 0, 0.3, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
-MainFrame.Active = true
-MainFrame.Draggable = true
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
-
-local Title = Instance.new("TextLabel", MainFrame)
-Title.Size = UDim2.new(1, 0, 0, 30)
-Title.Text = "⚡ Delta Blade Hub"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 14
-Title.BackgroundTransparency = 1
-
--- Auto Parry Button
-local AutoBtn = Instance.new("TextButton", MainFrame)
-AutoBtn.Size = UDim2.new(0.9, 0, 0, 38)
-AutoBtn.Position = UDim2.new(0.05, 0, 0.25, 0)
-AutoBtn.BackgroundColor3 = Color3.fromRGB(20, 60, 30)
-AutoBtn.TextColor3 = Color3.fromRGB(0, 255, 127)
-AutoBtn.Text = "AUTO PARRY: ON ✅"
-AutoBtn.Font = Enum.Font.SourceSansBold
-AutoBtn.TextSize = 13
-Instance.new("UICorner", AutoBtn).CornerRadius = UDim.new(0, 6)
-
-AutoBtn.MouseButton1Click:Connect(function()
-    Settings.AutoParry = not Settings.AutoParry
-    AutoBtn.Text = Settings.AutoParry and "AUTO PARRY: ON ✅" or "AUTO PARRY: OFF ❌"
-    AutoBtn.TextColor3 = Settings.AutoParry and Color3.fromRGB(0, 255, 127) or Color3.fromRGB(255, 60, 60)
-    AutoBtn.BackgroundColor3 = Settings.AutoParry and Color3.fromRGB(20, 60, 30) or Color3.fromRGB(50, 25, 25)
-end)
-
--- Manual Spam Button
-local SpamBtn = Instance.new("TextButton", MainFrame)
-SpamBtn.Size = UDim2.new(0.9, 0, 0, 38)
-SpamBtn.Position = UDim2.new(0.05, 0, 0.58, 0)
-SpamBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 25)
-SpamBtn.TextColor3 = Color3.fromRGB(255, 60, 60)
-SpamBtn.Text = "MANUAL SPAM: OFF ❌"
-SpamBtn.Font = Enum.Font.SourceSansBold
-SpamBtn.TextSize = 13
-Instance.new("UICorner", SpamBtn).CornerRadius = UDim.new(0, 6)
-
-SpamBtn.MouseButton1Click:Connect(function()
-    Settings.ManualSpam = not Settings.ManualSpam
-    SpamBtn.Text = Settings.ManualSpam and "MANUAL SPAM: ON 🔥" or "MANUAL SPAM: OFF ❌"
-    SpamBtn.TextColor3 = Settings.ManualSpam and Color3.fromRGB(255, 170, 0) or Color3.fromRGB(255, 60, 60)
-    SpamBtn.BackgroundColor3 = Settings.ManualSpam and Color3.fromRGB(80, 50, 10) or Color3.fromRGB(50, 25, 25)
-end)
-
-print("✅ Script Fixed & Ready!")
