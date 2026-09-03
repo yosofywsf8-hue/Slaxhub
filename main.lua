@@ -1,8 +1,10 @@
 --==================================================--
 --                    SLAX HUB                      --
 --               Created By: yossef                 --
---      VBL - Fixed 3D Ball Hitbox & Ground Lasers  --
+--        VBL - Rayfield UI Edition                 --
 --==================================================--
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -20,147 +22,85 @@ getgenv().VisualConfig = {
 
 local EnemyVisuals = {}
 local ColorList = {
-    Color3.fromRGB(255, 50, 50),   -- أحمر
-    Color3.fromRGB(50, 255, 50),   -- أخضر
-    Color3.fromRGB(50, 150, 255),  -- أزرق
-    Color3.fromRGB(255, 255, 50),  -- أصفر
-    Color3.fromRGB(255, 50, 255),  -- وردي
-    Color3.fromRGB(255, 150, 0),   -- برتقالي
-    Color3.fromRGB(0, 255, 255)    -- تركوازي
+    Color3.fromRGB(255, 50, 50),
+    Color3.fromRGB(50, 255, 50),
+    Color3.fromRGB(50, 150, 255),
+    Color3.fromRGB(255, 255, 50),
+    Color3.fromRGB(255, 50, 255),
+    Color3.fromRGB(255, 150, 0),
+    Color3.fromRGB(0, 255, 255)
 }
 
--- البحث الشامل عن جميع الكرات في الماب
-local function getAllBalls()
-    local balls = {}
+-- البحث عن الكرة الحقيقية المفعّلة بالماب
+local function getActiveBall()
     for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") then
-            local name = obj.Name:lower()
-            if name:find("ball") or name:find("volleyball") or (obj.Parent and obj.Parent.Name:lower():find("ball")) then
-                table.insert(balls, obj)
+        if obj:IsA("BasePart") and obj.Parent then
+            local pName = obj.Parent.Name:lower()
+            local oName = obj.Name:lower()
+            if (oName:find("ball") or pName:find("ball")) and not obj:IsDescendantOf(Players) then
+                if obj.Size.Magnitude > 0 and obj.Transparency < 1 then
+                    return obj
+                end
             end
         end
     end
-    return balls
+    return nil
 end
 
--- إنشاء مجسم مرئي للهيتبوكس (تم إصلاح الماتيريال هنا)
+-- إنشاء مجسم الهيتبوكس المرئي
 local HitboxPart = Instance.new("Part")
 HitboxPart.Name = "SlaxHitboxVisualPart"
 HitboxPart.Shape = Enum.PartType.Ball
 HitboxPart.Color = Color3.fromRGB(0, 170, 255)
-HitboxPart.Material = Enum.Material.ForceField
+HitboxPart.Material = Enum.Material.SmoothPlastic
 HitboxPart.Transparency = 0.5
 HitboxPart.CanCollide = false
 HitboxPart.Anchored = true
 HitboxPart.Size = Vector3.new(15, 15, 15)
 HitboxPart.Parent = nil
 
--- بناء واجهة GUI
-local ScreenGui = Instance.new("ScreenGui")
-local MainFrame = Instance.new("Frame")
-local Title = Instance.new("TextLabel")
-local SubTitle = Instance.new("TextLabel")
-local ToggleHitbox = Instance.new("TextButton")
-local SizePlus = Instance.new("TextButton")
-local SizeMinus = Instance.new("TextButton")
-local ToggleEnemy = Instance.new("TextButton")
-local UICorner = Instance.new("UICorner")
+-- إنشـاء النافذة الرئيسية عبر Rayfield
+local Window = Rayfield:CreateWindow({
+   Name = "SLAX HUB | VBL",
+   LoadingTitle = "Slax Hub Loading...",
+   LoadingSubtitle = "by yossef",
+   ConfigurationSaving = {
+      Enabled = false
+   },
+   KeySystem = false
+})
 
-ScreenGui.Parent = game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
+local MainTab = Window:CreateTab("Main Features", 4483362458)
 
-MainFrame.Name = "SlaxHubUI"
-MainFrame.Parent = ScreenGui
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-MainFrame.Position = UDim2.new(0.3, 0, 0.25, 0)
-MainFrame.Size = UDim2.new(0, 290, 0, 260)
-MainFrame.Active = true
-MainFrame.Draggable = true
+-- خيارات الهيتبوكس
+MainTab:CreateSection("Ball Hitbox Settings")
 
-UICorner.CornerRadius = UDim.new(0, 8)
-UICorner.Parent = MainFrame
+MainTab:CreateToggle({
+   Name = "3D Ball Hitbox",
+   CurrentValue = false,
+   Flag = "BallHitboxToggle",
+   Callback = function(Value)
+      getgenv().HitboxConfig.Enabled = Value
+      if not Value then
+         HitboxPart.Parent = nil
+      end
+   end,
+})
 
-Title.Parent = MainFrame
-Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "SLAX HUB"
-Title.Font = Enum.Font.SourceSansBold
-Title.TextColor3 = Color3.fromRGB(0, 170, 255)
-Title.TextSize = 20.000
+MainTab:CreateSlider({
+   Name = "Hitbox Size (Width/Height/Length)",
+   Range = {5, 40},
+   Increment = 1,
+   Suffix = "Studs",
+   CurrentValue = 15,
+   Flag = "HitboxSizeSlider",
+   Callback = function(Value)
+      getgenv().HitboxConfig.Size = Value
+   end,
+})
 
-SubTitle.Parent = MainFrame
-SubTitle.Position = UDim2.new(0, 0, 0.88, 0)
-SubTitle.Size = UDim2.new(1, 0, 0, 25)
-SubTitle.Text = "by yossef | All Rights Reserved"
-SubTitle.Font = Enum.Font.SourceSansItalic
-SubTitle.TextColor3 = Color3.fromRGB(150, 150, 150)
-SubTitle.TextSize = 13.000
-
--- زر تفعيل الهيتبوكس
-ToggleHitbox.Parent = MainFrame
-ToggleHitbox.Position = UDim2.new(0.06, 0, 0.18, 0)
-ToggleHitbox.Size = UDim2.new(0.88, 0, 0.18, 0)
-ToggleHitbox.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-ToggleHitbox.Text = "3D Ball Hitbox (15): OFF"
-ToggleHitbox.Font = Enum.Font.SourceSansBold
-ToggleHitbox.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleHitbox.TextSize = 15.000
-
--- أزرار تكبير وتصغير الهيتبوكس
-SizeMinus.Parent = MainFrame
-SizeMinus.Position = UDim2.new(0.06, 0, 0.38, 0)
-SizeMinus.Size = UDim2.new(0.42, 0, 0.14, 0)
-SizeMinus.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-SizeMinus.Text = "Size - 1"
-SizeMinus.Font = Enum.Font.SourceSansBold
-SizeMinus.TextColor3 = Color3.fromRGB(255, 255, 255)
-SizeMinus.TextSize = 14.000
-
-SizePlus.Parent = MainFrame
-SizePlus.Position = UDim2.new(0.52, 0, 0.38, 0)
-SizePlus.Size = UDim2.new(0.42, 0, 0.14, 0)
-SizePlus.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-SizePlus.Text = "Size + 1"
-SizePlus.Font = Enum.Font.SourceSansBold
-SizePlus.TextColor3 = Color3.fromRGB(255, 255, 255)
-SizePlus.TextSize = 14.000
-
-ToggleHitbox.MouseButton1Click:Connect(function()
-    getgenv().HitboxConfig.Enabled = not getgenv().HitboxConfig.Enabled
-    if getgenv().HitboxConfig.Enabled then
-        ToggleHitbox.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-        ToggleHitbox.Text = "3D Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): ON"
-        HitboxPart.Parent = workspace
-    else
-        ToggleHitbox.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-        ToggleHitbox.Text = "3D Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): OFF"
-        HitboxPart.Parent = nil
-    end
-end)
-
-SizeMinus.MouseButton1Click:Connect(function()
-    if getgenv().HitboxConfig.Size > 5 then
-        getgenv().HitboxConfig.Size = getgenv().HitboxConfig.Size - 1
-        local currentText = getgenv().HitboxConfig.Enabled and "ON" or "OFF"
-        ToggleHitbox.Text = "3D Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): " .. currentText
-    end
-end)
-
-SizePlus.MouseButton1Click:Connect(function()
-    if getgenv().HitboxConfig.Size < 40 then
-        getgenv().HitboxConfig.Size = getgenv().HitboxConfig.Size + 1
-        local currentText = getgenv().HitboxConfig.Enabled and "ON" or "OFF"
-        ToggleHitbox.Text = "3D Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): " .. currentText
-    end
-end)
-
--- زر خطوط نظر الأعداء
-ToggleEnemy.Parent = MainFrame
-ToggleEnemy.Position = UDim2.new(0.06, 0, 0.56, 0)
-ToggleEnemy.Size = UDim2.new(0.88, 0, 0.18, 0)
-ToggleEnemy.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-ToggleEnemy.Text = "Enemy Look Lines (Fixed Height): OFF"
-ToggleEnemy.Font = Enum.Font.SourceSansBold
-ToggleEnemy.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleEnemy.TextSize = 12.000
+-- خيارات خطوط النظر
+MainTab:CreateSection("Enemy Look Lines")
 
 local function cleanupEnemyVisuals()
     for _, item in pairs(EnemyVisuals) do
@@ -171,32 +111,42 @@ local function cleanupEnemyVisuals()
     EnemyVisuals = {}
 end
 
-ToggleEnemy.MouseButton1Click:Connect(function()
-    getgenv().VisualConfig.EnemyLookIndicators = not getgenv().VisualConfig.EnemyLookIndicators
-    if getgenv().VisualConfig.EnemyLookIndicators then
-        ToggleEnemy.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-        ToggleEnemy.Text = "Enemy Look Lines (Fixed Height): ON"
-    else
-        ToggleEnemy.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-        ToggleEnemy.Text = "Enemy Look Lines (Fixed Height): OFF"
-        cleanupEnemyVisuals()
-    end
-end)
+MainTab:CreateToggle({
+   Name = "Enemy Look Lines (Ground Locked)",
+   CurrentValue = false,
+   Flag = "EnemyLinesToggle",
+   Callback = function(Value)
+      getgenv().VisualConfig.EnemyLookIndicators = Value
+      if not Value then
+         cleanupEnemyVisuals()
+      end
+   end,
+})
 
--- Main Loop
+MainTab:CreateSlider({
+   Name = "Line Distance",
+   Range = {20, 120},
+   Increment = 5,
+   Suffix = "Studs",
+   CurrentValue = 60,
+   Flag = "LineDistanceSlider",
+   Callback = function(Value)
+      getgenv().VisualConfig.Distance = Value
+   end,
+})
+
+-- الحلقة البرمجية المستمرة (RenderStepped)
 RunService.RenderStepped:Connect(function()
-    -- 1. Hitbox Logic (ثلاثي الأبعاد: طول، عرض، ارتفاع)
+    -- 1. تحديث الهيتبوكس
     if getgenv().HitboxConfig.Enabled then
-        local balls = getAllBalls()
-        if #balls > 0 then
-            local mainBall = balls[1]
-            local s = getgenv().HitboxConfig.Size
+        local ball = getActiveBall()
+        if ball then
+            local sz = getgenv().HitboxConfig.Size
+            ball.Size = Vector3.new(sz, sz, sz)
+            ball.CanCollide = false
             
-            mainBall.Size = Vector3.new(s, s, s)
-            mainBall.CanCollide = false
-            
-            HitboxPart.Size = Vector3.new(s, s, s)
-            HitboxPart.CFrame = mainBall.CFrame
+            HitboxPart.Size = Vector3.new(sz, sz, sz)
+            HitboxPart.CFrame = ball.CFrame
             HitboxPart.Parent = workspace
         else
             HitboxPart.Parent = nil
@@ -205,7 +155,7 @@ RunService.RenderStepped:Connect(function()
         HitboxPart.Parent = nil
     end
 
-    -- 2. Enemy Ground Laser Lines Logic (مُثبتة تماماً على الأرض)
+    -- 2. تحديث خطوط الليزر المثبتة على الأرض
     if getgenv().VisualConfig.EnemyLookIndicators then
         local activePlayers = {}
         local idx = 0
@@ -221,21 +171,17 @@ RunService.RenderStepped:Connect(function()
 
                 if head and hrp then
                     if not EnemyVisuals[player] then
-                        local att0 = Instance.new("Attachment")
-                        local att1 = Instance.new("Attachment")
-                        local beam = Instance.new("Beam")
-
-                        att0.Parent = workspace.Terrain
-                        att1.Parent = workspace.Terrain
+                        local att0 = Instance.new("Attachment", workspace.Terrain)
+                        local att1 = Instance.new("Attachment", workspace.Terrain)
+                        local beam = Instance.new("Beam", workspace.Terrain)
 
                         local color = ColorList[((idx - 1) % #ColorList) + 1]
                         beam.Color = ColorSequence.new(color)
-                        beam.Width0 = 0.5
-                        beam.Width1 = 0.5
+                        beam.Width0 = 0.6
+                        beam.Width1 = 0.6
                         beam.FaceCamera = true
                         beam.Attachment0 = att0
                         beam.Attachment1 = att1
-                        beam.Parent = workspace.Terrain
 
                         EnemyVisuals[player] = {
                             Beam = beam,
@@ -244,7 +190,13 @@ RunService.RenderStepped:Connect(function()
                         }
                     end
 
-                    local groundY = 3.5 
+                    local rayParams = RaycastParams.new()
+                    rayParams.FilterType = RaycastFilterType.Exclude
+                    rayParams.FilterDescendantsInstances = {char}
+                    
+                    local rayResult = workspace:Raycast(hrp.Position, Vector3.new(0, -100, 0), rayParams)
+                    local groundY = rayResult and (rayResult.Position.Y + 0.5) or (hrp.Position.Y - 3)
+
                     local lookVector = head.CFrame.LookVector
                     local flatLook = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
 
