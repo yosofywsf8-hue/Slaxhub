@@ -1,7 +1,7 @@
 --==================================================--
 --                    SLAX HUB                      --
 --               Created By: yossef                 --
---       VBL - Ball Hitbox & Fixed Enemy Lasers     --
+--      VBL - Fixed 3D Ball Hitbox & Ground Lasers  --
 --==================================================--
 
 local Players = game:GetService("Players")
@@ -10,8 +10,7 @@ local LocalPlayer = Players.LocalPlayer
 
 getgenv().HitboxConfig = {
     Enabled = false,
-    Size = 15,
-    Transparency = 0.5
+    Size = 15
 }
 
 getgenv().VisualConfig = {
@@ -30,26 +29,31 @@ local ColorList = {
     Color3.fromRGB(0, 255, 255)    -- تركوازي
 }
 
--- دالة البحث عن كائن الكرة
-local function getBall()
-    for _, obj in pairs(workspace:GetChildren()) do
-        if obj:IsA("BasePart") and (obj.Name:lower():find("ball") or obj.Name:lower():find("volleyball")) then
-            return obj
+-- البحث الشامل عن جميع الكرات في الماب
+local function getAllBalls()
+    local balls = {}
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            local name = obj.Name:lower()
+            if name:find("ball") or name:find("volleyball") or obj.Parent.Name:lower():find("ball") then
+                table.insert(balls, obj)
+            end
         end
     end
-    if workspace:FindFirstChild("Balls") then
-        return workspace.Balls:FindFirstChildOfClass("BasePart")
-    end
-    return nil
+    return balls
 end
 
--- إنشاء دائرة الهيتبوكس المرئية حول الكرة
-local BallSelection = Instance.new("SelectionBox")
-BallSelection.Name = "SlaxBallHitboxVisual"
-BallSelection.LineThickness = 0.15
-BallSelection.Color3 = Color3.fromRGB(0, 170, 255)
-BallSelection.Transparency = 0.2
-BallSelection.Parent = workspace
+-- إنشاء مجسم مرئي للهيتبوكس (طول + عرض + ارتفاع)
+local HitboxPart = Instance.new("Part")
+HitboxPart.Name = "SlaxHitboxVisualPart"
+HitboxPart.Shape = Enum.PartType.Ball
+HitboxPart.Color = Color3.fromRGB(0, 170, 255)
+HitboxPart.Material = Enum.Material.Forcefield
+HitboxPart.Transparency = 0.6
+HitboxPart.CanCollide = false
+HitboxPart.Anchored = true
+HitboxPart.Size = Vector3.new(15, 15, 15)
+HitboxPart.Parent = nil
 
 -- بناء واجهة GUI
 local ScreenGui = Instance.new("ScreenGui")
@@ -95,12 +99,12 @@ ToggleHitbox.Parent = MainFrame
 ToggleHitbox.Position = UDim2.new(0.06, 0, 0.18, 0)
 ToggleHitbox.Size = UDim2.new(0.88, 0, 0.18, 0)
 ToggleHitbox.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-ToggleHitbox.Text = "Ball Hitbox (15): OFF"
+ToggleHitbox.Text = "3D Ball Hitbox (15): OFF"
 ToggleHitbox.Font = Enum.Font.SourceSansBold
 ToggleHitbox.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleHitbox.TextSize = 15.000
 
--- أزرار التحكم بحجم الهيتبوكس (من 5 إلى 30)
+-- أزرار تكبير وتصغير الهيتبوكس
 SizeMinus.Parent = MainFrame
 SizeMinus.Position = UDim2.new(0.06, 0, 0.38, 0)
 SizeMinus.Size = UDim2.new(0.42, 0, 0.14, 0)
@@ -123,50 +127,40 @@ ToggleHitbox.MouseButton1Click:Connect(function()
     getgenv().HitboxConfig.Enabled = not getgenv().HitboxConfig.Enabled
     if getgenv().HitboxConfig.Enabled then
         ToggleHitbox.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-        ToggleHitbox.Text = "Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): ON"
+        ToggleHitbox.Text = "3D Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): ON"
+        HitboxPart.Parent = workspace
     else
         ToggleHitbox.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-        ToggleHitbox.Text = "Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): OFF"
-        BallSelection.Adornee = nil
-        local ball = getBall()
-        if ball then
-            ball.Size = Vector3.new(2, 2, 2)
-            ball.Transparency = 0
-        end
+        ToggleHitbox.Text = "3D Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): OFF"
+        HitboxPart.Parent = nil
     end
 end)
 
 SizeMinus.MouseButton1Click:Connect(function()
     if getgenv().HitboxConfig.Size > 5 then
         getgenv().HitboxConfig.Size = getgenv().HitboxConfig.Size - 1
-        if getgenv().HitboxConfig.Enabled then
-            ToggleHitbox.Text = "Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): ON"
-        else
-            ToggleHitbox.Text = "Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): OFF"
-        end
+        local currentText = getgenv().HitboxConfig.Enabled and "ON" or "OFF"
+        ToggleHitbox.Text = "3D Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): " .. currentText
     end
 end)
 
 SizePlus.MouseButton1Click:Connect(function()
-    if getgenv().HitboxConfig.Size < 30 then
+    if getgenv().HitboxConfig.Size < 40 then
         getgenv().HitboxConfig.Size = getgenv().HitboxConfig.Size + 1
-        if getgenv().HitboxConfig.Enabled then
-            ToggleHitbox.Text = "Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): ON"
-        else
-            ToggleHitbox.Text = "Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): OFF"
-        end
+        local currentText = getgenv().HitboxConfig.Enabled and "ON" or "OFF"
+        ToggleHitbox.Text = "3D Ball Hitbox (" .. tostring(getgenv().HitboxConfig.Size) .. "): " .. currentText
     end
 end)
 
--- زر تفعيل خطوط نظر الأعداء
+-- زر خطوط نظر الأعداء
 ToggleEnemy.Parent = MainFrame
 ToggleEnemy.Position = UDim2.new(0.06, 0, 0.56, 0)
 ToggleEnemy.Size = UDim2.new(0.88, 0, 0.18, 0)
 ToggleEnemy.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-ToggleEnemy.Text = "Enemy Look Lines (60 Studs): OFF"
+ToggleEnemy.Text = "Enemy Look Lines (Fixed Height): OFF"
 ToggleEnemy.Font = Enum.Font.SourceSansBold
 ToggleEnemy.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleEnemy.TextSize = 13.000
+ToggleEnemy.TextSize = 12.000
 
 local function cleanupEnemyVisuals()
     for _, item in pairs(EnemyVisuals) do
@@ -181,33 +175,38 @@ ToggleEnemy.MouseButton1Click:Connect(function()
     getgenv().VisualConfig.EnemyLookIndicators = not getgenv().VisualConfig.EnemyLookIndicators
     if getgenv().VisualConfig.EnemyLookIndicators then
         ToggleEnemy.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-        ToggleEnemy.Text = "Enemy Look Lines (60 Studs): ON"
+        ToggleEnemy.Text = "Enemy Look Lines (Fixed Height): ON"
     else
         ToggleEnemy.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-        ToggleEnemy.Text = "Enemy Look Lines (60 Studs): OFF"
+        ToggleEnemy.Text = "Enemy Look Lines (Fixed Height): OFF"
         cleanupEnemyVisuals()
     end
 end)
 
--- Main Render Loop
+-- Main Loop
 RunService.RenderStepped:Connect(function()
-    -- 1. Ball Hitbox Logic
+    -- 1. Hitbox Logic (ثلاثي الأبعاد: طول، عرض، ارتفاع)
     if getgenv().HitboxConfig.Enabled then
-        local ball = getBall()
-        if ball then
-            local size = getgenv().HitboxConfig.Size
-            ball.Size = Vector3.new(size, size, size)
-            ball.Transparency = getgenv().HitboxConfig.Transparency
-            ball.CanCollide = false
-            BallSelection.Adornee = ball
+        local balls = getAllBalls()
+        if #balls > 0 then
+            local mainBall = balls[1]
+            local s = getgenv().HitboxConfig.Size
+            
+            -- تكبير الكرة الحقيقية + إظهار الدائرة الحجمية حولها
+            mainBall.Size = Vector3.new(s, s, s)
+            mainBall.CanCollide = false
+            
+            HitboxPart.Size = Vector3.new(s, s, s)
+            HitboxPart.CFrame = mainBall.CFrame
+            HitboxPart.Parent = workspace
         else
-            BallSelection.Adornee = nil
+            HitboxPart.Parent = nil
         end
     else
-        BallSelection.Adornee = nil
+        HitboxPart.Parent = nil
     end
 
-    -- 2. Fixed Ground-Level Laser Lines Logic
+    -- 2. Enemy Ground Laser Lines Logic (مُثبتة تماماً على الأرض)
     if getgenv().VisualConfig.EnemyLookIndicators then
         local activePlayers = {}
         local idx = 0
@@ -232,8 +231,8 @@ RunService.RenderStepped:Connect(function()
 
                         local color = ColorList[((idx - 1) % #ColorList) + 1]
                         beam.Color = ColorSequence.new(color)
-                        beam.Width0 = 0.4
-                        beam.Width1 = 0.4
+                        beam.Width0 = 0.5
+                        beam.Width1 = 0.5
                         beam.FaceCamera = true
                         beam.Attachment0 = att0
                         beam.Attachment1 = att1
@@ -246,20 +245,12 @@ RunService.RenderStepped:Connect(function()
                         }
                     end
 
-                    -- تثبيت الارتفاع عند مستوى الأرض الطبيعي حتى لو نط اللاعب
-                    local fixedY = 3.5 -- الارتفاع المظبوط لمستوى جسم/رأس اللاعب وهو واقف
-                    local ray = Ray.new(hrp.Position, Vector3.new(0, -20, 0))
-                    local hit, hitPos = workspace:FindPartOnWithIgnoreList(ray, {char})
-                    if hit then
-                        fixedY = hitPos.Y + 3
-                    else
-                        fixedY = hrp.Position.Y < 15 and hrp.Position.Y or 3.5
-                    end
-
+                    -- تثبيت ارتفاع خط الليزر أرضياً نهائياً عند مستوى 3.5 لمنع ارتفاعه مع قفز اللاعب
+                    local groundY = 3.5 
                     local lookVector = head.CFrame.LookVector
                     local flatLook = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
 
-                    local startPos = Vector3.new(hrp.Position.X, fixedY, hrp.Position.Z)
+                    local startPos = Vector3.new(hrp.Position.X, groundY, hrp.Position.Z)
                     local endPos = startPos + (flatLook * getgenv().VisualConfig.Distance)
 
                     EnemyVisuals[player].Attachment0.WorldPosition = startPos
