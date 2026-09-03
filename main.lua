@@ -4,33 +4,21 @@
 --       VBL - Ball Hitbox & Enemy Look Indicators  --
 --==================================================--
 
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/main/Addons/SaveManager.lua"))()
-local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/main/Addons/InterfaceManager.lua"))()
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
--- Window Setup
-local Window = Fluent:CreateWindow({
-    Title = "Slax Hub | Volleyball Legends",
-    SubTitle = "by yossef",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
-    Acrylic = false, -- تم إيقاف الأكريليك لضمان عدم التقطيع في الهاتف
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
-})
-
-local Tabs = {
-    Hitbox = Window:AddTab({ Title = "Ball Hitbox", Icon = "target" }),
-    Visuals = Window:AddTab({ Title = "Visuals", Icon = "eye" }),
-    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+-- Global Configuration
+getgenv().HitboxConfig = {
+    Enabled = false,
+    Size = 15,
+    Transparency = 0.5
 }
 
-getgenv().HitboxConfig = { Enabled = false, Size = 15, Transparency = 0.5 }
-getgenv().VisualConfig = { EnemyLookIndicators = false, Distance = 60 }
+getgenv().VisualConfig = {
+    EnemyLookIndicators = false,
+    Distance = 60
+}
 
 local EnemyIndicators = {}
 local ColorList = {
@@ -43,7 +31,7 @@ local ColorList = {
     Color3.fromRGB(0, 255, 255)
 }
 
--- البحث المتقدم عن الكرة
+-- البحث عن الكرة
 local function getBall()
     for _, obj in pairs(workspace:GetChildren()) do
         if obj:IsA("BasePart") and (obj.Name:lower():find("ball") or obj.Name:lower():find("volleyball")) then
@@ -56,11 +44,61 @@ local function getBall()
     return nil
 end
 
--- UI Controls
-local HitboxToggle = Tabs.Hitbox:AddToggle("HitboxToggle", { Title = "Enable Ball Hitbox", Default = false })
-HitboxToggle:OnChanged(function(Value)
-    getgenv().HitboxConfig.Enabled = Value
-    if not Value then
+-- بناء واجهة GUI خفيفة ومستقرة
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+local SubTitle = Instance.new("TextLabel")
+local ToggleHitbox = Instance.new("TextButton")
+local ToggleEnemy = Instance.new("TextButton")
+local UICorner = Instance.new("UICorner")
+
+ScreenGui.Parent = game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
+
+MainFrame.Name = "SlaxHubUI"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+MainFrame.Position = UDim2.new(0.3, 0, 0.25, 0)
+MainFrame.Size = UDim2.new(0, 280, 0, 230)
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainFrame
+
+Title.Parent = MainFrame
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.Text = "SLAX HUB"
+Title.Font = Enum.Font.SourceSansBold
+Title.TextColor3 = Color3.fromRGB(0, 170, 255)
+Title.TextSize = 20.000
+
+SubTitle.Parent = MainFrame
+SubTitle.Position = UDim2.new(0, 0, 0.85, 0)
+SubTitle.Size = UDim2.new(1, 0, 0, 25)
+SubTitle.Text = "by yossef | All Rights Reserved"
+SubTitle.Font = Enum.Font.SourceSansItalic
+SubTitle.TextColor3 = Color3.fromRGB(150, 150, 150)
+SubTitle.TextSize = 13.000
+
+-- زر الهيتبوكس
+ToggleHitbox.Parent = MainFrame
+ToggleHitbox.Position = UDim2.new(0.08, 0, 0.22, 0)
+ToggleHitbox.Size = UDim2.new(0.84, 0, 0.22, 0)
+ToggleHitbox.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+ToggleHitbox.Text = "Ball Hitbox (15): OFF"
+ToggleHitbox.Font = Enum.Font.SourceSansBold
+ToggleHitbox.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleHitbox.TextSize = 15.000
+
+ToggleHitbox.MouseButton1Click:Connect(function()
+    getgenv().HitboxConfig.Enabled = not getgenv().HitboxConfig.Enabled
+    if getgenv().HitboxConfig.Enabled then
+        ToggleHitbox.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+        ToggleHitbox.Text = "Ball Hitbox (15): ON"
+    else
+        ToggleHitbox.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+        ToggleHitbox.Text = "Ball Hitbox (15): OFF"
         local ball = getBall()
         if ball then
             ball.Size = Vector3.new(2, 2, 2)
@@ -69,22 +107,24 @@ HitboxToggle:OnChanged(function(Value)
     end
 end)
 
-Tabs.Hitbox:AddSlider("HitboxSize", {
-    Title = "Hitbox Size",
-    Default = 15, Min = 5, Max = 30, Rounding = 0,
-    Callback = function(Value) getgenv().HitboxConfig.Size = Value end
-})
+-- زر مؤشر الأعداء
+ToggleEnemy.Parent = MainFrame
+ToggleEnemy.Position = UDim2.new(0.08, 0, 0.52, 0)
+ToggleEnemy.Size = UDim2.new(0.84, 0, 0.22, 0)
+ToggleEnemy.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+ToggleEnemy.Text = "Enemy Look (60 Studs): OFF"
+ToggleEnemy.Font = Enum.Font.SourceSansBold
+ToggleEnemy.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleEnemy.TextSize = 14.000
 
-Tabs.Hitbox:AddSlider("HitboxTransparency", {
-    Title = "Hitbox Transparency",
-    Default = 5, Min = 0, Max = 10, Rounding = 1,
-    Callback = function(Value) getgenv().HitboxConfig.Transparency = Value / 10 end
-})
-
-local EnemyToggle = Tabs.Visuals:AddToggle("EnemyLookToggle", { Title = "Enemies Look Indicators (60 Studs)", Default = false })
-EnemyToggle:OnChanged(function(Value)
-    getgenv().VisualConfig.EnemyLookIndicators = Value
-    if not Value then
+ToggleEnemy.MouseButton1Click:Connect(function()
+    getgenv().VisualConfig.EnemyLookIndicators = not getgenv().VisualConfig.EnemyLookIndicators
+    if getgenv().VisualConfig.EnemyLookIndicators then
+        ToggleEnemy.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+        ToggleEnemy.Text = "Enemy Look (60 Studs): ON"
+    else
+        ToggleEnemy.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+        ToggleEnemy.Text = "Enemy Look (60 Studs): OFF"
         for _, item in pairs(EnemyIndicators) do
             if item.Part then item.Part:Destroy() end
         end
@@ -92,24 +132,20 @@ EnemyToggle:OnChanged(function(Value)
     end
 end)
 
-Tabs.Settings:AddParagraph({ Title = "Slax Hub Rights", Content = "Developed exclusively by yossef.\nAll Rights Reserved © 2026." })
-
-Fluent:Notify({ Title = "Slax Hub Loaded", Content = "تم تحميل السكربت بنجاح! الحقوق لـ yossef.", Duration = 5 })
-
--- Main Loop
+-- Main Render Loop
 RunService.RenderStepped:Connect(function()
-    -- Hitbox Logic
+    -- 1. Ball Hitbox
     if getgenv().HitboxConfig.Enabled then
         local ball = getBall()
         if ball then
-            local s = getgenv().HitboxConfig.Size
-            ball.Size = Vector3.new(s, s, s)
+            local size = getgenv().HitboxConfig.Size
+            ball.Size = Vector3.new(size, size, size)
             ball.Transparency = getgenv().HitboxConfig.Transparency
             ball.CanCollide = false
         end
     end
 
-    -- Enemy Look Indicator Logic
+    -- 2. Enemy Look Indicators
     if getgenv().VisualConfig.EnemyLookIndicators then
         local activePlayers = {}
         local idx = 0
