@@ -1,7 +1,8 @@
+
 --==================================================--
 --                    SLAX HUB                      --
 --               Created By: yossef                 --
---      VBL - Fixed Hitbox & Floor Laser Height     --
+--      VBL - True Touch Hitbox & Precise Ground    --
 --==================================================--
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
@@ -12,7 +13,7 @@ local LocalPlayer = Players.LocalPlayer
 
 getgenv().Config = {
     HitboxEnabled = true,
-    HitboxSize = 15,
+    HitboxSize = 20,
     PlayerCircleEnabled = true,
     PlayerCircleRadius = 12,
     BallCircleEnabled = true,
@@ -32,53 +33,39 @@ local ColorList = {
     Color3.fromRGB(255, 150, 0)
 }
 
--- البحث عن الكرة الحقيقية المفعّلة
+-- البحث المتطور عن الكرة الحقيقية المفعّلة
 local function getBall()
     if CachedBall and CachedBall.Parent and CachedBall:IsDescendantOf(workspace) then
         return CachedBall
     end
-    for _, obj in pairs(workspace:GetChildren()) do
-        if obj:IsA("BasePart") and obj.Name:lower():find("ball") then
-            CachedBall = obj
-            return obj
-        end
-    end
     for _, obj in pairs(workspace:GetDescendants()) do
         if obj:IsA("BasePart") and obj.Name:lower():find("ball") and not obj:IsDescendantOf(Players) then
-            CachedBall = obj
-            return obj
+            if obj.Transparency < 1 and obj.Size.Magnitude > 0 then
+                CachedBall = obj
+                return obj
+            end
         end
     end
     return nil
 end
 
--- دالة لمعرفة ارتفاع الأرضية تحت أي نقطة بدقة
-local function getGroundY(position, ignoreChar)
-    local rayParams = RaycastParams.new()
-    rayParams.FilterType = RaycastFilterType.Exclude
-    if ignoreChar then
-        rayParams.FilterDescendantsInstances = {ignoreChar}
-    end
-    local rayResult = workspace:Raycast(position + Vector3.new(0, 5, 0), Vector3.new(0, -50, 0), rayParams)
-    if rayResult then
-        return rayResult.Position.Y + 0.15
-    end
-    return position.Y - 3
-end
+-- إنشاء مجسم الهيتبوكس التفاعلي المباشر (3D Hitbox Zone)
+local RealHitboxZone = Instance.new("Part")
+RealHitboxZone.Name = "SlaxHitboxZone"
+RealHitboxZone.Shape = Enum.PartType.Ball
+RealHitboxZone.Color = Color3.fromRGB(0, 170, 255)
+RealHitboxZone.Material = Enum.Material.SmoothPlastic
+RealHitboxZone.Transparency = 0.5
+RealHitboxZone.CanCollide = false
+RealHitboxZone.Anchored = false
+RealHitboxZone.Massless = true
+RealHitboxZone.Parent = nil
 
--- 1. كرة الهيتبوكس المرئية
-local HitboxPart = Instance.new("Part")
-HitboxPart.Name = "SlaxRealHitbox"
-HitboxPart.Shape = Enum.PartType.Ball
-HitboxPart.Color = Color3.fromRGB(0, 170, 255)
-HitboxPart.Material = Enum.Material.SmoothPlastic
-HitboxPart.Transparency = 0.6
-HitboxPart.CanCollide = false
-HitboxPart.Anchored = true
-HitboxPart.Size = Vector3.new(15, 15, 15)
-HitboxPart.Parent = nil
+-- Weld لتكبير نطاق تصادم/لمس الكرة الحقيقي
+local HitboxWeld = Instance.new("Weld")
+HitboxWeld.Parent = RealHitboxZone
 
--- 2. دائرة اللاعب الأرضية
+-- المترجمات المرئية للأرض
 local PlayerCircle = Instance.new("CylinderHandleAdornment")
 PlayerCircle.Height = 0.05
 PlayerCircle.Color3 = Color3.fromRGB(220, 220, 255)
@@ -86,7 +73,6 @@ PlayerCircle.Transparency = 0.6
 PlayerCircle.AlwaysOnTop = true
 PlayerCircle.Parent = workspace.Terrain
 
--- 3. دائرة الكرة الأرضية
 local BallCircle = Instance.new("CylinderHandleAdornment")
 BallCircle.Height = 0.05
 BallCircle.Color3 = Color3.fromRGB(50, 255, 100)
@@ -94,7 +80,7 @@ BallCircle.Transparency = 0.4
 BallCircle.AlwaysOnTop = true
 BallCircle.Parent = workspace.Terrain
 
--- واجهة التحكم Rayfield
+-- واجهة Rayfield
 local Window = Rayfield:CreateWindow({
    Name = "SLAX HUB | VBL",
    LoadingTitle = "Slax Hub Loaded",
@@ -105,23 +91,23 @@ local Window = Rayfield:CreateWindow({
 
 local MainTab = Window:CreateTab("Main Features", 4483362458)
 
-MainTab:CreateSection("Ball Hitbox (3D Sphere)")
+MainTab:CreateSection("Ball Hitbox (Expansion Zone)")
 
 MainTab:CreateToggle({
-   Name = "Ball Hitbox Sphere",
+   Name = "Expand Ball Hitbox Zone",
    CurrentValue = true,
    Callback = function(Value)
       getgenv().Config.HitboxEnabled = Value
-      if not Value then HitboxPart.Parent = nil end
+      if not Value then RealHitboxZone.Parent = nil end
    end,
 })
 
 MainTab:CreateSlider({
-   Name = "Hitbox Size (Radius)",
+   Name = "Hitbox Size",
    Range = {5, 50},
    Increment = 1,
    Suffix = "Studs",
-   CurrentValue = 15,
+   CurrentValue = 20,
    Callback = function(Value)
       getgenv().Config.HitboxSize = Value
    end,
@@ -138,7 +124,7 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-   Name = "Ball Ground Circle (Green)",
+   Name = "Ball Ground Circle",
    CurrentValue = true,
    Callback = function(Value)
       getgenv().Config.BallCircleEnabled = Value
@@ -161,55 +147,72 @@ MainTab:CreateToggle({
    end,
 })
 
--- الحلقة الرئيسية للتحديث المباشر
-RunService.RenderStepped:Connect(function()
+-- حساب الارتفاع الدقيق لأرضية الملعب الخشبية
+local function getExactFloorY(pos)
+    local ray = RaycastParams.new()
+    ray.FilterType = RaycastFilterType.Include
+    
+    -- البحث عن الملعب الخشبي الأرضي
+    local court = workspace:FindFirstChild("Court") or workspace:FindFirstChild("Map") or workspace
+    ray.FilterDescendantsInstances = {court}
+    
+    local hit = workspace:Raycast(Vector3.new(pos.X, pos.Y + 10, pos.Z), Vector3.new(0, -50, 0), ray)
+    if hit then
+        return hit.Position.Y + 0.1
+    end
+    return 0.2 -- ارتفاع الأرضية الافتراضي في الماب
+end
+
+-- التحديث السريع
+RunService.Stepped:Connect(function()
     local char = LocalPlayer.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     local ball = getBall()
 
-    -- 1. تحديث الهيتبوكس وتفعيل لمس الكرة لمسافات بعيدة
+    -- 1. الهيتبوكس التفاعلي المربوط بالكرة
     if getgenv().Config.HitboxEnabled and ball then
         local sz = getgenv().Config.HitboxSize
-        HitboxPart.Size = Vector3.new(sz, sz, sz)
-        HitboxPart.CFrame = ball.CFrame
-        HitboxPart.Parent = workspace
+        RealHitboxZone.Size = Vector3.new(sz, sz, sz)
+        
+        if RealHitboxZone.Parent ~= ball.Parent then
+            RealHitboxZone.Parent = ball.Parent
+            HitboxWeld.Part0 = ball
+            HitboxWeld.Part1 = RealHitboxZone
+            HitboxWeld.C0 = CFrame.new()
+        end
 
-        if hrp then
-            local dist = (hrp.Position - ball.Position).Magnitude
-            if dist <= (sz / 2) + 4 then
-                if firetouchinterest then
-                    firetouchinterest(hrp, ball, 0)
-                    firetouchinterest(hrp, ball, 1)
-                end
-            end
+        -- إرسال لمس تلقائي عند دخول نطاق كرة الهيتبوكس
+        if hrp and (hrp.Position - ball.Position).Magnitude <= (sz / 2) + 3 then
+            firetouchinterest(hrp, ball, 0)
+            firetouchinterest(hrp, ball, 1)
         end
     else
-        HitboxPart.Parent = nil
+        RealHitboxZone.Parent = nil
     end
 
-    -- 2. تحديث دائرة اللاعب وموقعها الملاصق للأرض
+    -- 2. دائرة اللاعب الأرضية
     if getgenv().Config.PlayerCircleEnabled and hrp then
-        local playerGroundY = getGroundY(hrp.Position, char)
+        local floorY = getExactFloorY(hrp.Position)
         PlayerCircle.Radius = getgenv().Config.PlayerCircleRadius
         PlayerCircle.InnerRadius = PlayerCircle.Radius - 0.25
         PlayerCircle.Adornee = workspace.Terrain
-        PlayerCircle.CFrame = CFrame.new(hrp.Position.X, playerGroundY, hrp.Position.Z) * CFrame.Angles(math.rad(90), 0, 0)
+        PlayerCircle.CFrame = CFrame.new(hrp.Position.X, floorY, hrp.Position.Z) * CFrame.Angles(math.rad(90), 0, 0)
     else
         PlayerCircle.Adornee = nil
     end
 
-    -- 3. تحديث دائرة الكرة وموقعها الملاصق للأرض
+    -- 3. دائرة الكرة الأرضية
     if getgenv().Config.BallCircleEnabled and ball then
-        local ballGroundY = getGroundY(ball.Position, nil)
+        local floorY = getExactFloorY(ball.Position)
         BallCircle.Radius = getgenv().Config.BallCircleRadius
         BallCircle.InnerRadius = BallCircle.Radius - 0.25
         BallCircle.Adornee = workspace.Terrain
-        BallCircle.CFrame = CFrame.new(ball.Position.X, ballGroundY, ball.Position.Z) * CFrame.Angles(math.rad(90), 0, 0)
+        BallCircle.CFrame = CFrame.new(ball.Position.X, floorY, ball.Position.Z) * CFrame.Angles(math.rad(90), 0, 0)
     else
         BallCircle.Adornee = nil
     end
 
-    -- 4. تحديث خطوط الليزر وتنزيلها لأسفل الأرضية
+    -- 4. خطوط الليزر وتبيتها على أرضية الخشب
     if getgenv().Config.EnemyLinesEnabled then
         local active = {}
         local idx = 0
@@ -235,11 +238,11 @@ RunService.RenderStepped:Connect(function()
                         EnemyVisuals[p] = {Beam = beam, A0 = a0, A1 = a1}
                     end
 
-                    local enemyGroundY = getGroundY(eHrp.Position, eChar)
+                    local floorY = getExactFloorY(eHrp.Position)
                     local lookVector = head.CFrame.LookVector
                     local flatLook = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
 
-                    local startPos = Vector3.new(eHrp.Position.X, enemyGroundY, eHrp.Position.Z)
+                    local startPos = Vector3.new(eHrp.Position.X, floorY, eHrp.Position.Z)
                     local endPos = startPos + (flatLook * getgenv().Config.LineDistance)
 
                     EnemyVisuals[p].A0.WorldPosition = startPos
