@@ -35,7 +35,7 @@ local function getAllBalls()
     for _, obj in pairs(workspace:GetDescendants()) do
         if obj:IsA("BasePart") then
             local name = obj.Name:lower()
-            if name:find("ball") or name:find("volleyball") or obj.Parent.Name:lower():find("ball") then
+            if name:find("ball") or name:find("volleyball") or (obj.Parent and obj.Parent.Name:lower():find("ball")) then
                 table.insert(balls, obj)
             end
         end
@@ -43,13 +43,13 @@ local function getAllBalls()
     return balls
 end
 
--- إنشاء مجسم مرئي للهيتبوكس (طول + عرض + ارتفاع)
+-- إنشاء مجسم مرئي للهيتبوكس (تم إصلاح الماتيريال هنا)
 local HitboxPart = Instance.new("Part")
 HitboxPart.Name = "SlaxHitboxVisualPart"
 HitboxPart.Shape = Enum.PartType.Ball
 HitboxPart.Color = Color3.fromRGB(0, 170, 255)
-HitboxPart.Material = Enum.Material.Forcefield
-HitboxPart.Transparency = 0.6
+HitboxPart.Material = Enum.Material.ForceField
+HitboxPart.Transparency = 0.5
 HitboxPart.CanCollide = false
 HitboxPart.Anchored = true
 HitboxPart.Size = Vector3.new(15, 15, 15)
@@ -192,7 +192,6 @@ RunService.RenderStepped:Connect(function()
             local mainBall = balls[1]
             local s = getgenv().HitboxConfig.Size
             
-            -- تكبير الكرة الحقيقية + إظهار الدائرة الحجمية حولها
             mainBall.Size = Vector3.new(s, s, s)
             mainBall.CanCollide = false
             
@@ -245,7 +244,6 @@ RunService.RenderStepped:Connect(function()
                         }
                     end
 
-                    -- تثبيت ارتفاع خط الليزر أرضياً نهائياً عند مستوى 3.5 لمنع ارتفاعه مع قفز اللاعب
                     local groundY = 3.5 
                     local lookVector = head.CFrame.LookVector
                     local flatLook = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
