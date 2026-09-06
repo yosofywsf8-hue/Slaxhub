@@ -1,264 +1,187 @@
-
---==================================================--
---                    SLAX HUB                      --
---               Created By: yossef                 --
---      VBL - True Touch Hitbox & Precise Ground    --
---==================================================--
-
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
+-- Timebomb Duels Auto Play - Mobile Responsive Edition
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
-getgenv().Config = {
-    HitboxEnabled = true,
-    HitboxSize = 20,
-    PlayerCircleEnabled = true,
-    PlayerCircleRadius = 12,
-    BallCircleEnabled = true,
-    BallCircleRadius = 8,
-    EnemyLinesEnabled = true,
-    LineDistance = 60
-}
-
-local CachedBall = nil
-local EnemyVisuals = {}
-local ColorList = {
-    Color3.fromRGB(255, 50, 50),
-    Color3.fromRGB(50, 255, 50),
-    Color3.fromRGB(50, 150, 255),
-    Color3.fromRGB(255, 255, 50),
-    Color3.fromRGB(255, 50, 255),
-    Color3.fromRGB(255, 150, 0)
-}
-
--- البحث المتطور عن الكرة الحقيقية المفعّلة
-local function getBall()
-    if CachedBall and CachedBall.Parent and CachedBall:IsDescendantOf(workspace) then
-        return CachedBall
-    end
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and obj.Name:lower():find("ball") and not obj:IsDescendantOf(Players) then
-            if obj.Transparency < 1 and obj.Size.Magnitude > 0 then
-                CachedBall = obj
-                return obj
-            end
-        end
-    end
-    return nil
+-- Clean previous GUI if exists
+if LocalPlayer.PlayerGui:FindFirstChild("TimebombMobileGUI") then
+    LocalPlayer.PlayerGui.TimebombMobileGUI:Destroy()
 end
 
--- إنشاء مجسم الهيتبوكس التفاعلي المباشر (3D Hitbox Zone)
-local RealHitboxZone = Instance.new("Part")
-RealHitboxZone.Name = "SlaxHitboxZone"
-RealHitboxZone.Shape = Enum.PartType.Ball
-RealHitboxZone.Color = Color3.fromRGB(0, 170, 255)
-RealHitboxZone.Material = Enum.Material.SmoothPlastic
-RealHitboxZone.Transparency = 0.5
-RealHitboxZone.CanCollide = false
-RealHitboxZone.Anchored = false
-RealHitboxZone.Massless = true
-RealHitboxZone.Parent = nil
+-- ScreenGui Setup
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "TimebombMobileGUI"
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
 
--- Weld لتكبير نطاق تصادم/لمس الكرة الحقيقي
-local HitboxWeld = Instance.new("Weld")
-HitboxWeld.Parent = RealHitboxZone
+-- Floating Open/Close Circle Button for Mobile
+local ToggleCircle = Instance.new("TextButton")
+ToggleCircle.Size = UDim2.new(0, 45, 0, 45)
+ToggleCircle.Position = UDim2.new(0.02, 0, 0.2, 0)
+ToggleCircle.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
+ToggleCircle.Text = "💣"
+ToggleCircle.TextSize = 22
+ToggleCircle.Parent = ScreenGui
 
--- المترجمات المرئية للأرض
-local PlayerCircle = Instance.new("CylinderHandleAdornment")
-PlayerCircle.Height = 0.05
-PlayerCircle.Color3 = Color3.fromRGB(220, 220, 255)
-PlayerCircle.Transparency = 0.6
-PlayerCircle.AlwaysOnTop = true
-PlayerCircle.Parent = workspace.Terrain
+local CircleCorner = Instance.new("UICorner")
+CircleCorner.CornerRadius = UDim.new(1, 0)
+CircleCorner.Parent = ToggleCircle
 
-local BallCircle = Instance.new("CylinderHandleAdornment")
-BallCircle.Height = 0.05
-BallCircle.Color3 = Color3.fromRGB(50, 255, 100)
-BallCircle.Transparency = 0.4
-BallCircle.AlwaysOnTop = true
-BallCircle.Parent = workspace.Terrain
+local CircleStroke = Instance.new("UIStroke")
+CircleStroke.Color = Color3.fromRGB(80, 90, 110)
+CircleStroke.Thickness = 2
+CircleStroke.Parent = ToggleCircle
 
--- واجهة Rayfield
-local Window = Rayfield:CreateWindow({
-   Name = "SLAX HUB | VBL",
-   LoadingTitle = "Slax Hub Loaded",
-   LoadingSubtitle = "by yossef",
-   ConfigurationSaving = { Enabled = false },
-   KeySystem = false
-})
+-- Main Frame (Mobile Panel)
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 220, 0, 150)
+MainFrame.Position = UDim2.new(0.15, 0, 0.2, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Visible = true
+MainFrame.Parent = ScreenGui
 
-local MainTab = Window:CreateTab("Main Features", 4483362458)
+local MainUICorner = Instance.new("UICorner")
+MainUICorner.CornerRadius = UDim.new(0, 14)
+MainUICorner.Parent = MainFrame
 
-MainTab:CreateSection("Ball Hitbox (Expansion Zone)")
+local MainUIStroke = Instance.new("UIStroke")
+MainUIStroke.Color = Color3.fromRGB(50, 55, 70)
+MainUIStroke.Thickness = 1.5
+MainUIStroke.Parent = MainFrame
 
-MainTab:CreateToggle({
-   Name = "Expand Ball Hitbox Zone",
-   CurrentValue = true,
-   Callback = function(Value)
-      getgenv().Config.HitboxEnabled = Value
-      if not Value then RealHitboxZone.Parent = nil end
-   end,
-})
+-- Title
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.Text = "⚡ Timebomb Mobile"
+Title.TextColor3 = Color3.fromRGB(240, 240, 245)
+Title.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
+Title.BorderSizePixel = 0
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 13
+Title.Parent = MainFrame
 
-MainTab:CreateSlider({
-   Name = "Hitbox Size",
-   Range = {5, 50},
-   Increment = 1,
-   Suffix = "Studs",
-   CurrentValue = 20,
-   Callback = function(Value)
-      getgenv().Config.HitboxSize = Value
-   end,
-})
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 14)
+TitleCorner.Parent = Title
 
-MainTab:CreateSection("Ground Visuals")
+-- Toggle GUI Visibility Logic
+ToggleCircle.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
 
-MainTab:CreateToggle({
-   Name = "Player Ground Circle",
-   CurrentValue = true,
-   Callback = function(Value)
-      getgenv().Config.PlayerCircleEnabled = Value
-   end,
-})
+-- Auto Play Button
+local AutoPlayBtn = Instance.new("TextButton")
+AutoPlayBtn.Size = UDim2.new(0.85, 0, 0, 45)
+AutoPlayBtn.Position = UDim2.new(0.075, 0, 0.35, 0)
+AutoPlayBtn.Text = "Auto Play: OFF"
+AutoPlayBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
+AutoPlayBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoPlayBtn.Font = Enum.Font.GothamBold
+AutoPlayBtn.TextSize = 14
+AutoPlayBtn.AutoButtonColor = false
+AutoPlayBtn.Parent = MainFrame
 
-MainTab:CreateToggle({
-   Name = "Ball Ground Circle",
-   CurrentValue = true,
-   Callback = function(Value)
-      getgenv().Config.BallCircleEnabled = Value
-   end,
-})
+local BtnCorner = Instance.new("UICorner")
+BtnCorner.CornerRadius = UDim.new(0, 10)
+BtnCorner.Parent = AutoPlayBtn
 
-MainTab:CreateToggle({
-   Name = "Enemy Look Laser Lines",
-   CurrentValue = true,
-   Callback = function(Value)
-      getgenv().Config.EnemyLinesEnabled = Value
-      if not Value then
-         for _, v in pairs(EnemyVisuals) do
-            if v.Beam then v.Beam:Destroy() end
-            if v.A0 then v.A0:Destroy() end
-            if v.A1 then v.A1:Destroy() end
-         end
-         EnemyVisuals = {}
-      end
-   end,
-})
+-- Status Indicator Text
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, 0, 0, 20)
+StatusLabel.Position = UDim2.new(0, 0, 0.78, 0)
+StatusLabel.Text = "Status: Disabled"
+StatusLabel.TextColor3 = Color3.fromRGB(130, 135, 150)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.TextSize = 12
+StatusLabel.Parent = MainFrame
 
--- حساب الارتفاع الدقيق لأرضية الملعب الخشبية
-local function getExactFloorY(pos)
-    local ray = RaycastParams.new()
-    ray.FilterType = RaycastFilterType.Include
-    
-    -- البحث عن الملعب الخشبي الأرضي
-    local court = workspace:FindFirstChild("Court") or workspace:FindFirstChild("Map") or workspace
-    ray.FilterDescendantsInstances = {court}
-    
-    local hit = workspace:Raycast(Vector3.new(pos.X, pos.Y + 10, pos.Z), Vector3.new(0, -50, 0), ray)
-    if hit then
-        return hit.Position.Y + 0.1
-    end
-    return 0.2 -- ارتفاع الأرضية الافتراضي في الماب
+-- Color Tween Helper
+local function animateColor(object, targetColor)
+    TweenService:Create(object, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        BackgroundColor3 = targetColor
+    }):Play()
 end
 
--- التحديث السريع
-RunService.Stepped:Connect(function()
-    local char = LocalPlayer.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    local ball = getBall()
+local isAutoPlayOn = false
 
-    -- 1. الهيتبوكس التفاعلي المربوط بالكرة
-    if getgenv().Config.HitboxEnabled and ball then
-        local sz = getgenv().Config.HitboxSize
-        RealHitboxZone.Size = Vector3.new(sz, sz, sz)
-        
-        if RealHitboxZone.Parent ~= ball.Parent then
-            RealHitboxZone.Parent = ball.Parent
-            HitboxWeld.Part0 = ball
-            HitboxWeld.Part1 = RealHitboxZone
-            HitboxWeld.C0 = CFrame.new()
-        end
-
-        -- إرسال لمس تلقائي عند دخول نطاق كرة الهيتبوكس
-        if hrp and (hrp.Position - ball.Position).Magnitude <= (sz / 2) + 3 then
-            firetouchinterest(hrp, ball, 0)
-            firetouchinterest(hrp, ball, 1)
-        end
+-- Button Action
+AutoPlayBtn.MouseButton1Click:Connect(function()
+    isAutoPlayOn = not isAutoPlayOn
+    if isAutoPlayOn then
+        AutoPlayBtn.Text = "Auto Play: ON"
+        animateColor(AutoPlayBtn, Color3.fromRGB(40, 167, 69))
+        StatusLabel.Text = "Status: Active 🚀"
+        StatusLabel.TextColor3 = Color3.fromRGB(40, 167, 69)
     else
-        RealHitboxZone.Parent = nil
+        AutoPlayBtn.Text = "Auto Play: OFF"
+        animateColor(AutoPlayBtn, Color3.fromRGB(220, 53, 69))
+        StatusLabel.Text = "Status: Disabled"
+        StatusLabel.TextColor3 = Color3.fromRGB(130, 135, 150)
     end
+end)
 
-    -- 2. دائرة اللاعب الأرضية
-    if getgenv().Config.PlayerCircleEnabled and hrp then
-        local floorY = getExactFloorY(hrp.Position)
-        PlayerCircle.Radius = getgenv().Config.PlayerCircleRadius
-        PlayerCircle.InnerRadius = PlayerCircle.Radius - 0.25
-        PlayerCircle.Adornee = workspace.Terrain
-        PlayerCircle.CFrame = CFrame.new(hrp.Position.X, floorY, hrp.Position.Z) * CFrame.Angles(math.rad(90), 0, 0)
-    else
-        PlayerCircle.Adornee = nil
-    end
-
-    -- 3. دائرة الكرة الأرضية
-    if getgenv().Config.BallCircleEnabled and ball then
-        local floorY = getExactFloorY(ball.Position)
-        BallCircle.Radius = getgenv().Config.BallCircleRadius
-        BallCircle.InnerRadius = BallCircle.Radius - 0.25
-        BallCircle.Adornee = workspace.Terrain
-        BallCircle.CFrame = CFrame.new(ball.Position.X, floorY, ball.Position.Z) * CFrame.Angles(math.rad(90), 0, 0)
-    else
-        BallCircle.Adornee = nil
-    end
-
-    -- 4. خطوط الليزر وتبيتها على أرضية الخشب
-    if getgenv().Config.EnemyLinesEnabled then
-        local active = {}
-        local idx = 0
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and (p.Team == nil or p.Team ~= LocalPlayer.Team) then
-                idx = idx + 1
-                active[p] = true
-                local eChar = p.Character
-                local head = eChar and eChar:FindFirstChild("Head")
-                local eHrp = eChar and eChar:FindFirstChild("HumanoidRootPart")
-
-                if head and eHrp then
-                    if not EnemyVisuals[p] then
-                        local a0 = Instance.new("Attachment", workspace.Terrain)
-                        local a1 = Instance.new("Attachment", workspace.Terrain)
-                        local beam = Instance.new("Beam", workspace.Terrain)
-                        beam.Color = ColorSequence.new(ColorList[((idx-1)%#ColorList)+1])
-                        beam.Width0 = 0.4
-                        beam.Width1 = 0.4
-                        beam.FaceCamera = true
-                        beam.Attachment0 = a0
-                        beam.Attachment1 = a1
-                        EnemyVisuals[p] = {Beam = beam, A0 = a0, A1 = a1}
-                    end
-
-                    local floorY = getExactFloorY(eHrp.Position)
-                    local lookVector = head.CFrame.LookVector
-                    local flatLook = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
-
-                    local startPos = Vector3.new(eHrp.Position.X, floorY, eHrp.Position.Z)
-                    local endPos = startPos + (flatLook * getgenv().Config.LineDistance)
-
-                    EnemyVisuals[p].A0.WorldPosition = startPos
-                    EnemyVisuals[p].A1.WorldPosition = endPos
-                    EnemyVisuals[p].Beam.Enabled = true
+-- Helper: Get Nearest Player
+local function getNearestPlayer()
+    local nearest = nil
+    local shortestDist = math.huge
+    local myChar = LocalPlayer.Character
+    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local hum = player.Character:FindFirstChild("Humanoid")
+            if hum and hum.Health > 0 then
+                local dist = (myChar.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+                if dist < shortestDist then
+                    shortestDist = dist
+                    nearest = player
                 end
             end
         end
+    end
+    return nearest
+end
 
-        for p, data in pairs(EnemyVisuals) do
-            if not active[p] then
-                if data.Beam then data.Beam:Destroy() end
-                if data.A0 then data.A0:Destroy() end
-                if data.A1 then data.A1:Destroy() end
-                EnemyVisuals[p] = nil
-            end
+-- Helper: Check Bomb
+local function checkBomb(char)
+    if not char then return false end
+    if char:FindFirstChild("Bomb") or LocalPlayer.Backpack:FindFirstChild("Bomb") then
+        return true
+    end
+    for _, item in pairs(char:GetChildren()) do
+        if item:IsA("Tool") and string.find(string.lower(item.Name), "bomb") then
+            return true
         end
+    end
+    return false
+end
+
+-- Main Loop
+RunService.RenderStepped:Connect(function()
+    if not isAutoPlayOn then return end
+    
+    local myChar = LocalPlayer.Character
+    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") or not myChar:FindFirstChild("Humanoid") then return end
+    
+    local targetPlayer = getNearestPlayer()
+    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return
+    end
+
+    local myPos = myChar.HumanoidRootPart.Position
+    local targetPos = targetPlayer.Character.HumanoidRootPart.Position
+    
+    if checkBomb(myChar) then
+        -- القنبلة معك: الانتقال للخصم
+        myChar.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 1.2)
+    else
+        -- الهروب التلقائي
+        local dirAway = (myPos - targetPos).Unit
+        myChar.Humanoid:MoveTo(myPos + dirAway * 20)
     end
 end)
