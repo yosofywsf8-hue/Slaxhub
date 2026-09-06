@@ -1,4 +1,4 @@
--- Timebomb Duels Mobile - Smart Auto Follow & Manual Control
+-- Timebomb Duels Mobile - Smart Control & Draggable UI
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -15,13 +15,15 @@ ScreenGui.Name = "TimebombMobileGUI"
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
--- Floating Toggle Circle Button
+-- Floating Draggable Circle Button
 local ToggleCircle = Instance.new("TextButton")
 ToggleCircle.Size = UDim2.new(0, 45, 0, 45)
 ToggleCircle.Position = UDim2.new(0.02, 0, 0.2, 0)
 ToggleCircle.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
 ToggleCircle.Text = "💣"
 ToggleCircle.TextSize = 22
+ToggleCircle.Active = true
+ToggleCircle.Draggable = true
 ToggleCircle.Parent = ScreenGui
 
 local CircleCorner = Instance.new("UICorner")
@@ -55,18 +57,39 @@ MainUIStroke.Parent = MainFrame
 
 -- Title
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "⚡ Auto Pass & Free Control"
+Title.Size = UDim2.new(0.8, 0, 0, 35)
+Title.Position = UDim2.new(0, 0, 0, 0)
+Title.Text = "⚡ Timebomb Hub"
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
 Title.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
 Title.BorderSizePixel = 0
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 11
+Title.TextSize = 12
 Title.Parent = MainFrame
 
 local TitleCorner = Instance.new("UICorner")
 TitleCorner.CornerRadius = UDim.new(0, 14)
 TitleCorner.Parent = Title
+
+-- Close Button (X in Corner)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(0.85, 0, 0.02, 0)
+CloseBtn.Text = "❌"
+CloseBtn.TextSize = 12
+CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Parent = MainFrame
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 8)
+CloseCorner.Parent = CloseBtn
+
+-- Destroy Script Connection
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
 
 -- Toggle GUI Visibility
 ToggleCircle.MouseButton1Click:Connect(function()
@@ -113,7 +136,7 @@ AutoPlayBtn.MouseButton1Click:Connect(function()
     if isAutoPlayOn then
         AutoPlayBtn.Text = "Auto Play: ON"
         animateColor(AutoPlayBtn, Color3.fromRGB(40, 167, 69))
-        StatusLabel.Text = "Status: Waiting for Bomb..."
+        StatusLabel.Text = "Status: Active 🚀"
         StatusLabel.TextColor3 = Color3.fromRGB(40, 167, 69)
     else
         AutoPlayBtn.Text = "Auto Play: OFF"
@@ -123,7 +146,7 @@ AutoPlayBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Check if LocalPlayer has the Bomb
+-- Check if LocalPlayer has Bomb
 local function iHaveBomb()
     local myChar = LocalPlayer.Character
     if not myChar then return false end
@@ -163,36 +186,26 @@ local function getNearestTarget()
     return nearest
 end
 
--- Main Loop
-RunService.RenderStepped:Connect(function()
+-- Main Heartbeat Loop (Smooth Control Release)
+RunService.Heartbeat:Connect(function()
     if not isAutoPlayOn then return end
     
     local myChar = LocalPlayer.Character
-    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") or not myChar:FindFirstChild("Humanoid") then return end
+    if not myChar or not myChar:FindFirstChild("Humanoid") then return end
     
     local humanoid = myChar.Humanoid
-    local myHRP = myChar.HumanoidRootPart
     
-    -- إذا كانت القنبلة معك: ملاحقة أوتوماتيكية
     if iHaveBomb() then
         local targetPlayer = getNearestTarget()
         if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
             StatusLabel.Text = "Status: Passing Bomb! 💣"
             StatusLabel.TextColor3 = Color3.fromRGB(255, 165, 0)
             
-            local targetHRP = targetPlayer.Character.HumanoidRootPart
-            local moveDirection = (targetHRP.Position - myHRP.Position).Unit
-            
-            humanoid:Move(moveDirection, false)
-            
-            local ray = Ray.new(myHRP.Position, myHRP.CFrame.LookVector * 3)
-            local hit = workspace:FindPartOnRayWithIgnoreList(ray, {myChar, targetPlayer.Character})
-            if hit and hit.CanCollide then
-                humanoid.Jump = true
-            end
+            -- ملاحقة سلسة عبر MoveTo
+            humanoid:MoveTo(targetPlayer.Character.HumanoidRootPart.Position)
         end
     else
-        -- القنبلة مو معك: يترك لك التحكم المباشر بالجوال دون إجبار على الوقوف
+        -- ترك التحكم اليدوي كاملاً لللاعب بمجرد عدم وجود القنبلة
         StatusLabel.Text = "Status: Manual Control 🎮"
         StatusLabel.TextColor3 = Color3.fromRGB(40, 167, 69)
     end
