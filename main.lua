@@ -1,17 +1,17 @@
--- Timebomb Duels Mobile - Smart Arena Detection & Free Lobby Movement
+-- Timebomb Duels Mobile - Smart Wall Bypass (No Jump / No Noclip / No Ban)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Cleanup previous GUI
-if LocalPlayer.PlayerGui:FindFirstChild("TimebombFreeGUI") then
-    LocalPlayer.PlayerGui.TimebombFreeGUI:Destroy()
+if LocalPlayer.PlayerGui:FindFirstChild("TimebombBypassGUI") then
+    LocalPlayer.PlayerGui.TimebombBypassGUI:Destroy()
 end
 
 -- ScreenGui Setup
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "TimebombFreeGUI"
+ScreenGui.Name = "TimebombBypassGUI"
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
@@ -59,7 +59,7 @@ MainStroke.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0.75, 0, 0, 35)
 Title.Position = UDim2.new(0.03, 0, 0, 0)
-Title.Text = "Timebomb Smart Auto"
+Title.Text = "Wall-Bypass Timebomb"
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
@@ -170,7 +170,6 @@ local function getArenaTarget()
             local hum = player.Character:FindFirstChild("Humanoid")
             if hum and hum.Health > 0 then
                 local dist = (myPos - player.Character.HumanoidRootPart.Position).Magnitude
-                -- شرط المسافة للتأكد من أنه في حلبة القتال معك
                 if dist < 120 and dist < shortestDist then
                     shortestDist = dist
                     nearest = player
@@ -181,26 +180,45 @@ local function getArenaTarget()
     return nearest
 end
 
--- Main Heartbeat Execution
+-- Main Stepped Loop (Smart Raycast Steering Around Walls)
 RunService.Stepped:Connect(function()
     if not isScriptActive then return end
     
     local myChar = LocalPlayer.Character
-    if not myChar or not myChar:FindFirstChild("Humanoid") then return end
+    if not myChar or not myChar:FindFirstChild("Humanoid") or not myChar:FindFirstChild("HumanoidRootPart") then return end
     
     local humanoid = myChar.Humanoid
+    local hrp = myChar.HumanoidRootPart
     
-    -- الشرط الصارم: السكربت يتدخل فقط وفقط عندما تكون القنبلة معك وبداخل الجولة
     if holdsBomb() then
         local targetPlayer = getArenaTarget()
         if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            StatusLabel.Text = "Status: PASSING BOMB IN GAME!"
+            StatusLabel.Text = "Status: PASSING BOMB!"
             StatusLabel.TextColor3 = Color3.fromRGB(255, 170, 0)
             
-            humanoid:MoveTo(targetPlayer.Character.HumanoidRootPart.Position)
+            local targetHRP = targetPlayer.Character.HumanoidRootPart
+            local moveTargetPos = targetHRP.Position
+            
+            -- فحص وجود جدار معترض المدى المباشر
+            local raycastParams = RaycastParams.new()
+            raycastParams.FilterDescendantsInstances = {myChar, targetPlayer.Character}
+            raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+            
+            local dirToTarget = (targetHRP.Position - hrp.Position)
+            local rayResult = workspace:Raycast(hrp.Position, dirToTarget, raycastParams)
+            
+            -- إذا وجد جدار بينك وبين الخصم، انحرف جانبياً حول زاوية الجدار
+            if rayResult and rayResult.Instance and rayResult.Instance.CanCollide then
+                local normal = rayResult.Normal
+                local sideVector = Vector3.new(-normal.Z, 0, normal.X)
+                
+                -- التوجه نحو حافة الجدار للانزلاق حوله
+                moveTargetPos = hrp.Position + (dirToTarget.Unit + sideVector).Unit * 6
+            end
+            
+            humanoid:MoveTo(moveTargetPos)
         end
     else
-        -- إذا كنت في اللوبي أو القنبلة مو معك: يترك لك التحكم اليدوي 100% بالـ Joystick
         StatusLabel.Text = "Status: Manual Control / Lobby Mode"
         StatusLabel.TextColor3 = Color3.fromRGB(40, 167, 69)
     end
