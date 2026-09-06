@@ -1,8 +1,7 @@
--- Timebomb Duels Mobile - Smooth Arena Auto Play
+-- Timebomb Duels Mobile - Smart Stop After Pass
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
-local PathfindingService = game:GetService("PathfindingService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Clean previous GUI if exists
@@ -21,7 +20,7 @@ local ToggleCircle = Instance.new("TextButton")
 ToggleCircle.Size = UDim2.new(0, 45, 0, 45)
 ToggleCircle.Position = UDim2.new(0.02, 0, 0.2, 0)
 ToggleCircle.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
-ToggleCircle.Text = "⚡"
+ToggleCircle.Text = "💣"
 ToggleCircle.TextSize = 22
 ToggleCircle.Parent = ScreenGui
 
@@ -57,12 +56,12 @@ MainUIStroke.Parent = MainFrame
 -- Title
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "⚡ Smooth Arena Follower"
+Title.Text = "⚡ Smart Bomb Pass"
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
 Title.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
 Title.BorderSizePixel = 0
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 11
+Title.TextSize = 12
 Title.Parent = MainFrame
 
 local TitleCorner = Instance.new("UICorner")
@@ -114,7 +113,7 @@ AutoPlayBtn.MouseButton1Click:Connect(function()
     if isAutoPlayOn then
         AutoPlayBtn.Text = "Auto Play: ON"
         animateColor(AutoPlayBtn, Color3.fromRGB(40, 167, 69))
-        StatusLabel.Text = "Status: Active in Arena"
+        StatusLabel.Text = "Status: Active 🚀"
         StatusLabel.TextColor3 = Color3.fromRGB(40, 167, 69)
     else
         AutoPlayBtn.Text = "Auto Play: OFF"
@@ -124,23 +123,25 @@ AutoPlayBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Check if player is inside Match / Arena (Not in Lobby)
-local function isInMatch(player)
-    if not player or not player.Character then return false end
-    local char = player.Character
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChild("Humanoid")
+-- Check if LocalPlayer has the Bomb
+local function iHaveBomb()
+    local myChar = LocalPlayer.Character
+    if not myChar then return false end
     
-    if not hrp or not hum or hum.Health <= 0 then return false end
-    
-    -- تجاهل اللاعبين في اللوبي إذا كانت المسافة بعيدة جداً عن الحلبة المباشرة
-    -- أو إذا كان لديهم عناصر القيم (قنبلة / أدوات قيم)
-    local hasBomb = char:FindFirstChild("Bomb") or player.Backpack:FindFirstChild("Bomb")
-    return true
+    -- فحص الحقيبة والأيدي
+    if myChar:FindFirstChild("Bomb") or LocalPlayer.Backpack:FindFirstChild("Bomb") then
+        return true
+    end
+    for _, item in pairs(myChar:GetChildren()) do
+        if item:IsA("Tool") and string.find(string.lower(item.Name), "bomb") then
+            return true
+        end
+    end
+    return false
 end
 
--- Find Arena Target Player Only
-local function getInGameTarget()
+-- Find Nearest Player in Arena
+local function getNearestTarget()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
     local myPos = myChar.HumanoidRootPart.Position
@@ -150,12 +151,10 @@ local function getInGameTarget()
     
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local targetHRP = player.Character.HumanoidRootPart
-            local dist = (myPos - targetHRP.Position).Magnitude
-            
-            -- تصفية: لا يطارد اللاعبين البعيدين جداً الذين يقفون في اللوبي (أكبر من 150 ستود)
-            if dist < 150 then
-                if dist < shortestDist then
+            local hum = player.Character:FindFirstChild("Humanoid")
+            if hum and hum.Health > 0 then
+                local dist = (myPos - player.Character.HumanoidRootPart.Position).Magnitude
+                if dist < 100 and dist < shortestDist then
                     shortestDist = dist
                     nearest = player
                 end
@@ -165,61 +164,40 @@ local function getInGameTarget()
     return nearest
 end
 
--- Smooth Movement Engine
-local currentWaypointIndex = 1
-local currentWaypoints = {}
-
+-- Main Loop
 RunService.RenderStepped:Connect(function()
     if not isAutoPlayOn then return end
     
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") or not myChar:FindFirstChild("Humanoid") then return end
     
-    local myHRP = myChar.HumanoidRootPart
     local humanoid = myChar.Humanoid
+    local myHRP = myChar.HumanoidRootPart
     
-    local targetPlayer = getInGameTarget()
-    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        StatusLabel.Text = "Status: Waiting for Game..."
-        return
-    end
-
-    StatusLabel.Text = "Status: Chasing Opponent"
-    local targetHRP = targetPlayer.Character.HumanoidRootPart
-    local distToTarget = (myHRP.Position - targetHRP.Position).Magnitude
-    
-    -- إذا كان في مجال الرؤية والقرب، ملاحقة مباشرة بدون توقف (حركة سلسة 100%)
-    if distToTarget < 20 then
-        humanoid:MoveTo(targetHRP.Position)
-    else
-        -- حساب المسار للالتفاف حول الجدران دون تلعثم
-        local ray = Ray.new(myHRP.Position, (targetHRP.Position - myHRP.Position).Unit * distToTarget)
-        local hitPart = workspace:FindPartOnRayWithIgnoreList(ray, {myChar, targetPlayer.Character})
-        
-        if not hitPart then
-            -- لا توجد جدران تعترض الطريق: اركض مباشرة بسرعة وسلاسة
-            humanoid:MoveTo(targetHRP.Position)
-        else
-            -- توجد جدران: استخدم نقاط المسار بسلاسة
-            local path = PathfindingService:CreatePath({
-                AgentRadius = 2,
-                AgentHeight = 5,
-                AgentCanJump = true
-            })
-            pcall(function()
-                path:ComputeAsync(myHRP.Position, targetHRP.Position)
-                if path.Status == Enum.PathStatus.Success then
-                    local waypoints = path:GetWaypoints()
-                    if #waypoints >= 2 then
-                        if waypoints[2].Action == Enum.PathWaypointAction.Jump then
-                            humanoid.Jump = true
-                        end
-                        humanoid:MoveTo(waypoints[2].Position)
-                    end
-                else
-                    humanoid:MoveTo(targetHRP.Position)
-                end
-            end)
+    -- الشرط الرئيسي: إذا كانت القنبلة معك فقط، قم بالمطاردة
+    if iHaveBomb() then
+        local targetPlayer = getNearestTarget()
+        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            StatusLabel.Text = "Status: Passing Bomb!"
+            StatusLabel.TextColor3 = Color3.fromRGB(255, 165, 0)
+            
+            local targetHRP = targetPlayer.Character.HumanoidRootPart
+            local moveDirection = (targetHRP.Position - myHRP.Position).Unit
+            
+            -- حركة انسيابية نحو الخصم
+            humanoid:Move(moveDirection, false)
+            
+            -- قفز تلقائي عند العوائق
+            local ray = Ray.new(myHRP.Position, myHRP.CFrame.LookVector * 3)
+            local hit = workspace:FindPartOnRayWithIgnoreList(ray, {myChar, targetPlayer.Character})
+            if hit and hit.CanCollide then
+                humanoid.Jump = true
+            end
         end
+    else
+        -- إذا لم تكن القنبلة معك: توقف في مكانك فوراً
+        humanoid:Move(Vector3.new(0, 0, 0), false)
+        StatusLabel.Text = "Status: Safe (Bomb Passed)"
+        StatusLabel.TextColor3 = Color3.fromRGB(40, 167, 69)
     end
 end)
