@@ -1,17 +1,17 @@
--- Timebomb Duels Mobile - Smart Wall Bypass (No Jump / No Noclip / No Ban)
+-- Timebomb Duels Mobile - Smart Wall Bypass with Custom Credits
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Cleanup previous GUI
-if LocalPlayer.PlayerGui:FindFirstChild("TimebombBypassGUI") then
-    LocalPlayer.PlayerGui.TimebombBypassGUI:Destroy()
+if LocalPlayer.PlayerGui:FindFirstChild("TimebombCreditGUI") then
+    LocalPlayer.PlayerGui.TimebombCreditGUI:Destroy()
 end
 
 -- ScreenGui Setup
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "TimebombBypassGUI"
+ScreenGui.Name = "TimebombCreditGUI"
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
@@ -37,7 +37,7 @@ CircleStroke.Parent = ToggleCircle
 
 -- Main Frame
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 230, 0, 150)
+MainFrame.Size = UDim2.new(0, 240, 0, 180)
 MainFrame.Position = UDim2.new(0.18, 0, 0.25, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
 MainFrame.BorderSizePixel = 0
@@ -57,9 +57,9 @@ MainStroke.Parent = MainFrame
 
 -- Title Bar
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(0.75, 0, 0, 35)
-Title.Position = UDim2.new(0.03, 0, 0, 0)
-Title.Text = "Wall-Bypass Timebomb"
+Title.Size = UDim2.new(0.75, 0, 0, 30)
+Title.Position = UDim2.new(0.04, 0, 0.02, 0)
+Title.Text = "Timebomb Auto-Pass"
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
@@ -67,10 +67,22 @@ Title.TextSize = 13
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = MainFrame
 
+-- Credits Label (Made by aki | TikTok: 1x.ud | DC: oa2a)
+local Credits = Instance.new("TextLabel")
+Credits.Size = UDim2.new(0.92, 0, 0, 18)
+Credits.Position = UDim2.new(0.04, 0, 0.19, 0)
+Credits.Text = "Made by aki | TT: 1x.ud | DC: oa2a"
+Credits.TextColor3 = Color3.fromRGB(160, 170, 190)
+Credits.BackgroundTransparency = 1
+Credits.Font = Enum.Font.Gotham
+Credits.TextSize = 10
+Credits.TextXAlignment = Enum.TextXAlignment.Left
+Credits.Parent = MainFrame
+
 -- Close Button (X in Corner)
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 26, 0, 26)
-CloseBtn.Position = UDim2.new(0.85, 0, 0.06, 0)
+CloseBtn.Position = UDim2.new(0.85, 0, 0.05, 0)
 CloseBtn.Text = "❌"
 CloseBtn.TextSize = 11
 CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
@@ -84,8 +96,8 @@ CloseCorner.Parent = CloseBtn
 
 -- Toggle Button (ON / OFF)
 local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0.88, 0, 0, 42)
-ToggleBtn.Position = UDim2.new(0.06, 0, 0.35, 0)
+ToggleBtn.Size = UDim2.new(0.92, 0, 0, 42)
+ToggleBtn.Position = UDim2.new(0.04, 0, 0.38, 0)
 ToggleBtn.Text = "Auto Play: OFF"
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
 ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -101,12 +113,12 @@ BtnCorner.Parent = ToggleBtn
 -- Status Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 20)
-StatusLabel.Position = UDim2.new(0, 0, 0.78, 0)
+StatusLabel.Position = UDim2.new(0, 0, 0.82, 0)
 StatusLabel.Text = "Status: OFF"
 StatusLabel.TextColor3 = Color3.fromRGB(140, 145, 160)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Font = Enum.Font.Gotham
-StatusLabel.TextSize = 12
+StatusLabel.TextSize = 11
 StatusLabel.Parent = MainFrame
 
 local isScriptActive = false
@@ -199,7 +211,7 @@ RunService.Stepped:Connect(function()
             local targetHRP = targetPlayer.Character.HumanoidRootPart
             local moveTargetPos = targetHRP.Position
             
-            -- فحص وجود جدار معترض المدى المباشر
+            -- فحص وجود جدار معترض
             local raycastParams = RaycastParams.new()
             raycastParams.FilterDescendantsInstances = {myChar, targetPlayer.Character}
             raycastParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -207,12 +219,11 @@ RunService.Stepped:Connect(function()
             local dirToTarget = (targetHRP.Position - hrp.Position)
             local rayResult = workspace:Raycast(hrp.Position, dirToTarget, raycastParams)
             
-            -- إذا وجد جدار بينك وبين الخصم، انحرف جانبياً حول زاوية الجدار
+            -- الانحراف والانزلاق حول الجدار بشكل آمن
             if rayResult and rayResult.Instance and rayResult.Instance.CanCollide then
                 local normal = rayResult.Normal
                 local sideVector = Vector3.new(-normal.Z, 0, normal.X)
                 
-                -- التوجه نحو حافة الجدار للانزلاق حوله
                 moveTargetPos = hrp.Position + (dirToTarget.Unit + sideVector).Unit * 6
             end
             
