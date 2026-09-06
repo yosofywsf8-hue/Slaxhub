@@ -1,4 +1,4 @@
--- Timebomb Duels Mobile - Smart Stop After Pass
+-- Timebomb Duels Mobile - Smart Auto Follow & Manual Control
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -56,12 +56,12 @@ MainUIStroke.Parent = MainFrame
 -- Title
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "⚡ Smart Bomb Pass"
+Title.Text = "⚡ Auto Pass & Free Control"
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
 Title.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
 Title.BorderSizePixel = 0
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 12
+Title.TextSize = 11
 Title.Parent = MainFrame
 
 local TitleCorner = Instance.new("UICorner")
@@ -113,7 +113,7 @@ AutoPlayBtn.MouseButton1Click:Connect(function()
     if isAutoPlayOn then
         AutoPlayBtn.Text = "Auto Play: ON"
         animateColor(AutoPlayBtn, Color3.fromRGB(40, 167, 69))
-        StatusLabel.Text = "Status: Active 🚀"
+        StatusLabel.Text = "Status: Waiting for Bomb..."
         StatusLabel.TextColor3 = Color3.fromRGB(40, 167, 69)
     else
         AutoPlayBtn.Text = "Auto Play: OFF"
@@ -128,7 +128,6 @@ local function iHaveBomb()
     local myChar = LocalPlayer.Character
     if not myChar then return false end
     
-    -- فحص الحقيبة والأيدي
     if myChar:FindFirstChild("Bomb") or LocalPlayer.Backpack:FindFirstChild("Bomb") then
         return true
     end
@@ -140,7 +139,7 @@ local function iHaveBomb()
     return false
 end
 
--- Find Nearest Player in Arena
+-- Find Nearest Player
 local function getNearestTarget()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
@@ -154,7 +153,7 @@ local function getNearestTarget()
             local hum = player.Character:FindFirstChild("Humanoid")
             if hum and hum.Health > 0 then
                 local dist = (myPos - player.Character.HumanoidRootPart.Position).Magnitude
-                if dist < 100 and dist < shortestDist then
+                if dist < 120 and dist < shortestDist then
                     shortestDist = dist
                     nearest = player
                 end
@@ -174,20 +173,18 @@ RunService.RenderStepped:Connect(function()
     local humanoid = myChar.Humanoid
     local myHRP = myChar.HumanoidRootPart
     
-    -- الشرط الرئيسي: إذا كانت القنبلة معك فقط، قم بالمطاردة
+    -- إذا كانت القنبلة معك: ملاحقة أوتوماتيكية
     if iHaveBomb() then
         local targetPlayer = getNearestTarget()
         if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            StatusLabel.Text = "Status: Passing Bomb!"
+            StatusLabel.Text = "Status: Passing Bomb! 💣"
             StatusLabel.TextColor3 = Color3.fromRGB(255, 165, 0)
             
             local targetHRP = targetPlayer.Character.HumanoidRootPart
             local moveDirection = (targetHRP.Position - myHRP.Position).Unit
             
-            -- حركة انسيابية نحو الخصم
             humanoid:Move(moveDirection, false)
             
-            -- قفز تلقائي عند العوائق
             local ray = Ray.new(myHRP.Position, myHRP.CFrame.LookVector * 3)
             local hit = workspace:FindPartOnRayWithIgnoreList(ray, {myChar, targetPlayer.Character})
             if hit and hit.CanCollide then
@@ -195,9 +192,8 @@ RunService.RenderStepped:Connect(function()
             end
         end
     else
-        -- إذا لم تكن القنبلة معك: توقف في مكانك فوراً
-        humanoid:Move(Vector3.new(0, 0, 0), false)
-        StatusLabel.Text = "Status: Safe (Bomb Passed)"
+        -- القنبلة مو معك: يترك لك التحكم المباشر بالجوال دون إجبار على الوقوف
+        StatusLabel.Text = "Status: Manual Control 🎮"
         StatusLabel.TextColor3 = Color3.fromRGB(40, 167, 69)
     end
 end)
