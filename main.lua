@@ -1,7 +1,8 @@
--- Timebomb Duels Auto Play - Mobile Responsive Edition
+-- Timebomb Duels Mobile - Smart Pathfinding Auto Follow (Wall-Bypass)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local PathfindingService = game:GetService("PathfindingService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Clean previous GUI if exists
@@ -15,12 +16,12 @@ ScreenGui.Name = "TimebombMobileGUI"
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
--- Floating Open/Close Circle Button for Mobile
+-- Floating Toggle Circle Button
 local ToggleCircle = Instance.new("TextButton")
 ToggleCircle.Size = UDim2.new(0, 45, 0, 45)
 ToggleCircle.Position = UDim2.new(0.02, 0, 0.2, 0)
 ToggleCircle.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
-ToggleCircle.Text = "💣"
+ToggleCircle.Text = "🧠"
 ToggleCircle.TextSize = 22
 ToggleCircle.Parent = ScreenGui
 
@@ -33,7 +34,7 @@ CircleStroke.Color = Color3.fromRGB(80, 90, 110)
 CircleStroke.Thickness = 2
 CircleStroke.Parent = ToggleCircle
 
--- Main Frame (Mobile Panel)
+-- Main Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 220, 0, 150)
 MainFrame.Position = UDim2.new(0.15, 0, 0.2, 0)
@@ -56,19 +57,19 @@ MainUIStroke.Parent = MainFrame
 -- Title
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "⚡ Timebomb Mobile"
+Title.Text = "⚡ Smart AI Follower"
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
 Title.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
 Title.BorderSizePixel = 0
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 13
+Title.TextSize = 12
 Title.Parent = MainFrame
 
 local TitleCorner = Instance.new("UICorner")
 TitleCorner.CornerRadius = UDim.new(0, 14)
 TitleCorner.Parent = Title
 
--- Toggle GUI Visibility Logic
+-- Toggle GUI Visibility
 ToggleCircle.MouseButton1Click:Connect(function()
     MainFrame.Visible = not MainFrame.Visible
 end)
@@ -77,7 +78,7 @@ end)
 local AutoPlayBtn = Instance.new("TextButton")
 AutoPlayBtn.Size = UDim2.new(0.85, 0, 0, 45)
 AutoPlayBtn.Position = UDim2.new(0.075, 0, 0.35, 0)
-AutoPlayBtn.Text = "Auto Play: OFF"
+AutoPlayBtn.Text = "Smart AI: OFF"
 AutoPlayBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
 AutoPlayBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 AutoPlayBtn.Font = Enum.Font.GothamBold
@@ -100,7 +101,6 @@ StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 12
 StatusLabel.Parent = MainFrame
 
--- Color Tween Helper
 local function animateColor(object, targetColor)
     TweenService:Create(object, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
         BackgroundColor3 = targetColor
@@ -109,23 +109,23 @@ end
 
 local isAutoPlayOn = false
 
--- Button Action
+-- Button Toggle Action
 AutoPlayBtn.MouseButton1Click:Connect(function()
     isAutoPlayOn = not isAutoPlayOn
     if isAutoPlayOn then
-        AutoPlayBtn.Text = "Auto Play: ON"
+        AutoPlayBtn.Text = "Smart AI: ON"
         animateColor(AutoPlayBtn, Color3.fromRGB(40, 167, 69))
-        StatusLabel.Text = "Status: Active 🚀"
+        StatusLabel.Text = "Status: Smart Pathfinding..."
         StatusLabel.TextColor3 = Color3.fromRGB(40, 167, 69)
     else
-        AutoPlayBtn.Text = "Auto Play: OFF"
+        AutoPlayBtn.Text = "Smart AI: OFF"
         animateColor(AutoPlayBtn, Color3.fromRGB(220, 53, 69))
         StatusLabel.Text = "Status: Disabled"
         StatusLabel.TextColor3 = Color3.fromRGB(130, 135, 150)
     end
 end)
 
--- Helper: Get Nearest Player
+-- Helper: Get Nearest Alive Player
 local function getNearestPlayer()
     local nearest = nil
     local shortestDist = math.huge
@@ -147,22 +147,10 @@ local function getNearestPlayer()
     return nearest
 end
 
--- Helper: Check Bomb
-local function checkBomb(char)
-    if not char then return false end
-    if char:FindFirstChild("Bomb") or LocalPlayer.Backpack:FindFirstChild("Bomb") then
-        return true
-    end
-    for _, item in pairs(char:GetChildren()) do
-        if item:IsA("Tool") and string.find(string.lower(item.Name), "bomb") then
-            return true
-        end
-    end
-    return false
-end
+-- Smart Pathfinding System
+local lastPathTime = 0
 
--- Main Loop
-RunService.RenderStepped:Connect(function()
+RunService.Heartbeat:Connect(function()
     if not isAutoPlayOn then return end
     
     local myChar = LocalPlayer.Character
@@ -173,15 +161,42 @@ RunService.RenderStepped:Connect(function()
         return
     end
 
-    local myPos = myChar.HumanoidRootPart.Position
-    local targetPos = targetPlayer.Character.HumanoidRootPart.Position
-    
-    if checkBomb(myChar) then
-        -- القنبلة معك: الانتقال للخصم
-        myChar.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 1.2)
+    local myHRP = myChar.HumanoidRootPart
+    local targetHRP = targetPlayer.Character.HumanoidRootPart
+    local humanoid = myChar.Humanoid
+    local dist = (myHRP.Position - targetHRP.Position).Magnitude
+
+    -- إذا كان قريب جداً ومكشوف مباشرة (لا توجد جدران)، تحرك إليه مباشرة بسرعة
+    if dist < 12 then
+        humanoid:MoveTo(targetHRP.Position)
     else
-        -- الهروب التلقائي
-        local dirAway = (myPos - targetPos).Unit
-        myChar.Humanoid:MoveTo(myPos + dirAway * 20)
+        -- تحديث المسار الذكي كل 0.25 ثانية لتجنب التأخير والتعليق
+        if tick() - lastPathTime > 0.25 then
+            lastPathTime = tick()
+            
+            local path = PathfindingService:CreatePath({
+                AgentRadius = 2,
+                AgentHeight = 5,
+                AgentCanJump = true,
+                AgentJumpHeight = 10,
+            })
+            
+            pcall(function()
+                path:ComputeAsync(myHRP.Position, targetHRP.Position)
+                if path.Status == Enum.PathStatus.Success then
+                    local waypoints = path:GetWaypoints()
+                    -- التحرك نحو ثاني نقطة مسار للتفاف حقيقي حول الزوايا والجدران
+                    if #waypoints >= 2 then
+                        if waypoints[2].Action == Enum.PathWaypointAction.Jump then
+                            humanoid.Jump = true
+                        end
+                        humanoid:MoveTo(waypoints[2].Position)
+                    end
+                else
+                    -- في حال فشل المسار، التحرك المباشر
+                    humanoid:MoveTo(targetHRP.Position)
+                end
+            end)
+        end
     end
 end)
