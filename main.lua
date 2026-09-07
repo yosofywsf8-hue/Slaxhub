@@ -1,7 +1,9 @@
--- Slax Hub - Cross-Account Asset Fix
+-- Slax Hub - Bloxstrap FPS & Quality Optimizer
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
 -- Cleanup previous UI
@@ -28,10 +30,8 @@ ToggleButton.Draggable = true
 ToggleButton.ScaleType = Enum.ScaleType.Crop
 ToggleButton.Parent = ScreenGui
 
--- استخدام رابط rbxthumb يتجاوز قفل الحسابات المتقاطعة
 ToggleButton.Image = "rbxthumb://type=Asset&id=124643845022233&w=420&h=420" 
 
--- زوايا المربع
 local SquareCorner = Instance.new("UICorner")
 SquareCorner.CornerRadius = UDim.new(0, 10)
 SquareCorner.Parent = ToggleButton
@@ -45,7 +45,7 @@ SquareStroke.Parent = ToggleButton
 -- MAIN WINDOW
 ---------------------------------------------------------
 local MainFrame = Instance.new("ImageLabel")
-MainFrame.Size = UDim2.new(0, 310, 0, 440)
+MainFrame.Size = UDim2.new(0, 310, 0, 520)
 MainFrame.Position = UDim2.new(0.2, 0, 0.1, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
@@ -119,7 +119,7 @@ ScrollContainer.Position = UDim2.new(0.04, 0, 0.09, 0)
 ScrollContainer.BackgroundTransparency = 1
 ScrollContainer.BorderSizePixel = 0
 ScrollContainer.ScrollBarThickness = 3
-ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 390)
+ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 480)
 ScrollContainer.Parent = MainFrame
 
 local MainLayout = Instance.new("UIListLayout")
@@ -155,7 +155,35 @@ local NoclipCorner = Instance.new("UICorner")
 NoclipCorner.CornerRadius = UDim.new(0, 6)
 NoclipCorner.Parent = NoclipBtn
 
--- 3. Music Input Row
+-- 3. Daas (W+S) Button
+local DaasBtn = Instance.new("TextButton")
+DaasBtn.Size = UDim2.new(1, 0, 0, 36)
+DaasBtn.Text = "دعس (W+S): OFF ⚡"
+DaasBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+DaasBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+DaasBtn.Font = Enum.Font.GothamBold
+DaasBtn.TextSize = 11
+DaasBtn.Parent = ScrollContainer
+
+local DaasCorner = Instance.new("UICorner")
+DaasCorner.CornerRadius = UDim.new(0, 6)
+DaasCorner.Parent = DaasBtn
+
+-- 4. Bloxstrap Graphics Optimizer Button (جديد!)
+local BloxstrapBtn = Instance.new("TextButton")
+BloxstrapBtn.Size = UDim2.new(1, 0, 0, 36)
+BloxstrapBtn.Text = "Bloxstrap Boost: OFF 🚀"
+BloxstrapBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+BloxstrapBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+BloxstrapBtn.Font = Enum.Font.GothamBold
+BloxstrapBtn.TextSize = 11
+BloxstrapBtn.Parent = ScrollContainer
+
+local BloxstrapCorner = Instance.new("UICorner")
+BloxstrapCorner.CornerRadius = UDim.new(0, 6)
+BloxstrapCorner.Parent = BloxstrapBtn
+
+-- 5. Music Input Row
 local MusicControlsFrame = Instance.new("Frame")
 MusicControlsFrame.Size = UDim2.new(1, 0, 0, 32)
 MusicControlsFrame.BackgroundTransparency = 1
@@ -212,7 +240,7 @@ local SaveCorner = Instance.new("UICorner")
 SaveCorner.CornerRadius = UDim.new(0, 6)
 SaveCorner.Parent = SaveMusicBtn
 
--- 4. Saved Songs Frame
+-- 6. Saved Songs Frame
 local SavedSongsScroll = Instance.new("Frame")
 SavedSongsScroll.Size = UDim2.new(1, 0, 0, 170)
 SavedSongsScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 18)
@@ -234,7 +262,7 @@ ScrollLayout.Padding = UDim.new(0, 4)
 ScrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ScrollLayout.Parent = ScrollList
 
--- 5. Status Label
+-- 7. Status Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 18)
 StatusLabel.Text = "Status: Ready"
@@ -244,7 +272,7 @@ StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 9
 StatusLabel.Parent = ScrollContainer
 
--- 6. Credits Label
+-- 8. Credits Label
 local CreditsLabel = Instance.new("TextLabel")
 CreditsLabel.Size = UDim2.new(1, 0, 0, 20)
 CreditsLabel.Text = "Made by aki | TT: 1x.ud | DC: oa2a"
@@ -265,6 +293,8 @@ currentSound.Parent = SoundService
 
 local isAutoActive = false
 local isNoclipActive = false
+local isDaasActive = false
+local isBloxstrapActive = false
 
 local savedSongsList = {
     {Name = "Song 1", Id = 102710215948261, Loud = false},
@@ -364,7 +394,7 @@ local function refreshSavedSongsUI()
         DelItemBtn.TextSize = 7
         DelItemBtn.Parent = ItemFrame
         
-        local ItemDelCorner = Instance.new("UICorner")
+        local ItemDelCorner = Instance.new("UICor`ner")
         ItemDelCorner.CornerRadius = UDim.new(0, 4)
         ItemDelCorner.Parent = DelItemBtn
         
@@ -407,6 +437,8 @@ ToggleButton.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFr
 CloseBtn.MouseButton1Click:Connect(function()
     isAutoActive = false
     isNoclipActive = false
+    isDaasActive = false
+    isBloxstrapActive = false
     currentSound:Destroy()
     if LocalPlayer.Character then
         for _, part in pairs(LocalPlayer.Character:GetChildren()) do
@@ -428,7 +460,54 @@ NoclipBtn.MouseButton1Click:Connect(function()
     NoclipBtn.BackgroundColor3 = isNoclipActive and Color3.fromRGB(140, 50, 210) or Color3.fromRGB(40, 45, 60)
     if not isNoclipActive and LocalPlayer.Character then
         for _, part in pairs(LocalPlayer.Character:GetChildren()) do
-            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then part.CanCollide = true end
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then part.CanCoordinate = true end
+        end
+    end
+end)
+
+DaasBtn.MouseButton1Click:Connect(function()
+    isDaasActive = not isDaasActive
+    DaasBtn.Text = isDaasActive and "دعس (W+S): ON ⚡" or "دعس (W+S): OFF ⚡"
+    DaasBtn.BackgroundColor3 = isDaasActive and Color3.fromRGB(255, 140, 0) or Color3.fromRGB(40, 45, 60)
+end)
+
+-- خيار تحسين الجودة والأداء (Bloxstrap Style)
+BloxstrapBtn.MouseButton1Click:Connect(function()
+    isBloxstrapActive = not isBloxstrapActive
+    BloxstrapBtn.Text = isBloxstrapActive and "Bloxstrap Boost: ON 🚀" or "Bloxstrap Boost: OFF 🚀"
+    BloxstrapBtn.BackgroundColor3 = isBloxstrapActive and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(40, 45, 60)
+    
+    if isBloxstrapActive then
+        -- إعدادات مشابهة لـ Bloxstrap لتقليل الضغط ورفع الفريمات
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        Lighting.GlobalShadows = false
+        Lighting.Brightness = 2
+        for _, v in pairs(Lighting:GetChildren()) do
+            if v:IsA("PostEffect") or v:IsA("Sky") or v:IsA("Atmosphere") then
+                v.Enabled = false
+            end
+        end
+        for _, part in pairs(Workspace:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.Material = Enum.Material.SmoothPlastic
+                part.Reflectance = 0
+            end
+        end
+        StatusLabel.Text = "Status: Bloxstrap Boost Enabled 🚀"
+        StatusLabel.TextColor3 = Color3.fromRGB(0, 180, 255)
+    else
+        StatusLabel.Text = "Status: Boost Disabled ⚠️"
+        StatusLabel.TextColor3 = Color3.fromRGB(200, 50, 50)
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.12) do
+        if isDaasActive and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local root = LocalPlayer.Character.HumanoidRootPart
+            root.CFrame = root.CFrame * CFrame.new(0, 0, -1.8)
+            task.wait(0.06)
+            root.CFrame = root.CFrame * CFrame.new(0, 0, 1.8)
         end
     end
 end)
