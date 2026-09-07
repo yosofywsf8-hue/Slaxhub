@@ -1,10 +1,10 @@
--- Slax Hub - Single Frame UI Framework
+-- Slax Hub - Combined Single List Framework
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local LocalPlayer = Players.LocalPlayer
 
--- Cleaning up old GUI
+-- Cleanup previous UI
 if LocalPlayer.PlayerGui:FindFirstChild("SlaxHubPremium") then
     LocalPlayer.PlayerGui.SlaxHubPremium:Destroy()
 end
@@ -15,7 +15,7 @@ ScreenGui.Name = "SlaxHubPremium"
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
--- Floating Toggle Button (Mobile Friendly)
+-- Floating Toggle Circle Button
 local ToggleCircle = Instance.new("TextButton")
 ToggleCircle.Size = UDim2.new(0, 48, 0, 48)
 ToggleCircle.Position = UDim2.new(0.02, 0, 0.2, 0)
@@ -35,9 +35,9 @@ CircleStroke.Color = Color3.fromRGB(100, 110, 140)
 CircleStroke.Thickness = 2
 CircleStroke.Parent = ToggleCircle
 
--- Main Window (Background Image)
+-- Main Background Window
 local MainFrame = Instance.new("ImageLabel")
-MainFrame.Size = UDim2.new(0, 330, 0, 440)
+MainFrame.Size = UDim2.new(0, 320, 0, 450)
 MainFrame.Position = UDim2.new(0.2, 0, 0.1, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
@@ -45,7 +45,7 @@ MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Visible = true
 
--- رابط الخلفية المصحح والمضمون
+-- رابط الخلفية المصحح ليعمل تلقائياً
 MainFrame.Image = "rbxthumb://type=Asset&id=108512464651627&w=420&h=420"
 MainFrame.ScaleType = Enum.ScaleType.Crop
 MainFrame.ImageTransparency = 0.15
@@ -60,7 +60,7 @@ MainStroke.Color = Color3.fromRGB(70, 75, 100)
 MainStroke.Thickness = 1.5
 MainStroke.Parent = MainFrame
 
--- Dark Overlay
+-- Dark Readability Overlay
 local Overlay = Instance.new("Frame")
 Overlay.Size = UDim2.new(1, 0, 1, 0)
 Overlay.BackgroundColor3 = Color3.fromRGB(10, 12, 18)
@@ -104,7 +104,7 @@ CloseCorner.CornerRadius = UDim.new(0, 5)
 CloseCorner.Parent = CloseBtn
 
 ---------------------------------------------------------
--- SINGLE SCROLLING CONTAINER (EVERYTHING IN ONE PLACE)
+-- ALL OPTIONS IN ONE DIRECT LIST
 ---------------------------------------------------------
 local ScrollContainer = Instance.new("ScrollingFrame")
 ScrollContainer.Size = UDim2.new(0.92, 0, 0.88, 0)
@@ -112,7 +112,7 @@ ScrollContainer.Position = UDim2.new(0.04, 0, 0.09, 0)
 ScrollContainer.BackgroundTransparency = 1
 ScrollContainer.BorderSizePixel = 0
 ScrollContainer.ScrollBarThickness = 3
-ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 380)
+ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 390)
 ScrollContainer.Parent = MainFrame
 
 local MainLayout = Instance.new("UIListLayout")
@@ -120,56 +120,37 @@ MainLayout.Padding = UDim.new(0, 8)
 MainLayout.SortOrder = Enum.SortOrder.LayoutOrder
 MainLayout.Parent = ScrollContainer
 
--- Section 1: Features
-local FeaturesLabel = Instance.new("TextLabel")
-FeaturesLabel.Size = UDim2.new(1, 0, 0, 20)
-FeaturesLabel.Text = "⚡ MAIN FEATURES"
-FeaturesLabel.TextColor3 = Color3.fromRGB(0, 170, 255)
-FeaturesLabel.BackgroundTransparency = 1
-FeaturesLabel.Font = Enum.Font.GothamBold
-FeaturesLabel.TextSize = 11
-FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left
-FeaturesLabel.Parent = ScrollContainer
-
+-- 1. Auto Play Button
 local AutoBtn = Instance.new("TextButton")
-AutoBtn.Size = UDim2.new(1, 0, 0, 34)
+AutoBtn.Size = UDim2.new(1, 0, 0, 36)
 AutoBtn.Text = "Auto Play: OFF"
 AutoBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
 AutoBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 AutoBtn.Font = Enum.Font.GothamBold
-AutoBtn.TextSize = 11
+AutoBtn.TextSize = 12
 AutoBtn.Parent = ScrollContainer
 
 local AutoCorner = Instance.new("UICorner")
 AutoCorner.CornerRadius = UDim.new(0, 6)
 AutoCorner.Parent = AutoBtn
 
+-- 2. Noclip Button
 local NoclipBtn = Instance.new("TextButton")
-NoclipBtn.Size = UDim2.new(1, 0, 0, 34)
+NoclipBtn.Size = UDim2.new(1, 0, 0, 36)
 NoclipBtn.Text = "Noclip: OFF 👻"
 NoclipBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
 NoclipBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 NoclipBtn.Font = Enum.Font.GothamBold
-NoclipBtn.TextSize = 11
+NoclipBtn.TextSize = 12
 NoclipBtn.Parent = ScrollContainer
 
 local NoclipCorner = Instance.new("UICorner")
 NoclipCorner.CornerRadius = UDim.new(0, 6)
 NoclipCorner.Parent = NoclipBtn
 
--- Section 2: Music Player
-local MusicLabel = Instance.new("TextLabel")
-MusicLabel.Size = UDim2.new(1, 0, 0, 20)
-MusicLabel.Text = "🎵 MUSIC PLAYER"
-MusicLabel.TextColor3 = Color3.fromRGB(0, 170, 255)
-MusicLabel.BackgroundTransparency = 1
-MusicLabel.Font = Enum.Font.GothamBold
-MusicLabel.TextSize = 11
-MusicLabel.TextXAlignment = Enum.TextXAlignment.Left
-MusicLabel.Parent = ScrollContainer
-
+-- 3. Music Input Row (Box + Buttons)
 local MusicControlsFrame = Instance.new("Frame")
-MusicControlsFrame.Size = UDim2.new(1, 0, 0, 30)
+MusicControlsFrame.Size = UDim2.new(1, 0, 0, 32)
 MusicControlsFrame.BackgroundTransparency = 1
 MusicControlsFrame.Parent = ScrollContainer
 
@@ -224,8 +205,9 @@ local SaveCorner = Instance.new("UICorner")
 SaveCorner.CornerRadius = UDim.new(0, 6)
 SaveCorner.Parent = SaveMusicBtn
 
+-- 4. Saved Songs Container
 local SavedSongsScroll = Instance.new("Frame")
-SavedSongsScroll.Size = UDim2.new(1, 0, 0, 140)
+SavedSongsScroll.Size = UDim2.new(1, 0, 0, 170)
 SavedSongsScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 18)
 SavedSongsScroll.BackgroundTransparency = 0.2
 SavedSongsScroll.Parent = ScrollContainer
@@ -245,6 +227,7 @@ ScrollLayout.Padding = UDim.new(0, 4)
 ScrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ScrollLayout.Parent = ScrollList
 
+-- 5. Status Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 18)
 StatusLabel.Text = "Status: Ready"
@@ -254,6 +237,7 @@ StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 10
 StatusLabel.Parent = ScrollContainer
 
+-- 6. Credits Label
 local CreditsLabel = Instance.new("TextLabel")
 CreditsLabel.Size = UDim2.new(1, 0, 0, 20)
 CreditsLabel.Text = "Made by aki | TT: 1x.ud | DC: oa2a"
@@ -264,7 +248,7 @@ CreditsLabel.TextSize = 9
 CreditsLabel.Parent = ScrollContainer
 
 ---------------------------------------------------------
--- CORE LOGIC
+-- CORE FUNCTIONALITY
 ---------------------------------------------------------
 local currentSound = Instance.new("Sound")
 currentSound.Name = "SlaxLocalSound"
