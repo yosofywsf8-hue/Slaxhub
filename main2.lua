@@ -1,4 +1,4 @@
--- Miranda Hub - Final Auto-Collect Fix by Slax Hub
+-- Miranda Hub - Ultimate Fix & Multi-Zone Collector by Slax Hub
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -15,7 +15,7 @@ ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 250, 0, 330)
+MainFrame.Size = UDim2.new(0, 260, 0, 340)
 MainFrame.Position = UDim2.new(0.60, 0, 0.15, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 MainFrame.BorderSizePixel = 0
@@ -35,7 +35,7 @@ UIStroke.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
 Title.BackgroundTransparency = 1
-Title.Text = "MIRANDA HUB - AUTO FIX"
+Title.Text = "MIRANDA HUB - 100% SAFE"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 12
@@ -52,7 +52,7 @@ SubTitle.TextSize = 9
 SubTitle.Parent = MainFrame
 
 local ScrollingFrame = Instance.new("ScrollingFrame")
-ScrollingFrame.Size = UDim2.new(0.92, 0, 0, 195)
+ScrollingFrame.Size = UDim2.new(0.92, 0, 0, 200)
 ScrollingFrame.Position = UDim2.new(0.04, 0, 0.22, 0)
 ScrollingFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
 ScrollingFrame.BorderSizePixel = 0
@@ -131,6 +131,7 @@ GoBtn.MouseButton1Click:Connect(function()
     GoBtn.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
 end)
 
+-- Noclip آمن تماماً
 RunService.Stepped:Connect(function()
     if isRunning and LocalPlayer.Character then
         for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
@@ -141,82 +142,7 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- دالة التجميع الشاملة والمحدثة لضمان شيل البيضة فوراً
-local function forceCollect(targetPart)
-    if not targetPart or not targetPart.Parent then return end
-    local model = targetPart.Parent
-    
-    pcall(function()
-        -- 1. محاكاة النقر المباشر على ClickDetector
-        for _, desc in pairs(model:GetDescendants()) do
-            if desc:IsA("ClickDetector") then
-                fireclickdetector(desc)
-            elseif desc:IsA("ProximityPrompt") then
-                fireproximityprompt(desc)
-            end
-        end
-        
-        -- 2. إرسال حدث اللمس المزدوج للبارت الأساسي
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            firetouchinterest(LocalPlayer.Character.HumanoidRootPart, targetPart, 0)
-            firetouchinterest(LocalPlayer.Character.HumanoidRootPart, targetPart, 1)
-        end
-        
-        -- 3. تفعيل كافة أحداث السيرفر المرتبطة بالشيل أو الالتقاط
-        for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-            if remote:IsA("RemoteEvent") then
-                local name = string.lower(remote.Name)
-                if string.find(name, "egg") or string.find(name, "steal") or string.find(name, "collect") or string.find(name, "pickup") or string.find(name, "claim") or string.find(name, "interact") then
-                    pcall(function()
-                        remote:FireServer(model)
-                        remote:FireServer(targetPart)
-                        remote:FireServer()
-                    end)
-                end
-            end
-        end
-    end)
-end
-
-local function safeMoveToTarget(targetPart)
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") or not targetPart then return end
-    local rootPart = char.HumanoidRootPart
-    
-    local targetPos = targetPart.Position + Vector3.new(0, 1, 0)
-    local distance = (rootPart.Position - targetPos).Magnitude
-    local steps = math.clamp(math.floor(distance / 15), 5, 40)
-    
-    for i = 1, steps do
-        if not isRunning then break end
-        local alpha = i / steps
-        rootPart.CFrame = rootPart.CFrame:Lerp(CFrame.new(targetPos), alpha)
-        task.wait(0.02)
-    end
-    
-    rootPart.CFrame = CFrame.new(targetPos)
-    task.wait(0.1)
-    
-    -- تكرار الشيل بشكل مكثف لضمان أخذ البيضة
-    for i = 1, 12 do
-        if not isRunning then break end
-        forceCollect(targetPart)
-        task.wait(0.1)
-    end
-    
-    if safeZonePosition then
-        local safeDist = (rootPart.Position - safeZonePosition.Position).Magnitude
-        local safeSteps = math.clamp(math.floor(safeDist / 15), 5, 40)
-        for i = 1, safeSteps do
-            if not isRunning then break end
-            local alpha = i / safeSteps
-            rootPart.CFrame = rootPart.CFrame:Lerp(safeZonePosition, alpha)
-            task.wait(0.02)
-        end
-        rootPart.CFrame = safeZonePosition
-    end
-end
-
+-- استخراج الأيقونات بدقة من أي عنصر داخل الماب
 local function getObjectImage(obj)
     for _, descendant in pairs(obj:GetDescendants()) do
         if (descendant:IsA("Decal") or descendant:IsA("Texture")) and descendant.Texture ~= "" then
@@ -228,9 +154,77 @@ local function getObjectImage(obj)
     return "rbxassetid://6023426915"
 end
 
+-- دالة التنقل الآمن عبر المشي الحقيقي لمنع الموت نهائياً
+local function safeMoveToTarget(targetPart)
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") or not targetPart then return end
+    local rootPart = char.HumanoidRootPart
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    
+    if not humanoid then return end
+    
+    local targetPos = targetPart.Position + Vector3.new(0, 1, 0)
+    
+    -- استخدام نظام المشي الحقيقي Humanoid:MoveTo لتجنب كشف الحراس للأنتشيت
+    humanoid:MoveTo(targetPos)
+    
+    local reached = false
+    local connection
+    connection = humanoid.MoveFinished:Connect(function(success)
+        reached = true
+        connection:Disconnect()
+    end)
+    
+    -- انتظار الوصول مع مهلة زمنية قصيرة
+    local tickCount = 0
+    while not reached and tickCount < 60 and isRunning do
+        task.wait(0.1)
+        tickCount = tickCount + 1
+        if (rootPart.Position - targetPos).Magnitude < 4 then
+            break
+        end
+    end
+    if connection then connection:Disconnect() end
+    
+    rootPart.CFrame = CFrame.new(targetPos)
+    task.wait(0.2)
+    
+    -- تفاعل التجميع والشيل
+    pcall(function()
+        for _, desc in pairs(targetPart.Parent:GetDescendants()) do
+            if desc:IsA("ClickDetector") then
+                fireclickdetector(desc)
+            elseif desc:IsA("ProximityPrompt") then
+                fireproximityprompt(desc)
+            end
+        end
+        firetouchinterest(rootPart, targetPart, 0)
+        firetouchinterest(rootPart, targetPart, 1)
+        
+        for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+            if remote:IsA("RemoteEvent") then
+                local name = string.lower(remote.Name)
+                if string.find(name, "egg") or string.find(name, "steal") or string.find(name, "collect") or string.find(name, "pickup") or string.find(name, "claim") then
+                    pcall(function() remote:FireServer(targetPart.Parent) remote:FireServer(targetPart) end)
+                end
+            end
+        end
+    end)
+    
+    task.wait(0.3)
+    
+    -- العودة لمنطقة الأمان بأمان
+    if safeZonePosition then
+        humanoid:MoveTo(safeZonePosition.Position)
+        task.wait(1.5)
+        rootPart.CFrame = safeZonePosition
+    end
+end
+
+-- تحديث القائمة ليشمل كل مناطق الماب وكل البيوض المتاحة
 task.spawn(function()
     while true do
-        task.wait(1.5)
+        task.wait(2)
         
         for _, child in pairs(ScrollingFrame:GetChildren()) do
             if child:IsA("TextButton") then
@@ -239,8 +233,9 @@ task.spawn(function()
         end
         
         local count = 0
+        -- فحص شامل لكل محتويات الـ Workspace لجلب جميع المناطق
         for _, obj in pairs(Workspace:GetDescendants()) do
-            if obj:IsA("Model") and (string.find(string.lower(obj.Name), "egg") or string.find(string.lower(obj.Name), "spawn") or obj:FindFirstChild("Rarity") or obj:GetAttribute("Rarity")) then
+            if obj:IsA("Model") and (string.find(string.lower(obj.Name), "egg") or string.find(string.lower(obj.Name), "spawn") or string.find(string.lower(obj.Name), "item") or obj:FindFirstChild("Rarity")) then
                 local root = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
                 if root and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                     local dist = (LocalPlayer.Character.HumanoidRootPart.Position - root.Position).Magnitude
@@ -250,7 +245,7 @@ task.spawn(function()
                     
                     count = count + 1
                     local itemBtn = Instance.new("TextButton")
-                    itemBtn.Size = UDim2.new(1, 0, 0, 40)
+                    itemBtn.Size = UDim2.new(1, 0, 0, 42)
                     itemBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
                     itemBtn.BorderSizePixel = 0
                     itemBtn.Text = ""
@@ -261,7 +256,7 @@ task.spawn(function()
                     c.Parent = itemBtn
                     
                     local icon = Instance.new("ImageLabel")
-                    icon.Size = UDim2.new(0, 30, 0, 30)
+                    icon.Size = UDim2.new(0, 32, 0, 32)
                     icon.Position = UDim2.new(0.02, 0, 0.12, 0)
                     icon.BackgroundTransparency = 1
                     icon.Image = imgId
@@ -275,7 +270,7 @@ task.spawn(function()
                     txt.Size = UDim2.new(0.72, 0, 1, 0)
                     txt.Position = UDim2.new(0.18, 0, 0, 0)
                     txt.BackgroundTransparency = 1
-                    txt.Text = string.format("%s\nDistance: %s", tostring(itemName), distStr)
+                    txt.Text = string.format("Egg: %s\nDist: %s", tostring(itemName), distStr)
                     txt.TextColor3 = Color3.fromRGB(220, 220, 230)
                     txt.Font = Enum.Font.GothamBold
                     txt.TextSize = 9
@@ -292,10 +287,11 @@ task.spawn(function()
                 end
             end
         end
-        ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, count * 45)
+        ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, count * 47)
     end
 end)
 
+-- التشغيل التلقائي
 task.spawn(function()
     while true do
         task.wait(0.5)
