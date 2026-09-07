@@ -1,6 +1,7 @@
--- Slax Hub Mobile - Stop Button Integrated Per Saved Song Item
+-- Slax Hub Mobile - Max 5 Songs Limit & Client-Only Sound
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Cleanup previous GUI
@@ -36,7 +37,7 @@ CircleStroke.Parent = ToggleCircle
 
 -- Main Frame
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 260, 0, 350)
+MainFrame.Size = UDim2.new(0, 270, 0, 360)
 MainFrame.Position = UDim2.new(0.18, 0, 0.18, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
 MainFrame.BorderSizePixel = 0
@@ -140,7 +141,7 @@ local BoxCorner = Instance.new("UICorner")
 BoxCorner.CornerRadius = UDim.new(0, 6)
 BoxCorner.Parent = MusicBox
 
--- Play Button
+-- Play Button (Direct Input)
 local PlayMusicBtn = Instance.new("TextButton")
 PlayMusicBtn.Size = UDim2.new(0.13, 0, 0, 30)
 PlayMusicBtn.Position = UDim2.new(0.68, 0, 0.36, 0)
@@ -170,7 +171,7 @@ SaveCorner.Parent = SaveMusicBtn
 local ListLabel = Instance.new("TextLabel")
 ListLabel.Size = UDim2.new(0.92, 0, 0, 16)
 ListLabel.Position = UDim2.new(0.04, 0, 0.46, 0)
-ListLabel.Text = "📁 قائمة الأغاني المحفوظة:"
+ListLabel.Text = "📁 قائمة الأغاني (الحد الأقصى 5):"
 ListLabel.TextColor3 = Color3.fromRGB(200, 205, 220)
 ListLabel.BackgroundTransparency = 1
 ListLabel.Font = Enum.Font.GothamBold
@@ -180,8 +181,8 @@ ListLabel.Parent = MainFrame
 
 -- Saved Songs Scroll List Frame
 local SavedSongsScroll = Instance.new("ScrollingFrame")
-SavedSongsScroll.Size = UDim2.new(0.92, 0, 0, 140)
-SavedSongsScroll.Position = UDim2.new(0.04, 0, 0.52, 0)
+SavedSongsScroll.Size = UDim2.new(0.92, 0, 0, 150)
+SavedSongsScroll.Position = UDim2.new(0.04, 0, 0.51, 0)
 SavedSongsScroll.BackgroundColor3 = Color3.fromRGB(15, 17, 22)
 SavedSongsScroll.BorderSizePixel = 0
 SavedSongsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -200,7 +201,7 @@ ScrollLayout.Parent = SavedSongsScroll
 -- Status Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 20)
-StatusLabel.Position = UDim2.new(0, 0, 0.93, 0)
+StatusLabel.Position = UDim2.new(0, 0, 0.94, 0)
 StatusLabel.Text = "Status: Ready"
 StatusLabel.TextColor3 = Color3.fromRGB(140, 145, 160)
 StatusLabel.BackgroundTransparency = 1
@@ -208,21 +209,21 @@ StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 11
 StatusLabel.Parent = MainFrame
 
--- Sound Setup (Looped permanently)
+-- Sound Setup inside SoundService (Client Only)
 local currentSound = Instance.new("Sound")
-currentSound.Name = "SlaxCustomSound"
+currentSound.Name = "SlaxLocalSound"
 currentSound.Volume = 2
 currentSound.Looped = true
-currentSound.Parent = workspace
+currentSound.Parent = SoundService
 
 local isAutoActive = false
 local isNoclipActive = false
 
--- Default Pre-saved Songs (With Loud Warning on Song 3)
+-- Default Pre-saved Songs
 local savedSongsList = {
-    {Name = "Song 1", Id = 102710215948261},
-    {Name = "Song 2", Id = 86503267790406},
-    {Name = "Song 3 ⚠️(صوت عالي)", Id = 111018848542448}
+    {Name = "Song 1", Id = 102710215948261, Loud = false},
+    {Name = "Song 2", Id = 86503267790406, Loud = false},
+    {Name = "Song 3", Id = 111018848542448, Loud = true}
 }
 
 -- Function to play song
@@ -254,26 +255,37 @@ local function refreshSavedSongsUI()
         ItemCorner.Parent = ItemFrame
         
         local SongText = Instance.new("TextLabel")
-        SongText.Size = UDim2.new(0.52, 0, 1, 0)
+        SongText.Size = UDim2.new(0.38, 0, 1, 0)
         SongText.Position = UDim2.new(0.02, 0, 0, 0)
         SongText.Text = songData.Name
-        
-        if string.find(songData.Name, "⚠️") then
-            SongText.TextColor3 = Color3.fromRGB(255, 100, 100)
-        else
-            SongText.TextColor3 = Color3.fromRGB(220, 220, 230)
-        end
-        
+        SongText.TextColor3 = Color3.fromRGB(220, 220, 230)
         SongText.BackgroundTransparency = 1
         SongText.Font = Enum.Font.Gotham
-        SongText.TextSize = 8
+        SongText.TextSize = 9
         SongText.TextXAlignment = Enum.TextXAlignment.Left
         SongText.Parent = ItemFrame
         
-        -- Inline Play Button (▶️)
+        -- Loud Warning Badge
+        if songData.Loud then
+            local WarnBadge = Instance.new("TextLabel")
+            WarnBadge.Size = UDim2.new(0.22, 0, 0.7, 0)
+            WarnBadge.Position = UDim2.new(0.38, 0, 0.15, 0)
+            WarnBadge.Text = "⚠️عالية"
+            WarnBadge.BackgroundColor3 = Color3.fromRGB(220, 100, 0)
+            WarnBadge.TextColor3 = Color3.fromRGB(255, 255, 255)
+            WarnBadge.Font = Enum.Font.GothamBold
+            WarnBadge.TextSize = 8
+            WarnBadge.Parent = ItemFrame
+            
+            local BadgeCorner = Instance.new("UICorner")
+            BadgeCorner.CornerRadius = UDim.new(0, 4)
+            BadgeCorner.Parent = WarnBadge
+        end
+        
+        -- Play Button
         local PlayItemBtn = Instance.new("TextButton")
-        PlayItemBtn.Size = UDim2.new(0.12, 0, 0.8, 0)
-        PlayItemBtn.Position = UDim2.new(0.56, 0, 0.1, 0)
+        PlayItemBtn.Size = UDim2.new(0.11, 0, 0.8, 0)
+        PlayItemBtn.Position = UDim2.new(0.62, 0, 0.1, 0)
         PlayItemBtn.Text = "▶️"
         PlayItemBtn.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
         PlayItemBtn.TextSize = 8
@@ -283,10 +295,10 @@ local function refreshSavedSongsUI()
         ItemPlayCorner.CornerRadius = UDim.new(0, 4)
         ItemPlayCorner.Parent = PlayItemBtn
         
-        -- Inline Stop Button (⏹️)
+        -- Stop Button
         local StopItemBtn = Instance.new("TextButton")
-        StopItemBtn.Size = UDim2.new(0.12, 0, 0.8, 0)
-        StopItemBtn.Position = UDim2.new(0.70, 0, 0.1, 0)
+        StopItemBtn.Size = UDim2.new(0.11, 0, 0.8, 0)
+        StopItemBtn.Position = UDim2.new(0.74, 0, 0.1, 0)
         StopItemBtn.Text = "⏹️"
         StopItemBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
         StopItemBtn.TextSize = 8
@@ -296,12 +308,12 @@ local function refreshSavedSongsUI()
         ItemStopCorner.CornerRadius = UDim.new(0, 4)
         ItemStopCorner.Parent = StopItemBtn
         
-        -- Inline Delete Button (🗑️)
+        -- Delete Button
         local DelItemBtn = Instance.new("TextButton")
-        DelItemBtn.Size = UDim2.new(0.12, 0, 0.8, 0)
-        DelItemBtn.Position = UDim2.new(0.84, 0, 0.1, 0)
+        DelItemBtn.Size = UDim2.new(0.11, 0, 0.8, 0)
+        DelItemBtn.Position = UDim2.new(0.86, 0, 0.1, 0)
         DelItemBtn.Text = "🗑️"
-        DelItemBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
+        DelItemBtn.BackgroundColor3 = Color3.fromRGB(80, 85, 100)
         DelItemBtn.TextSize = 8
         DelItemBtn.Parent = ItemFrame
         
@@ -315,7 +327,7 @@ local function refreshSavedSongsUI()
         
         StopItemBtn.MouseButton1Click:Connect(function()
             currentSound:Stop()
-            StatusLabel.Text = "Status: Music Stopped ⏹️"
+            StatusLabel.Text = "Status: Stopped ⏹️"
             StatusLabel.TextColor3 = Color3.fromRGB(200, 50, 50)
         end)
         
@@ -341,11 +353,17 @@ PlayMusicBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Save Input Song
+-- Save Input Song with 5-Song Limit Enforcement
 SaveMusicBtn.MouseButton1Click:Connect(function()
+    if #savedSongsList >= 5 then
+        StatusLabel.Text = "⚠️ وصلت الحد الأقصى! (5 أغاني فقط)"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 70, 70)
+        return
+    end
+    
     local soundId = tonumber(MusicBox.Text:match("%d+"))
     if soundId then
-        table.insert(savedSongsList, {Name = "Song " .. tostring(#savedSongsList + 1), Id = soundId})
+        table.insert(savedSongsList, {Name = "Song " .. tostring(#savedSongsList + 1), Id = soundId, Loud = false})
         MusicBox.Text = ""
         MusicBox.PlaceholderText = "تم الحفظ!"
         refreshSavedSongsUI()
