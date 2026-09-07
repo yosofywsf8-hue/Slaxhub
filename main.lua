@@ -1,27 +1,27 @@
--- Slax Hub Mobile - Max 5 Songs Limit & Client-Only Sound
+-- Slax Hub - Custom Premium UI Framework with Custom Background
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local LocalPlayer = Players.LocalPlayer
 
--- Cleanup previous GUI
-if LocalPlayer.PlayerGui:FindFirstChild("SlaxHubGUI") then
-    LocalPlayer.PlayerGui.SlaxHubGUI:Destroy()
+-- Cleanup previous UI
+if LocalPlayer.PlayerGui:FindFirstChild("SlaxHubPremium") then
+    LocalPlayer.PlayerGui.SlaxHubPremium:Destroy()
 end
 
 -- ScreenGui Setup
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SlaxHubGUI"
+ScreenGui.Name = "SlaxHubPremium"
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
--- Draggable Floating Circle Button
+-- Floating Toggle Button (Mobile Friendly)
 local ToggleCircle = Instance.new("TextButton")
-ToggleCircle.Size = UDim2.new(0, 50, 0, 50)
-ToggleCircle.Position = UDim2.new(0.02, 0, 0.25, 0)
-ToggleCircle.BackgroundColor3 = Color3.fromRGB(30, 35, 45)
+ToggleCircle.Size = UDim2.new(0, 48, 0, 48)
+ToggleCircle.Position = UDim2.new(0.02, 0, 0.2, 0)
+ToggleCircle.BackgroundColor3 = Color3.fromRGB(20, 25, 35)
 ToggleCircle.Text = "💣"
-ToggleCircle.TextSize = 24
+ToggleCircle.TextSize = 22
 ToggleCircle.Active = true
 ToggleCircle.Draggable = true
 ToggleCircle.Parent = ScreenGui
@@ -31,163 +31,254 @@ CircleCorner.CornerRadius = UDim.new(1, 0)
 CircleCorner.Parent = ToggleCircle
 
 local CircleStroke = Instance.new("UIStroke")
-CircleStroke.Color = Color3.fromRGB(90, 100, 125)
+CircleStroke.Color = Color3.fromRGB(100, 110, 140)
 CircleStroke.Thickness = 2
 CircleStroke.Parent = ToggleCircle
 
--- Main Frame
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 270, 0, 360)
-MainFrame.Position = UDim2.new(0.18, 0, 0.18, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+-- Main Window (Image Background)
+local MainFrame = Instance.new("ImageLabel")
+MainFrame.Size = UDim2.new(0, 320, 0, 380)
+MainFrame.Position = UDim2.new(0.2, 0, 0.15, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Visible = true
+MainFrame.Image = "rbxassetid://108512464651627" -- خلفيتك الخاصة
+MainFrame.ScaleType = Enum.ScaleType.Crop
+MainFrame.ImageTransparency = 0.2
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 12)
+MainCorner.CornerRadius = UDim.new(0, 10)
 MainCorner.Parent = MainFrame
 
 local MainStroke = Instance.new("UIStroke")
-MainStroke.Color = Color3.fromRGB(50, 55, 70)
+MainStroke.Color = Color3.fromRGB(70, 75, 100)
 MainStroke.Thickness = 1.5
 MainStroke.Parent = MainFrame
 
--- Title Bar
+-- Dark Overlay for High Readability
+local Overlay = Instance.new("Frame")
+Overlay.Size = UDim2.new(1, 0, 1, 0)
+Overlay.BackgroundColor3 = Color3.fromRGB(10, 12, 18)
+Overlay.BackgroundTransparency = 0.4
+Overlay.BorderSizePixel = 0
+Overlay.Parent = MainFrame
+
+local OverlayCorner = Instance.new("UICorner")
+OverlayCorner.CornerRadius = UDim.new(0, 10)
+OverlayCorner.Parent = Overlay
+
+-- Top Header Bar
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 35)
+Header.BackgroundTransparency = 1
+Header.Parent = MainFrame
+
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(0.75, 0, 0, 25)
-Title.Position = UDim2.new(0.04, 0, 0.02, 0)
-Title.Text = "Slax Hub"
-Title.TextColor3 = Color3.fromRGB(240, 240, 245)
+Title.Size = UDim2.new(0.7, 0, 1, 0)
+Title.Position = UDim2.new(0.04, 0, 0, 0)
+Title.Text = "Slax Hub | Timebomb Duels"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 14
+Title.TextSize = 13
 Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = MainFrame
+Title.Parent = Header
 
--- Credits
-local Credits = Instance.new("TextLabel")
-Credits.Size = UDim2.new(0.92, 0, 0, 15)
-Credits.Position = UDim2.new(0.04, 0, 0.08, 0)
-Credits.Text = "Made by aki | TT: 1x.ud | DC: oa2a"
-Credits.TextColor3 = Color3.fromRGB(160, 170, 190)
-Credits.BackgroundTransparency = 1
-Credits.Font = Enum.Font.Gotham
-Credits.TextSize = 10
-Credits.TextXAlignment = Enum.TextXAlignment.Left
-Credits.Parent = MainFrame
-
--- Close Button (❌)
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 24, 0, 24)
-CloseBtn.Position = UDim2.new(0.87, 0, 0.02, 0)
+CloseBtn.Size = UDim2.new(0, 22, 0, 22)
+CloseBtn.Position = UDim2.new(0.9, 0, 0.18, 0)
 CloseBtn.Text = "❌"
-CloseBtn.TextSize = 10
+CloseBtn.TextSize = 9
 CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.Parent = MainFrame
+CloseBtn.Parent = Header
 
 local CloseCorner = Instance.new("UICorner")
-CloseCorner.CornerRadius = UDim.new(0, 6)
+CloseCorner.CornerRadius = UDim.new(0, 5)
 CloseCorner.Parent = CloseBtn
 
--- Auto Pass Toggle Button
+-- Navigation Tabs Bar
+local TabBar = Instance.new("Frame")
+TabBar.Size = UDim2.new(0.92, 0, 0, 28)
+TabBar.Position = UDim2.new(0.04, 0, 0.1, 0)
+TabBar.BackgroundColor3 = Color3.fromRGB(20, 24, 34)
+TabBar.BackgroundTransparency = 0.3
+TabBar.Parent = MainFrame
+
+local TabCorner = Instance.new("UICorner")
+TabCorner.CornerRadius = UDim.new(0, 6)
+TabCorner.Parent = TabBar
+
+local MainTabBtn = Instance.new("TextButton")
+MainTabBtn.Size = UDim2.new(0.48, 0, 1, 0)
+MainTabBtn.Position = UDim2.new(0, 0, 0, 0)
+MainTabBtn.Text = "⚡ Main Features"
+MainTabBtn.BackgroundColor3 = Color3.fromRGB(45, 55, 80)
+MainTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MainTabBtn.Font = Enum.Font.GothamBold
+MainTabBtn.TextSize = 10
+MainTabBtn.Parent = TabBar
+
+local MainTabCorner = Instance.new("UICorner")
+MainTabCorner.CornerRadius = UDim.new(0, 6)
+MainTabCorner.Parent = MainTabBtn
+
+local MusicTabBtn = Instance.new("TextButton")
+MusicTabBtn.Size = UDim2.new(0.48, 0, 1, 0)
+MusicTabBtn.Position = UDim2.new(0.52, 0, 0, 0)
+MusicTabBtn.Text = "🎵 Music Player"
+MusicTabBtn.BackgroundColor3 = Color3.fromRGB(25, 30, 42)
+MusicTabBtn.TextColor3 = Color3.fromRGB(180, 190, 210)
+MusicTabBtn.Font = Enum.Font.GothamBold
+MusicTabBtn.TextSize = 10
+MusicTabBtn.Parent = TabBar
+
+local MusicTabCorner = Instance.new("UICorner")
+MusicTabCorner.CornerRadius = UDim.new(0, 6)
+MusicTabCorner.Parent = MusicTabBtn
+
+-- Tab Containers
+local MainContainer = Instance.new("Frame")
+MainContainer.Size = UDim2.new(0.92, 0, 0.78, 0)
+MainContainer.Position = UDim2.new(0.04, 0, 0.19, 0)
+MainContainer.BackgroundTransparency = 1
+MainContainer.Visible = true
+MainContainer.Parent = MainFrame
+
+local MusicContainer = Instance.new("Frame")
+MusicContainer.Size = UDim2.new(0.92, 0, 0.78, 0)
+MusicContainer.Position = UDim2.new(0.04, 0, 0.19, 0)
+MusicContainer.BackgroundTransparency = 1
+MusicContainer.Visible = false
+MusicContainer.Parent = MainFrame
+
+-- Tab Switching Logic
+MainTabBtn.MouseButton1Click:Connect(function()
+    MainContainer.Visible = true
+    MusicContainer.Visible = false
+    MainTabBtn.BackgroundColor3 = Color3.fromRGB(45, 55, 80)
+    MainTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MusicTabBtn.BackgroundColor3 = Color3.fromRGB(25, 30, 42)
+    MusicTabBtn.TextColor3 = Color3.fromRGB(180, 190, 210)
+end)
+
+MusicTabBtn.MouseButton1Click:Connect(function()
+    MainContainer.Visible = false
+    MusicContainer.Visible = true
+    MusicTabBtn.BackgroundColor3 = Color3.fromRGB(45, 55, 80)
+    MusicTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MainTabBtn.BackgroundColor3 = Color3.fromRGB(25, 30, 42)
+    MainTabBtn.TextColor3 = Color3.fromRGB(180, 190, 210)
+end)
+
+---------------------------------------------------------
+-- TAB 1: MAIN FEATURES
+---------------------------------------------------------
 local AutoBtn = Instance.new("TextButton")
-AutoBtn.Size = UDim2.new(0.92, 0, 0, 32)
-AutoBtn.Position = UDim2.new(0.04, 0, 0.14, 0)
+AutoBtn.Size = UDim2.new(1, 0, 0, 36)
+AutoBtn.Position = UDim2.new(0, 0, 0.05, 0)
 AutoBtn.Text = "Auto Play: OFF"
 AutoBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
 AutoBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 AutoBtn.Font = Enum.Font.GothamBold
 AutoBtn.TextSize = 12
-AutoBtn.Parent = MainFrame
+AutoBtn.Parent = MainContainer
 
 local AutoCorner = Instance.new("UICorner")
 AutoCorner.CornerRadius = UDim.new(0, 6)
 AutoCorner.Parent = AutoBtn
 
--- Noclip Toggle Button
 local NoclipBtn = Instance.new("TextButton")
-NoclipBtn.Size = UDim2.new(0.92, 0, 0, 32)
-NoclipBtn.Position = UDim2.new(0.04, 0, 0.25, 0)
+NoclipBtn.Size = UDim2.new(1, 0, 0, 36)
+NoclipBtn.Position = UDim2.new(0, 0, 0.22, 0)
 NoclipBtn.Text = "Noclip: OFF 👻"
-NoclipBtn.BackgroundColor3 = Color3.fromRGB(50, 55, 70)
+NoclipBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
 NoclipBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 NoclipBtn.Font = Enum.Font.GothamBold
 NoclipBtn.TextSize = 12
-NoclipBtn.Parent = MainFrame
+NoclipBtn.Parent = MainContainer
 
 local NoclipCorner = Instance.new("UICorner")
 NoclipCorner.CornerRadius = UDim.new(0, 6)
 NoclipCorner.Parent = NoclipBtn
 
--- Music Input Box
+local CreditsLabel = Instance.new("TextLabel")
+CreditsLabel.Size = UDim2.new(1, 0, 0, 30)
+CreditsLabel.Position = UDim2.new(0, 0, 0.85, 0)
+CreditsLabel.Text = "Made by aki | TT: 1x.ud | DC: oa2a"
+CreditsLabel.TextColor3 = Color3.fromRGB(180, 190, 210)
+CreditsLabel.BackgroundTransparency = 1
+CreditsLabel.Font = Enum.Font.Gotham
+CreditsLabel.TextSize = 10
+CreditsLabel.Parent = MainContainer
+
+---------------------------------------------------------
+-- TAB 2: MUSIC PLAYER SYSTEM
+---------------------------------------------------------
 local MusicBox = Instance.new("TextBox")
-MusicBox.Size = UDim2.new(0.62, 0, 0, 30)
-MusicBox.Position = UDim2.new(0.04, 0, 0.36, 0)
+MusicBox.Size = UDim2.new(0.52, 0, 0, 30)
+MusicBox.Position = UDim2.new(0, 0, 0.02, 0)
 MusicBox.PlaceholderText = "حط ID الاغنية هنا"
 MusicBox.Text = ""
-MusicBox.BackgroundColor3 = Color3.fromRGB(35, 40, 52)
+MusicBox.BackgroundColor3 = Color3.fromRGB(25, 30, 42)
 MusicBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-MusicBox.PlaceholderColor3 = Color3.fromRGB(130, 140, 160)
+MusicBox.PlaceholderColor3 = Color3.fromRGB(140, 150, 170)
 MusicBox.Font = Enum.Font.Gotham
 MusicBox.TextSize = 10
-MusicBox.Parent = MainFrame
+MusicBox.Parent = MusicContainer
 
 local BoxCorner = Instance.new("UICorner")
 BoxCorner.CornerRadius = UDim.new(0, 6)
 BoxCorner.Parent = MusicBox
 
--- Play Button (Direct Input)
 local PlayMusicBtn = Instance.new("TextButton")
 PlayMusicBtn.Size = UDim2.new(0.13, 0, 0, 30)
-PlayMusicBtn.Position = UDim2.new(0.68, 0, 0.36, 0)
+PlayMusicBtn.Position = UDim2.new(0.55, 0, 0.02, 0)
 PlayMusicBtn.Text = "▶️"
 PlayMusicBtn.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
-PlayMusicBtn.TextSize = 11
-PlayMusicBtn.Parent = MainFrame
+PlayMusicBtn.TextSize = 10
+PlayMusicBtn.Parent = MusicContainer
 
 local PlayCorner = Instance.new("UICorner")
 PlayCorner.CornerRadius = UDim.new(0, 6)
 PlayCorner.Parent = PlayMusicBtn
 
--- Save Button
+local StopMusicBtn = Instance.new("TextButton")
+StopMusicBtn.Size = UDim2.new(0.13, 0, 0, 30)
+StopMusicBtn.Position = UDim2.new(0.70, 0, 0.02, 0)
+StopMusicBtn.Text = "⏹️"
+StopMusicBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
+StopMusicBtn.TextSize = 10
+StopMusicBtn.Parent = MusicContainer
+
+local StopCorner = Instance.new("UICorner")
+StopCorner.CornerRadius = UDim.new(0, 6)
+StopCorner.Parent = StopMusicBtn
+
 local SaveMusicBtn = Instance.new("TextButton")
 SaveMusicBtn.Size = UDim2.new(0.13, 0, 0, 30)
-SaveMusicBtn.Position = UDim2.new(0.83, 0, 0.36, 0)
+SaveMusicBtn.Position = UDim2.new(0.85, 0, 0.02, 0)
 SaveMusicBtn.Text = "💾"
 SaveMusicBtn.BackgroundColor3 = Color3.fromRGB(0, 122, 255)
-SaveMusicBtn.TextSize = 11
-SaveMusicBtn.Parent = MainFrame
+SaveMusicBtn.TextSize = 10
+SaveMusicBtn.Parent = MusicContainer
 
 local SaveCorner = Instance.new("UICorner")
 SaveCorner.CornerRadius = UDim.new(0, 6)
 SaveCorner.Parent = SaveMusicBtn
 
--- Saved Songs Label
-local ListLabel = Instance.new("TextLabel")
-ListLabel.Size = UDim2.new(0.92, 0, 0, 16)
-ListLabel.Position = UDim2.new(0.04, 0, 0.46, 0)
-ListLabel.Text = "📁 قائمة الأغاني (الحد الأقصى 5):"
-ListLabel.TextColor3 = Color3.fromRGB(200, 205, 220)
-ListLabel.BackgroundTransparency = 1
-ListLabel.Font = Enum.Font.GothamBold
-ListLabel.TextSize = 10
-ListLabel.TextXAlignment = Enum.TextXAlignment.Left
-ListLabel.Parent = MainFrame
-
--- Saved Songs Scroll List Frame
 local SavedSongsScroll = Instance.new("ScrollingFrame")
-SavedSongsScroll.Size = UDim2.new(0.92, 0, 0, 150)
-SavedSongsScroll.Position = UDim2.new(0.04, 0, 0.51, 0)
-SavedSongsScroll.BackgroundColor3 = Color3.fromRGB(15, 17, 22)
+SavedSongsScroll.Size = UDim2.new(1, 0, 0, 180)
+SavedSongsScroll.Position = UDim2.new(0, 0, 0.16, 0)
+SavedSongsScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 18)
+SavedSongsScroll.BackgroundTransparency = 0.2
 SavedSongsScroll.BorderSizePixel = 0
-SavedSongsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-SavedSongsScroll.ScrollBarThickness = 4
-SavedSongsScroll.Parent = MainFrame
+SavedSongsScroll.ScrollBarThickness = 3
+SavedSongsScroll.Parent = MusicContainer
 
 local ScrollCorner = Instance.new("UICorner")
 ScrollCorner.CornerRadius = UDim.new(0, 6)
@@ -198,18 +289,19 @@ ScrollLayout.Padding = UDim.new(0, 4)
 ScrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ScrollLayout.Parent = SavedSongsScroll
 
--- Status Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 20)
-StatusLabel.Position = UDim2.new(0, 0, 0.94, 0)
+StatusLabel.Position = UDim2.new(0, 0, 0.88, 0)
 StatusLabel.Text = "Status: Ready"
-StatusLabel.TextColor3 = Color3.fromRGB(140, 145, 160)
+StatusLabel.TextColor3 = Color3.fromRGB(160, 165, 180)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Font = Enum.Font.Gotham
-StatusLabel.TextSize = 11
-StatusLabel.Parent = MainFrame
+StatusLabel.TextSize = 10
+StatusLabel.Parent = MusicContainer
 
--- Sound Setup inside SoundService (Client Only)
+---------------------------------------------------------
+-- CORE SCRIPT LOGIC
+---------------------------------------------------------
 local currentSound = Instance.new("Sound")
 currentSound.Name = "SlaxLocalSound"
 currentSound.Volume = 2
@@ -219,14 +311,12 @@ currentSound.Parent = SoundService
 local isAutoActive = false
 local isNoclipActive = false
 
--- Default Pre-saved Songs
 local savedSongsList = {
     {Name = "Song 1", Id = 102710215948261, Loud = false},
     {Name = "Song 2", Id = 86503267790406, Loud = false},
     {Name = "Song 3", Id = 111018848542448, Loud = true}
 }
 
--- Function to play song
 local function playSongById(id)
     if id then
         currentSound.SoundId = "rbxassetid://" .. tostring(id)
@@ -236,7 +326,12 @@ local function playSongById(id)
     end
 end
 
--- Refresh Saved Songs List UI
+local function stopSong()
+    currentSound:Stop()
+    StatusLabel.Text = "Status: Stopped ⏹️"
+    StatusLabel.TextColor3 = Color3.fromRGB(200, 50, 50)
+end
+
 local function refreshSavedSongsUI()
     for _, child in pairs(SavedSongsScroll:GetChildren()) do
         if child:IsA("Frame") then child:Destroy() end
@@ -247,7 +342,8 @@ local function refreshSavedSongsUI()
         ySize = ySize + 32
         local ItemFrame = Instance.new("Frame")
         ItemFrame.Size = UDim2.new(0.98, 0, 0, 28)
-        ItemFrame.BackgroundColor3 = Color3.fromRGB(28, 32, 42)
+        ItemFrame.BackgroundColor3 = Color3.fromRGB(24, 28, 38)
+        ItemFrame.BackgroundTransparency = 0.1
         ItemFrame.Parent = SavedSongsScroll
         
         local ItemCorner = Instance.new("UICorner")
@@ -258,14 +354,13 @@ local function refreshSavedSongsUI()
         SongText.Size = UDim2.new(0.38, 0, 1, 0)
         SongText.Position = UDim2.new(0.02, 0, 0, 0)
         SongText.Text = songData.Name
-        SongText.TextColor3 = Color3.fromRGB(220, 220, 230)
+        SongText.TextColor3 = Color3.fromRGB(230, 230, 240)
         SongText.BackgroundTransparency = 1
         SongText.Font = Enum.Font.Gotham
         SongText.TextSize = 9
         SongText.TextXAlignment = Enum.TextXAlignment.Left
         SongText.Parent = ItemFrame
         
-        -- Loud Warning Badge
         if songData.Loud then
             local WarnBadge = Instance.new("TextLabel")
             WarnBadge.Size = UDim2.new(0.22, 0, 0.7, 0)
@@ -282,7 +377,6 @@ local function refreshSavedSongsUI()
             BadgeCorner.Parent = WarnBadge
         end
         
-        -- Play Button
         local PlayItemBtn = Instance.new("TextButton")
         PlayItemBtn.Size = UDim2.new(0.11, 0, 0.8, 0)
         PlayItemBtn.Position = UDim2.new(0.62, 0, 0.1, 0)
@@ -295,7 +389,6 @@ local function refreshSavedSongsUI()
         ItemPlayCorner.CornerRadius = UDim.new(0, 4)
         ItemPlayCorner.Parent = PlayItemBtn
         
-        -- Stop Button
         local StopItemBtn = Instance.new("TextButton")
         StopItemBtn.Size = UDim2.new(0.11, 0, 0.8, 0)
         StopItemBtn.Position = UDim2.new(0.74, 0, 0.1, 0)
@@ -308,7 +401,6 @@ local function refreshSavedSongsUI()
         ItemStopCorner.CornerRadius = UDim.new(0, 4)
         ItemStopCorner.Parent = StopItemBtn
         
-        -- Delete Button
         local DelItemBtn = Instance.new("TextButton")
         DelItemBtn.Size = UDim2.new(0.11, 0, 0.8, 0)
         DelItemBtn.Position = UDim2.new(0.86, 0, 0.1, 0)
@@ -321,16 +413,8 @@ local function refreshSavedSongsUI()
         ItemDelCorner.CornerRadius = UDim.new(0, 4)
         ItemDelCorner.Parent = DelItemBtn
         
-        PlayItemBtn.MouseButton1Click:Connect(function()
-            playSongById(songData.Id)
-        end)
-        
-        StopItemBtn.MouseButton1Click:Connect(function()
-            currentSound:Stop()
-            StatusLabel.Text = "Status: Stopped ⏹️"
-            StatusLabel.TextColor3 = Color3.fromRGB(200, 50, 50)
-        end)
-        
+        PlayItemBtn.MouseButton1Click:Connect(function() playSongById(songData.Id) end)
+        StopItemBtn.MouseButton1Click:Connect(stopSong)
         DelItemBtn.MouseButton1Click:Connect(function()
             table.remove(savedSongsList, index)
             refreshSavedSongsUI()
@@ -339,28 +423,21 @@ local function refreshSavedSongsUI()
     SavedSongsScroll.CanvasSize = UDim2.new(0, 0, 0, ySize)
 end
 
--- Load Default Songs List on Startup
 refreshSavedSongsUI()
 
--- Play Direct Input
 PlayMusicBtn.MouseButton1Click:Connect(function()
     local soundId = tonumber(MusicBox.Text:match("%d+"))
-    if soundId then
-        playSongById(soundId)
-    else
-        MusicBox.Text = ""
-        MusicBox.PlaceholderText = "ID غير صحيح!"
-    end
+    if soundId then playSongById(soundId) else MusicBox.Text = ""; MusicBox.PlaceholderText = "ID غير صحيح!" end
 end)
 
--- Save Input Song with 5-Song Limit Enforcement
+StopMusicBtn.MouseButton1Click:Connect(stopSong)
+
 SaveMusicBtn.MouseButton1Click:Connect(function()
     if #savedSongsList >= 5 then
         StatusLabel.Text = "⚠️ وصلت الحد الأقصى! (5 أغاني فقط)"
         StatusLabel.TextColor3 = Color3.fromRGB(255, 70, 70)
         return
     end
-    
     local soundId = tonumber(MusicBox.Text:match("%d+"))
     if soundId then
         table.insert(savedSongsList, {Name = "Song " .. tostring(#savedSongsList + 1), Id = soundId, Loud = false})
@@ -370,17 +447,12 @@ SaveMusicBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- GUI Toggle
-ToggleCircle.MouseButton1Click:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
-end)
+ToggleCircle.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
 
--- Close GUI
 CloseBtn.MouseButton1Click:Connect(function()
     isAutoActive = false
     isNoclipActive = false
     currentSound:Destroy()
-    
     if LocalPlayer.Character then
         for _, part in pairs(LocalPlayer.Character:GetChildren()) do
             if part:IsA("BasePart") then part.CanCollide = true end
@@ -389,60 +461,39 @@ CloseBtn.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
--- Auto Pass Toggle
 AutoBtn.MouseButton1Click:Connect(function()
     isAutoActive = not isAutoActive
-    if isAutoActive then
-        AutoBtn.Text = "Auto Play: ON"
-        AutoBtn.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
-    else
-        AutoBtn.Text = "Auto Play: OFF"
-        AutoBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
-    end
+    AutoBtn.Text = isAutoActive and "Auto Play: ON" or "Auto Play: OFF"
+    AutoBtn.BackgroundColor3 = isAutoActive and Color3.fromRGB(40, 167, 69) or Color3.fromRGB(220, 53, 69)
 end)
 
--- Noclip Toggle
 NoclipBtn.MouseButton1Click:Connect(function()
     isNoclipActive = not isNoclipActive
-    if isNoclipActive then
-        NoclipBtn.Text = "Noclip: ON 👻"
-        NoclipBtn.BackgroundColor3 = Color3.fromRGB(140, 50, 210)
-    else
-        NoclipBtn.Text = "Noclip: OFF 👻"
-        NoclipBtn.BackgroundColor3 = Color3.fromRGB(50, 55, 70)
-        
-        if LocalPlayer.Character then
-            for _, part in pairs(LocalPlayer.Character:GetChildren()) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                    part.CanCollide = true
-                end
-            end
+    NoclipBtn.Text = isNoclipActive and "Noclip: ON 👻" or "Noclip: OFF 👻"
+    NoclipBtn.BackgroundColor3 = isNoclipActive and Color3.fromRGB(140, 50, 210) or Color3.fromRGB(40, 45, 60)
+    if not isNoclipActive and LocalPlayer.Character then
+        for _, part in pairs(LocalPlayer.Character:GetChildren()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then part.CanCollide = true end
         end
     end
 end)
 
--- Bomb Check
 local function holdsBomb()
     local myChar = LocalPlayer.Character
     if not myChar then return false end
-    
     local inChar = myChar:FindFirstChild("Bomb") or myChar:FindFirstChildWhichIsA("Tool")
     if inChar and string.find(string.lower(inChar.Name), "bomb") then return true end
-    
     local inBackpack = LocalPlayer.Backpack:FindFirstChild("Bomb") or LocalPlayer.Backpack:FindFirstChildWhichIsA("Tool")
     if inBackpack and string.find(string.lower(inBackpack.Name), "bomb") then return true end
-    
     return false
 end
 
--- Target Check
 local function getArenaTarget()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
     local myPos = myChar.HumanoidRootPart.Position
     local nearest = nil
     local shortestDist = math.huge
-    
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
             local hum = player.Character:FindFirstChild("Humanoid")
@@ -458,21 +509,16 @@ local function getArenaTarget()
     return nearest
 end
 
--- Main Stepped Loop
 RunService.Stepped:Connect(function()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("Humanoid") or not myChar:FindFirstChild("HumanoidRootPart") then return end
     
-    -- Noclip Execution
     if isNoclipActive then
         for _, part in pairs(myChar:GetChildren()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
+            if part:IsA("BasePart") then part.CanCollide = false end
         end
     end
     
-    -- Auto Pass Execution
     if isAutoActive and holdsBomb() then
         local targetPlayer = getArenaTarget()
         if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
