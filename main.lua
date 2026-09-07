@@ -1,4 +1,4 @@
--- Slax Hub - Final Version with Korblox & Headless
+-- Slax Hub - Fixed UI with Korblox & Headless
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -42,10 +42,10 @@ SquareStroke.Thickness = 2
 SquareStroke.Parent = ToggleButton
 
 ---------------------------------------------------------
--- MAIN WINDOW
+-- MAIN WINDOW (زيادة الطول لتستوعب كافة الأزرار)
 ---------------------------------------------------------
 local MainFrame = Instance.new("ImageLabel")
-MainFrame.Size = UDim2.new(0, 310, 0, 480)
+MainFrame.Size = UDim2.new(0, 310, 0, 510)
 MainFrame.Position = UDim2.new(0.2, 0, 0.1, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
@@ -119,7 +119,7 @@ ScrollContainer.Position = UDim2.new(0.04, 0, 0.09, 0)
 ScrollContainer.BackgroundTransparency = 1
 ScrollContainer.BorderSizePixel = 0
 ScrollContainer.ScrollBarThickness = 3
-ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 530)
+ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 570)
 ScrollContainer.Parent = MainFrame
 
 local MainLayout = Instance.new("UIListLayout")
@@ -169,7 +169,7 @@ local BloxstrapCorner = Instance.new("UICorner")
 BloxstrapCorner.CornerRadius = UDim.new(0, 6)
 BloxstrapCorner.Parent = BloxstrapBtn
 
--- 4. Fake Korblox Button
+-- 4. Fake Korblox Button (مؤكد ظهوره الآن)
 local KorbloxBtn = Instance.new("TextButton")
 KorbloxBtn.Size = UDim2.new(1, 0, 0, 34)
 KorbloxBtn.Text = "Fake Korblox: OFF 🦵"
@@ -183,7 +183,7 @@ local KorbloxCorner = Instance.new("UICorner")
 KorbloxCorner.CornerRadius = UDim.new(0, 6)
 KorbloxCorner.Parent = KorbloxBtn
 
--- 5. Fake Headless Button
+-- 5. Fake Headless Button (مؤكد ظهوره الآن)
 local HeadlessBtn = Instance.new("TextButton")
 HeadlessBtn.Size = UDim2.new(1, 0, 0, 34)
 HeadlessBtn.Text = "Fake Headless: OFF 👤"
@@ -256,7 +256,7 @@ SaveCorner.Parent = SaveMusicBtn
 
 -- 7. Saved Songs Frame
 local SavedSongsScroll = Instance.new("Frame")
-SavedSongsScroll.Size = UDim2.new(1, 0, 0, 150)
+SavedSongsScroll.Size = UDim2.new(1, 0, 0, 140)
 SavedSongsScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 18)
 SavedSongsScroll.BackgroundTransparency = 0.2
 SavedSongsScroll.Parent = ScrollContainer
@@ -515,7 +515,7 @@ KorbloxBtn.MouseButton1Click:Connect(function()
     KorbloxBtn.BackgroundColor3 = isKorbloxActive and Color3.fromRGB(255, 140, 0) or Color3.fromRGB(40, 45, 60)
     
     local char = LocalPlayer.Character
-    if char and char:FindFirstChild("RightLeg") or char:FindFirstChild("RightLowerLeg") then
+    if char then
         local rLeg = char:FindFirstChild("RightLeg") or char:FindFirstChild("RightLowerLeg")
         local rUpper = char:FindFirstChild("RightUpperLeg")
         local rFoot = char:FindFirstChild("RightFoot")
