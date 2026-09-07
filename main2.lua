@@ -1,4 +1,4 @@
--- Steal An Egg - Miranda Style with Pet Images by Slax Hub
+-- Steal An Egg - Fixed Images & Anti-Cheat Hub by Slax Hub
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -32,10 +32,10 @@ UIStroke.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
 Title.BackgroundTransparency = 1
-Title.Text = "SLAX HUB - STEAL AN EGG"
+Title.Text = "SLAX HUB - FIXED IMAGES"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 12
+Title.TextSize = 11
 Title.Parent = MainFrame
 
 local SubTitle = Instance.new("TextLabel")
@@ -132,34 +132,69 @@ GoBtn.MouseButton1Click:Connect(function()
     GoBtn.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
 end)
 
--- دالة التنقل بالسرعة 350 الثابتة
-local function tweenTo(targetCFrame)
+-- دالة الحركة الآمنة لتفادي الانتي تشيت
+local function safeTweenTo(targetCFrame)
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     local rootPart = char.HumanoidRootPart
     
-    local distance = (rootPart.Position - targetCFrame.Position).Magnitude
-    local speed = 350
-    local duration = distance / speed
-    
-    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
-    local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
-    
-    tween:Play()
-    tween.Completed:Wait()
-end
-
--- استخراج صورة الحيوان أو البيضة ديناميكياً
-local function getObjectImage(obj)
-    local decal = obj:FindFirstChildWhichIsA("Decal", true) or obj:FindFirstChildWhichIsA("Texture", true)
-    if decal and decal.Texture ~= "" then
-        return decal.Texture
+    for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then part.CanCollide = false end
     end
-    -- صورة افتراضية بيضة في حال عدم توفر صورة مخصصة
-    return "rbxassetid://6031094678"
+    
+    local highOffset = Vector3.new(0, 25, 0)
+    local currentPos = rootPart.Position
+    local targetPos = targetCFrame.Position
+    
+    local upCFrame = CFrame.new(currentPos + highOffset)
+    local tweenUp = TweenService:Create(rootPart, TweenInfo.new((rootPart.Position - upCFrame.Position).Magnitude / 350, Enum.EasingStyle.Linear), {CFrame = upCFrame})
+    tweenUp:Play()
+    tweenUp.Completed:Wait()
+    
+    local aboveTargetCFrame = CFrame.new(targetPos + Vector3.new(0, 25, 0))
+    local tweenMove = TweenService:Create(rootPart, TweenInfo.new((rootPart.Position - aboveTargetCFrame.Position).Magnitude / 350, Enum.EasingStyle.Linear), {CFrame = aboveTargetCFrame})
+    tweenMove:Play()
+    tweenMove.Completed:Wait()
+    
+    rootPart.CFrame = targetCFrame + Vector3.new(0, 3, 0)
+    task.wait(0.2)
+    
+    local safeHighCFrame = CFrame.new(safeZonePosition.Position + highOffset)
+    local tweenSafe = TweenService:GetCollection and TweenService:Create(rootPart, TweenInfo.new((rootPart.Position - safeHighCFrame.Position).Magnitude / 350, Enum.EasingStyle.Linear), {CFrame = safeHighCFrame}) or TweenService:Create(rootPart, TweenInfo.new(1, Enum.EasingStyle.Linear), {CFrame = safeHighCFrame})
+    tweenSafe:Play()
+    tweenSafe.Completed:Wait()
+    
+    rootPart.CFrame = safeZonePosition
+    
+    for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then part.CanCollide = true end
+    end
 end
 
--- تحديث القائمة مع الصور والبيانات
+-- استخراج الصورة بشكل صحيح ودعم الأيقونات البديلة للبيض والحيوانات
+local function getObjectImage(obj)
+    -- البحث عن أي صورة مرتبطة بالموديل (Texture أو Decal)
+    for _, descendant in pairs(obj:GetDescendants()) do
+        if descendant:IsA("Decal") or descendant:IsA("Texture") then
+            if descendant.Texture and descendant.Texture ~= "" then
+                return descendant.Texture
+            end
+        elseif descendant:IsA("ImageLabel") or descendant:IsA("ImageButton") then
+            if descendant.Image and descendant.Image ~= "" then
+                return descendant.Image
+            end
+        end
+    end
+    
+    -- فحص الخصائص أو الـ Attributes إذا وجدت
+    local attrImg = obj:GetAttribute("Image") or obj:GetAttribute("Thumbnail")
+    if attrImg then return tostring(attrImg) end
+
+    -- أيقونة افتراضية واضحة ومضمونة للبيض والحيوانات في حال عدم وجود صورة مخصصة
+    return "rbxassetid://6023426915"
+end
+
+-- تحديث القائمة ديناميكياً وعرض الصور
 task.spawn(function()
     while true do
         task.wait(1.5)
@@ -193,7 +228,7 @@ task.spawn(function()
                     c.CornerRadius = UDim.new(0, 4)
                     c.Parent = itemBtn
                     
-                    -- أيقونة / صورة الحيوان أو البيضة
+                    -- إعداد صورة العنصر
                     local icon = Instance.new("ImageLabel")
                     icon.Size = UDim2.new(0, 28, 0, 28)
                     icon.Position = UDim2.new(0.02, 0, 0.12, 0)
@@ -205,7 +240,6 @@ task.spawn(function()
                     iconCorner.CornerRadius = UDim.new(0, 4)
                     iconCorner.Parent = icon
                     
-                    -- النص والمعلومات
                     local txt = Instance.new("TextLabel")
                     txt.Size = UDim2.new(0.72, 0, 1, 0)
                     txt.Position = UDim2.new(0.18, 0, 0, 0)
@@ -236,9 +270,7 @@ task.spawn(function()
     while true do
         task.wait(0.5)
         if isRunning and safeZonePosition and selectedTargetPart and selectedTargetPart.Parent then
-            tweenTo(selectedTargetPart.CFrame + Vector3.new(0, 3, 0))
-            task.wait(0.5)
-            tweenTo(safeZonePosition)
+            safeTweenTo(selectedTargetPart.CFrame)
             task.wait(1)
         end
     end
