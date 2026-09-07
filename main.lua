@@ -1,4 +1,4 @@
--- Slax Hub - Final Version (Smart Auto Play + Bomb Check)
+-- Slax Hub - Final Version (Follows target when holding ANY tool in hand)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -563,23 +563,16 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
     end
 end)
 
--- دالة للتحقق إذا كانت القنبلة معك (في الشخصية أو في الحقيبة)
-local function holdsBomb()
+-- دالة للتحقق إذا كان اللاعب ماسك أي غرض بيده حالياً
+local function isHoldingAnyItem()
     local myChar = LocalPlayer.Character
     if not myChar then return false end
     
-    -- تحقق إذا كانت القنبلة في يدك
-    local inChar = myChar:FindFirstChild("Bomb") or myChar:FindFirstChildWhichIsA("Tool")
-    if inChar and string.find(string.lower(inChar.Name), "bomb") then return true end
-    
-    -- تحقق إذا كانت القنبلة في الحقيبة (الإنفنتوري)
-    local inBackpack = LocalPlayer.Backpack:FindFirstChild("Bomb") or LocalPlayer.Backpack:FindFirstChildWhichIsA("Tool")
-    if inBackpack and string.find(string.lower(inBackpack.Name), "bomb") then return true end
-    
-    return false
+    -- إذا كان فيه Tool داخل أجزاء الشخصية يعني اللاعب ماسكه بيده حالياً
+    return myChar:FindFirstChildWhichIsA("Tool") ~= nil
 end
 
--- ميثود مخصصة لتحديد اللاعب داخل القيم فقط
+-- ميثود تحديد أقرب لاعب في الحلبة
 local function getArenaTarget()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
@@ -630,9 +623,9 @@ RunService.Stepped:Connect(function()
         end
     end
     
-    -- Smart Arena Auto Play Logic (Inside Game Only + BOMB CHECK)
+    -- Smart Auto Play (يتفعل يلحق اللاعب فقط لما تمسك أي أداة في يدك)
     if isAutoActive then
-        if holdsBomb() then -- لن يلاحقهم إلا إذا كانت القنبلة معك
+        if isHoldingAnyItem() then 
             local targetPlayer = getArenaTarget()
             if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
                 myChar.Humanoid:MoveTo(targetPlayer.Character.HumanoidRootPart.Position)
