@@ -1,4 +1,4 @@
--- Slax Hub - Original Auto Play / Target Lock Version
+-- Slax Hub - Original Pure Version
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
