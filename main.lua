@@ -1,4 +1,4 @@
--- Slax Hub - Final Version (Enhanced Auto Play + R6 Korblox + Persistent Headless)
+-- Slax Hub - Final Version (Fixed Arena Target Only)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -563,30 +563,30 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
     end
 end)
 
-local function holdsBomb()
-    local myChar = LocalPlayer.Character
-    if not myChar then return false end
-    local inChar = myChar:FindFirstChild("Bomb") or myChar:FindFirstChildWhichIsA("Tool")
-    if inChar and string.find(string.lower(inChar.Name), "bomb") then return true end
-    local inBackpack = LocalPlayer.Backpack:FindFirstChild("Bomb") or LocalPlayer.Backpack:FindFirstChildWhichIsA("Tool")
-    if inBackpack and string.find(string.lower(inBackpack.Name), "bomb") then return true end
-    return false
-end
-
+-- ميثود مخصصة لتحديد اللاعب داخل القيم فقط (مبنية على حالة صحة اللاعب ووجوده ضمن الحلبة وعدم كونه مشاهد)
 local function getArenaTarget()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
     local myPos = myChar.HumanoidRootPart.Position
     local nearest = nil
     local shortestDist = math.huge
+    
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
             local hum = player.Character:FindFirstChild("Humanoid")
+            -- شروط التحقق: اللاعب حي، صحته أكبر من 0، وموجود في حدود حلبة القيم (وليس في منطقة السبيكتيتور/الخارج)
             if hum and hum.Health > 0 then
-                local dist = (myPos - player.Character.HumanoidRootPart.Position).Magnitude
-                if dist < 250 and dist < shortestDist then
-                    shortestDist = dist
-                    nearest = player
+                -- شرط إضافي: هل هو مشارك بالحلبة؟ (عادة اللاعبين البرا يكونون مرفوعين بمكان بعيد أو في قائمة مشاهدين)
+                -- نتحقق أن ارتفاعه وموقعه ضمن حلبة القيم (المسافة القريبة وتحت حدود معينة)
+                local targetPos = player.Character.HumanoidRootPart.Position
+                local dist = (myPos - targetPos).Magnitude
+                
+                -- نتأكد أن اللاعب ليس بعيداً جداً (خارج القيم) وأن ارتفاعه منطقي داخل الحلبة
+                if dist < 250 and math.abs(targetPos.Y - myPos.Y) < 30 then
+                    if dist < shortestDist then
+                        shortestDist = dist
+                        nearest = player
+                    end
                 end
             end
         end
@@ -618,7 +618,7 @@ RunService.Stepped:Connect(function()
         end
     end
     
-    -- Improved Smart Auto Play Logic
+    -- Smart Arena Auto Play Logic (Inside Game Only)
     if isAutoActive then
         local targetPlayer = getArenaTarget()
         if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
