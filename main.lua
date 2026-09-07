@@ -1,4 +1,4 @@
--- Slax Hub - Final Clean Version (Korblox Fixed & No Emojis)
+-- Slax Hub - Final Version (Restored Music Emojis, Clean Other Features)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -99,7 +99,7 @@ Title.Parent = Header
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 22, 0, 22)
 CloseBtn.Position = UDim2.new(0.9, 0, 0.18, 0)
-CloseBtn.Text = "❌"
+CloseBtn.Text = "X"
 CloseBtn.TextSize = 9
 CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -127,7 +127,7 @@ MainLayout.Padding = UDim.new(0, 8)
 MainLayout.SortOrder = Enum.SortOrder.LayoutOrder
 MainLayout.Parent = ScrollContainer
 
--- 1. Auto Play Button
+-- 1. Auto Play Button (Clean - No Emojis)
 local AutoBtn = Instance.new("TextButton")
 AutoBtn.Size = UDim2.new(1, 0, 0, 34)
 AutoBtn.Text = "Auto Play: OFF"
@@ -141,7 +141,7 @@ local AutoCorner = Instance.new("UICorner")
 AutoCorner.CornerRadius = UDim.new(0, 6)
 AutoCorner.Parent = AutoBtn
 
--- 2. Noclip Button
+-- 2. Noclip Button (Clean - No Emojis)
 local NoclipBtn = Instance.new("TextButton")
 NoclipBtn.Size = UDim2.new(1, 0, 0, 34)
 NoclipBtn.Text = "Noclip: OFF"
@@ -155,7 +155,7 @@ local NoclipCorner = Instance.new("UICorner")
 NoclipCorner.CornerRadius = UDim.new(0, 6)
 NoclipCorner.Parent = NoclipBtn
 
--- 3. Bloxstrap Boost Button
+-- 3. Bloxstrap Boost Button (Clean - No Emojis)
 local BloxstrapBtn = Instance.new("TextButton")
 BloxstrapBtn.Size = UDim2.new(1, 0, 0, 34)
 BloxstrapBtn.Text = "Bloxstrap Boost: OFF"
@@ -169,7 +169,7 @@ local BloxstrapCorner = Instance.new("UICorner")
 BloxstrapCorner.CornerRadius = UDim.new(0, 6)
 BloxstrapCorner.Parent = BloxstrapBtn
 
--- 4. Fake Korblox Button
+-- 4. Fake Korblox Button (Clean - No Emojis)
 local KorbloxBtn = Instance.new("TextButton")
 KorbloxBtn.Size = UDim2.new(1, 0, 0, 34)
 KorbloxBtn.Text = "Fake Korblox: OFF"
@@ -183,7 +183,7 @@ local KorbloxCorner = Instance.new("UICorner")
 KorbloxCorner.CornerRadius = UDim.new(0, 6)
 KorbloxCorner.Parent = KorbloxBtn
 
--- 5. Fake Headless Button
+-- 5. Fake Headless Button (Clean - No Emojis)
 local HeadlessBtn = Instance.new("TextButton")
 HeadlessBtn.Size = UDim2.new(1, 0, 0, 34)
 HeadlessBtn.Text = "Fake Headless: OFF"
@@ -197,7 +197,7 @@ local HeadlessCorner = Instance.new("UICorner")
 HeadlessCorner.CornerRadius = UDim.new(0, 6)
 HeadlessCorner.Parent = HeadlessBtn
 
--- 6. Music Input Row
+-- 6. Music Input Row (Restored Emojis)
 local MusicControlsFrame = Instance.new("Frame")
 MusicControlsFrame.Size = UDim2.new(1, 0, 0, 32)
 MusicControlsFrame.BackgroundTransparency = 1
@@ -205,7 +205,7 @@ MusicControlsFrame.Parent = ScrollContainer
 
 local MusicBox = Instance.new("TextBox")
 MusicBox.Size = UDim2.new(0.52, 0, 1, 0)
-MusicBox.PlaceholderText = "حط ID الاغنية هنا"
+MusicBox.PlaceholderText = "🎵 حط ID الاغنية هنا"
 MusicBox.Text = ""
 MusicBox.BackgroundColor3 = Color3.fromRGB(25, 30, 42)
 MusicBox.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -223,7 +223,9 @@ PlayMusicBtn.Size = UDim2.new(0.14, 0, 1, 0)
 PlayMusicBtn.Position = UDim2.new(0.55, 0, 0, 0)
 PlayMusicBtn.Text = "▶️"
 PlayMusicBtn.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
-PlayMusicBtn.TextSize = 9
+PlayMusicBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+PlayMusicBtn.TextSize = 10
+PlayMusicBtn.Font = Enum.Font.GothamBold
 PlayMusicBtn.Parent = MusicControlsFrame
 
 local PlayCorner = Instance.new("UICorner")
@@ -235,7 +237,9 @@ StopMusicBtn.Size = UDim2.new(0.14, 0, 1, 0)
 StopMusicBtn.Position = UDim2.new(0.70, 0, 0, 0)
 StopMusicBtn.Text = "⏹️"
 StopMusicBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
-StopMusicBtn.TextSize = 9
+StopMusicBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+StopMusicBtn.TextSize = 10
+StopMusicBtn.Font = Enum.Font.GothamBold
 StopMusicBtn.Parent = MusicControlsFrame
 
 local StopCorner = Instance.new("UICorner")
@@ -247,7 +251,9 @@ SaveMusicBtn.Size = UDim2.new(0.14, 0, 1, 0)
 SaveMusicBtn.Position = UDim2.new(0.85, 0, 0, 0)
 SaveMusicBtn.Text = "💾"
 SaveMusicBtn.BackgroundColor3 = Color3.fromRGB(0, 122, 255)
-SaveMusicBtn.TextSize = 9
+SaveMusicBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SaveMusicBtn.TextSize = 10
+SaveMusicBtn.Font = Enum.Font.GothamBold
 SaveMusicBtn.Parent = MusicControlsFrame
 
 local SaveCorner = Instance.new("UICorner")
@@ -276,10 +282,10 @@ ScrollLayout.Padding = UDim.new(0, 4)
 ScrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ScrollLayout.Parent = ScrollList
 
--- 8. Status Label
+-- 8. Status Label (Restored Emojis)
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 18)
-StatusLabel.Text = "Status: Ready"
+StatusLabel.Text = "Status: Ready 🎧"
 StatusLabel.TextColor3 = Color3.fromRGB(160, 165, 180)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Font = Enum.Font.Gotham
@@ -312,23 +318,23 @@ local isKorbloxActive = false
 local isHeadlessActive = false
 
 local savedSongsList = {
-    {Name = "Song 1", Id = 102710215948261, Loud = false},
-    {Name = "Song 2", Id = 86503267790406, Loud = false},
-    {Name = "Song 3", Id = 111018848542448, Loud = true}
+    {Name = "Song 1 🎶", Id = 102710215948261, Loud = false},
+    {Name = "Song 2 🎶", Id = 86503267790406, Loud = false},
+    {Name = "Song 3 🔊", Id = 111018848542448, Loud = true}
 }
 
 local function playSongById(id)
     if id then
         currentSound.SoundId = "rbxassetid://" .. tostring(id)
         currentSound:Play()
-        StatusLabel.Text = "Status: Playing ID " .. tostring(id)
+        StatusLabel.Text = "Status: Playing ID " .. tostring(id) .. " ▶️"
         StatusLabel.TextColor3 = Color3.fromRGB(0, 180, 255)
     end
 end
 
 local function stopSong()
     currentSound:Stop()
-    StatusLabel.Text = "Status: Stopped"
+    StatusLabel.Text = "Status: Stopped ⏹️"
     StatusLabel.TextColor3 = Color3.fromRGB(200, 50, 50)
 end
 
@@ -365,7 +371,7 @@ local function refreshSavedSongsUI()
             local WarnBadge = Instance.new("TextLabel")
             WarnBadge.Size = UDim2.new(0.22, 0, 0.7, 0)
             WarnBadge.Position = UDim2.new(0.38, 0, 0.15, 0)
-            WarnBadge.Text = "عالية"
+            WarnBadge.Text = "LOUD ⚠️"
             WarnBadge.BackgroundColor3 = Color3.fromRGB(220, 100, 0)
             WarnBadge.TextColor3 = Color3.fromRGB(255, 255, 255)
             WarnBadge.Font = Enum.Font.GothamBold
@@ -382,7 +388,9 @@ local function refreshSavedSongsUI()
         PlayItemBtn.Position = UDim2.new(0.62, 0, 0.1, 0)
         PlayItemBtn.Text = "▶️"
         PlayItemBtn.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
+        PlayItemBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         PlayItemBtn.TextSize = 7
+        PlayItemBtn.Font = Enum.Font.GothamBold
         PlayItemBtn.Parent = ItemFrame
         
         local ItemPlayCorner = Instance.new("UICorner")
@@ -394,7 +402,9 @@ local function refreshSavedSongsUI()
         StopItemBtn.Position = UDim2.new(0.74, 0, 0.1, 0)
         StopItemBtn.Text = "⏹️"
         StopItemBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
+        StopItemBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         StopItemBtn.TextSize = 7
+        StopItemBtn.Font = Enum.Font.GothamBold
         StopItemBtn.Parent = ItemFrame
         
         local ItemStopCorner = Instance.new("UICorner")
@@ -406,7 +416,9 @@ local function refreshSavedSongsUI()
         DelItemBtn.Position = UDim2.new(0.86, 0, 0.1, 0)
         DelItemBtn.Text = "🗑️"
         DelItemBtn.BackgroundColor3 = Color3.fromRGB(80, 85, 100)
+        DelItemBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         DelItemBtn.TextSize = 7
+        DelItemBtn.Font = Enum.Font.GothamBold
         DelItemBtn.Parent = ItemFrame
         
         local ItemDelCorner = Instance.new("UICorner")
@@ -427,22 +439,22 @@ refreshSavedSongsUI()
 
 PlayMusicBtn.MouseButton1Click:Connect(function()
     local soundId = tonumber(MusicBox.Text:match("%d+"))
-    if soundId then playSongById(soundId) else MusicBox.Text = ""; MusicBox.PlaceholderText = "ID غير صحيح!" end
+    if soundId then playSongById(soundId) else MusicBox.Text = ""; MusicBox.PlaceholderText = "ID غير صحيح! ❌" end
 end)
 
 StopMusicBtn.MouseButton1Click:Connect(stopSong)
 
 SaveMusicBtn.MouseButton1Click:Connect(function()
     if #savedSongsList >= 5 then
-        StatusLabel.Text = "وصلت الحد الأقصى (5 أغاني)"
+        StatusLabel.Text = "وصلت الحد الأقصى (5 أغاني) ⚠️"
         StatusLabel.TextColor3 = Color3.fromRGB(255, 70, 70)
         return
     end
     local soundId = tonumber(MusicBox.Text:match("%d+"))
     if soundId then
-        table.insert(savedSongsList, {Name = "Song " .. tostring(#savedSongsList + 1), Id = soundId, Loud = false})
+        table.insert(savedSongsList, {Name = "Song " .. tostring(#savedSongsList + 1) .. " 🎶", Id = soundId, Loud = false})
         MusicBox.Text = ""
-        MusicBox.PlaceholderText = "تم الحفظ!"
+        MusicBox.PlaceholderText = "تم الحفظ بنجاح! ✅"
         refreshSavedSongsUI()
     end
 end)
@@ -508,7 +520,6 @@ BloxstrapBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Fixed Fake Korblox Logic (Supports R6 and R15 parts fully)
 KorbloxBtn.MouseButton1Click:Connect(function()
     isKorbloxActive = not isKorbloxActive
     KorbloxBtn.Text = isKorbloxActive and "Fake Korblox: ON" or "Fake Korblox: OFF"
@@ -516,21 +527,27 @@ KorbloxBtn.MouseButton1Click:Connect(function()
     
     local char = LocalPlayer.Character
     if char then
-        local partsToHide = {
+        local parts = {
             char:FindFirstChild("RightLeg"),
             char:FindFirstChild("RightLowerLeg"),
             char:FindFirstChild("RightFoot")
         }
-        for _, part in pairs(partsToHide) do
+        for _, part in pairs(parts) do
             if part and part:IsA("BasePart") then
-                part.Transparency = isKorbloxActive and 1 or 0
-                part.LocalTransparencyModifier = isKorbloxActive and 1 or 0
+                if isKorbloxActive then
+                    part.Transparency = 1
+                    part.LocalTransparencyModifier = 1
+                    part.Size = Vector3.new(0.01, 0.01, 0.01)
+                else
+                    part.Transparency = 0
+                    part.LocalTransparencyModifier = 0
+                    part.Size = Vector3.new(1, 2, 1)
+                end
             end
         end
     end
 end)
 
--- Fake Headless Logic
 HeadlessBtn.MouseButton1Click:Connect(function()
     isHeadlessActive = not isHeadlessActive
     HeadlessBtn.Text = isHeadlessActive and "Fake Headless: ON" or "Fake Headless: OFF"
