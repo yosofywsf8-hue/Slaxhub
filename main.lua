@@ -1,11 +1,10 @@
--- Slax Hub - Original Pure Version
+-- Slax Hub - Final Version (Enhanced Auto Play + R6 Korblox + Persistent Headless)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
 
 -- Cleanup previous UI
 if LocalPlayer.PlayerGui:FindFirstChild("SlaxHubPremium") then
@@ -46,7 +45,7 @@ SquareStroke.Parent = ToggleButton
 -- MAIN WINDOW
 ---------------------------------------------------------
 local MainFrame = Instance.new("ImageLabel")
-MainFrame.Size = UDim2.new(0, 310, 0, 470)
+MainFrame.Size = UDim2.new(0, 310, 0, 510)
 MainFrame.Position = UDim2.new(0.2, 0, 0.1, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
@@ -89,7 +88,7 @@ Header.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0.7, 0, 1, 0)
 Title.Position = UDim2.new(0.04, 0, 0, 0)
-Title.Text = "Slax Hub | Auto Play"
+Title.Text = "Slax Hub | Timebomb Duels"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
@@ -120,7 +119,7 @@ ScrollContainer.Position = UDim2.new(0.04, 0, 0.09, 0)
 ScrollContainer.BackgroundTransparency = 1
 ScrollContainer.BorderSizePixel = 0
 ScrollContainer.ScrollBarThickness = 3
-ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 560)
+ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 570)
 ScrollContainer.Parent = MainFrame
 
 local MainLayout = Instance.new("UIListLayout")
@@ -129,18 +128,18 @@ MainLayout.SortOrder = Enum.SortOrder.LayoutOrder
 MainLayout.Parent = ScrollContainer
 
 -- 1. Auto Play Button
-local AutoPlayBtn = Instance.new("TextButton")
-AutoPlayBtn.Size = UDim2.new(1, 0, 0, 34)
-AutoPlayBtn.Text = "Auto Play: OFF"
-AutoPlayBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
-AutoPlayBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-AutoPlayBtn.Font = Enum.Font.GothamBold
-AutoPlayBtn.TextSize = 10
-AutoPlayBtn.Parent = ScrollContainer
+local AutoBtn = Instance.new("TextButton")
+AutoBtn.Size = UDim2.new(1, 0, 0, 34)
+AutoBtn.Text = "Auto Play: OFF"
+AutoBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
+AutoBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoBtn.Font = Enum.Font.GothamBold
+AutoBtn.TextSize = 11
+AutoBtn.Parent = ScrollContainer
 
-local AutoPlayCorner = Instance.new("UICorner")
-AutoPlayCorner.CornerRadius = UDim.new(0, 6)
-AutoPlayCorner.Parent = AutoPlayBtn
+local AutoCorner = Instance.new("UICorner")
+AutoCorner.CornerRadius = UDim.new(0, 6)
+AutoCorner.Parent = AutoBtn
 
 -- 2. Noclip Button
 local NoclipBtn = Instance.new("TextButton")
@@ -312,7 +311,7 @@ currentSound.Volume = 2
 currentSound.Looped = true
 currentSound.Parent = SoundService
 
-local isAutoPlayActive = false
+local isAutoActive = false
 local isNoclipActive = false
 local isBloxstrapActive = false
 local isKorbloxActive = false
@@ -467,7 +466,7 @@ end)
 
 -- Close Button (X)
 CloseBtn.MouseButton1Click:Connect(function()
-    isAutoPlayActive = false
+    isAutoActive = false
     isNoclipActive = false
     isBloxstrapActive = false
     isKorbloxActive = false
@@ -481,10 +480,10 @@ CloseBtn.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
-AutoPlayBtn.MouseButton1Click:Connect(function()
-    isAutoPlayActive = not isAutoPlayActive
-    AutoPlayBtn.Text = isAutoPlayActive and "Auto Play: ON" or "Auto Play: OFF"
-    AutoPlayBtn.BackgroundColor3 = isAutoPlayActive and Color3.fromRGB(0, 122, 255) or Color3.fromRGB(40, 45, 60)
+AutoBtn.MouseButton1Click:Connect(function()
+    isAutoActive = not isAutoActive
+    AutoBtn.Text = isAutoActive and "Auto Play: ON" or "Auto Play: OFF"
+    AutoBtn.BackgroundColor3 = isAutoActive and Color3.fromRGB(40, 167, 69) or Color3.fromRGB(220, 53, 69)
 end)
 
 NoclipBtn.MouseButton1Click:Connect(function()
@@ -547,7 +546,7 @@ HeadlessBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Persistent character load handler (Keeps Headless active after respawn)
+-- Persistent character load handler (Keeps Headless/Korblox active after respawn/rounds)
 LocalPlayer.CharacterAdded:Connect(function(newChar)
     task.wait(1.2)
     if isHeadlessActive then
@@ -564,29 +563,38 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
     end
 end)
 
--- Helper to find nearest target
-local function getNearestTarget()
+local function holdsBomb()
+    local myChar = LocalPlayer.Character
+    if not myChar then return false end
+    local inChar = myChar:FindFirstChild("Bomb") or myChar:FindFirstChildWhichIsA("Tool")
+    if inChar and string.find(string.lower(inChar.Name), "bomb") then return true end
+    local inBackpack = LocalPlayer.Backpack:FindFirstChild("Bomb") or LocalPlayer.Backpack:FindFirstChildWhichIsA("Tool")
+    if inBackpack and string.find(string.lower(inBackpack.Name), "bomb") then return true end
+    return false
+end
+
+local function getArenaTarget()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
     local myPos = myChar.HumanoidRootPart.Position
-    
-    local closestTarget = nil
-    local shortestDist = 120
-    
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") and plr.Character.Humanoid.Health > 0 then
-            local targetRoot = plr.Character.HumanoidRootPart
-            local dist = (targetRoot.Position - myPos).Magnitude
-            if dist < shortestDist then
-                shortestDist = dist
-                closestTarget = targetRoot
+    local nearest = nil
+    local shortestDist = math.huge
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local hum = player.Character:FindFirstChild("Humanoid")
+            if hum and hum.Health > 0 then
+                local dist = (myPos - player.Character.HumanoidRootPart.Position).Magnitude
+                if dist < 250 and dist < shortestDist then
+                    shortestDist = dist
+                    nearest = player
+                end
             end
         end
     end
-    return closestTarget
+    return nearest
 end
 
-RunService.RenderStepped:Connect(function()
+RunService.Stepped:Connect(function()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("Humanoid") or not myChar:FindFirstChild("HumanoidRootPart") then return end
     
@@ -596,16 +604,7 @@ RunService.RenderStepped:Connect(function()
         end
     end
     
-    -- Original Auto Play / Target Lock Logic
-    if isAutoPlayActive then
-        local targetRoot = getNearestTarget()
-        if targetRoot then
-            local targetPos = targetRoot.Position
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPos)
-        end
-    end
-    
-    -- R6 Korblox Logic
+    -- R6 Korblox Logic (Targets "Right Leg")
     local rightLeg = myChar:FindFirstChild("Right Leg")
     if rightLeg and rightLeg:IsA("BasePart") then
         if isKorbloxActive then
@@ -616,6 +615,14 @@ RunService.RenderStepped:Connect(function()
             rightLeg.Transparency = 0
             rightLeg.LocalTransparencyModifier = 0
             rightLeg.Size = Vector3.new(1, 2, 1)
+        end
+    end
+    
+    -- Improved Smart Auto Play Logic
+    if isAutoActive then
+        local targetPlayer = getArenaTarget()
+        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            myChar.Humanoid:MoveTo(targetPlayer.Character.HumanoidRootPart.Position)
         end
     end
 end)
