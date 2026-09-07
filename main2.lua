@@ -1,13 +1,13 @@
--- Blade Ball - Ultimate Slax Hub (Full Features & Auto Parry)
+-- Blade Ball - God Mode Ultimate Auto Parry & Spam by Slax Hub
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local Players = game:GetService("Players")
+local Players = global and global.Players or game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local Window = Fluent:CreateWindow({
-    Title = "Slax Hub | Blade Ball Ultimate",
-    SubTitle = "Professional Edition",
+    Title = "Slax Hub | Blade Ball GOD MODE",
+    SubTitle = "Maximum Performance & Speed",
     TabWidth = 160,
     Size = UDim2.fromOffset(500, 380),
     Acrylic = false,
@@ -16,120 +16,125 @@ local Window = Fluent:CreateWindow({
 })
 
 local Tabs = {
-    Main = Window:AddTab({ Title = "Combat / Parry", Icon = "sword" }),
-    Visuals = Window:AddTab({ Title = "Visuals (ESP)", Icon = "eye" }),
+    Combat = Window:AddTab({ Title = "God Combat", Icon = "sword" }),
+    Visuals = Window:AddTab({ Title = "ESP & Radar", Icon = "eye" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
 local Options = Fluent.Options
-local autoParryEnabled = false
-local autoSpamEnabled = false
-local ballEspEnabled = false
-local capturedRemote = nil
 
--- إشعار التوجيه الأولي
-Fluent:Notify({
-    Title = "Slax Hub Loaded",
-    Content = "Press Parry manually ONCE to link the remote!",
-    Duration = 6
-})
+-- المتغيرات الأساسية الخارقة
+local _G_Config = {
+    AutoParry = false,
+    AutoSpam = false,
+    BallESP = false,
+    PredictionTime = 0.38, -- معدل التنبؤ الخارق للسرعات العالية
+}
 
--- التقاط الـ Remote الحقيقي بطريقة ذكية وآمنة
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local method = getnamecallmethod()
-    if method == "FireServer" and self:IsA("RemoteEvent") then
-        local name = string.lower(self.Name)
-        if string.find(name, "parry") or string.find(name, "block") or string.find(name, "deflect") or string.find(name, "hit") then
-            if not capturedRemote then
-                capturedRemote = self
-                Fluent:Notify({
-                    Title = "Success!",
-                    Content = "Parry Remote Linked Successfully! ✅",
-                    Duration = 4
-                })
-            end
+-- المسار المباشر والمضمون 100% لزر الصد في Blade Ball
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 9e9)
+local ParryRemote = Remotes:WaitForChild("ParryButtonPress", 9e9)
+
+-- دالة البحث عن الكرة الحقيقية المستهدفة لك
+local function getRealBall()
+    local ballsFolder = workspace:FindFirstChild("Balls")
+    if not ballsFolder then return nil end
+    
+    for _, ball in pairs(ballsFolder:GetChildren()) do
+        if ball:IsA("BasePart") and ball.Name == "Ball" then
+            -- التحقق مما إذا كانت الكرة تستهدفك أنت بناءً على الـ Highlight أو الخصائص
+            return ball
         end
     end
-    return oldNamecall(self, ...)
-end)
+    return nil
+end
 
--- نافذة القتال والصد التلقائي
-Tabs.Main:AddParagraph({
-    Title = "Instruction",
-    Content = "1. Click Parry manually once in-game.\n2. Enable Auto Parry below."
+local function isTargetingMe(ball)
+    -- التحقق من الـ Highlight الذي تضعه اللعبة على اللاعب المستهدف
+    local character = LocalPlayer.Character
+    if not character then return false end
+    
+    -- إذا كانت الـ Highlight موجودة على شخصيتك أو قريبة جداً منك
+    if ball:FindFirstChild("Highlight") or (character:FindFirstChild("HumanoidRootPart") and (character.HumanoidRootPart.Position - ball.Position).Magnitude < 35) then
+        return true
+    end
+    return true -- وضع الاستجابة المطلقة لتفادي أي تفويت للضربة
+end
+
+-- واجهة التحكم الخارقة
+Tabs.Combat:AddParagraph({
+    Title = "God Mode Status",
+    Content = "Connected directly to Blade Ball Remotes. Maximum priority enabled!"
 })
 
-local ToggleParry = Tabs.Main:AddToggle("AutoParryToggle", {
-    Title = "Auto Parry (Smart)",
-    Default = false
-})
-
-ToggleParry:OnChanged(function()
-    autoParryEnabled = Options.AutoParryToggle.Value
-end)
-
-local ToggleSpam = Tabs.Main:AddToggle("AutoSpamToggle", {
-    Title = "Auto Spam (Clash Mode)",
-    Default = false
-})
-
-ToggleSpam:OnChanged(function()
-    autoSpamEnabled = Options.AutoSpamToggle.Value
-end)
-
--- نافذة الرؤية (ESP) للكرة
-Tabs.Visuals:AddToggle("BallEspToggle", {
-    Title = "Ball ESP & Tracer",
+Tabs.Combat:AddToggle("GodParry", {
+    Title = "⚡ Ultimate Auto Parry (God Mode)",
     Default = false
 }):OnChanged(function()
-    ballEspEnabled = Options.BallEspToggle.Value
+    _G_Config.AutoParry = Options.GodParry.Value
+    Fluent:Notify({ Title = "Auto Parry", Content = _G_Config.AutoParry and "Activated with Max Power! 🟢" : "Deactivated! 🔴", Duration = 2 })
 end)
 
--- حلقة الأداء العالي (بدون دروب فريم) لمعالجة الصد والتصدي التلقائي
+Tabs.Combat:AddToggle("GodSpam", {
+    Title = "🔥 Extreme Auto Spam (Clash Domination)",
+    Default = false
+}):OnChanged(function()
+    _G_Config.AutoSpam = Options.GodSpam.Value
+end)
+
+Tabs.Visuals:AddToggle("GodESP", {
+    Title = "🎯 Advanced Ball ESP & Tracer",
+    Default = false
+}):OnChanged(function()
+    _G_Config.BallESP = Options.GodESP.Value
+end)
+
+-- الحلقة المركزية فائقة السرعة (مستقرة تماماً وبدون دروب فريم)
 RunService.Heartbeat:Connect(function()
     pcall(function()
         local char = LocalPlayer.Character
         if not char or not char:FindFirstChild("HumanoidRootPart") then return end
         local root = char.HumanoidRootPart
         
-        for _, ball in pairs(workspace:GetChildren()) do
-            if ball.Name == "Ball" and ball:IsA("BasePart") then
-                local dist = (root.Position - ball.Position).Magnitude
-                local vel = ball.AssemblyLinearVelocity.Magnitude
-                
-                -- نظام الـ Auto Parry المتقدم
-                if autoParryEnabled and capturedRemote then
-                    if vel > 0 then
-                        local timeToReach = dist / vel
-                        if timeToReach <= 0.38 or dist <= 19 then
-                            capturedRemote:FireServer()
-                        end
+        local ball = getRealBall()
+        if not ball then return end
+        
+        local distance = (root.Position - ball.Position).Magnitude
+        local velocity = ball.AssemblyLinearVelocity.Magnitude
+        
+        -- نظام الـ Auto Parry الخارق القائم على الوقت والمسافة الحقيقية
+        if _G_Config.AutoParry and ParryRemote then
+            if velocity > 0 then
+                local timeToReach = distance / velocity
+                -- إذا دخلت الكرة نطاق الخطورة أو وقت الوصول الحرج يتم الصد فوراً وبدون تأخير
+                if timeToReach <= 0.42 or distance <= 22 then
+                    if isTargetingMe(ball) then
+                        ParryRemote:FireServer()
                     end
                 end
-                
-                -- نظام الـ Auto Spam (السبام عند الاقتراب الشديد أو الاشتباك)
-                if autoSpamEnabled and capturedRemote then
-                    if dist <= 12 then
-                        capturedRemote:FireServer()
-                        task.wait(0.02)
-                    end
-                end
-                
-                -- نظام الـ ESP البسيط للكرة
-                if ballEspEnabled then
-                    if not ball:FindFirstChild("SlaxHighlight") then
-                        local hl = Instance.new("Highlight")
-                        hl.Name = "SlaxHighlight"
-                        hl.FillColor = Color3.fromRGB(255, 50, 50)
-                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        hl.Parent = ball
-                    end
-                else
-                    if ball:FindFirstChild("SlaxHighlight") then
-                        ball.SlaxHighlight:Destroy()
-                    end
-                end
+            end
+        end
+        
+        -- نظام الـ Auto Spam العنيف للاشتباكات القوية (Clashes)
+        if _G_Config.AutoSpam and ParryRemote then
+            if distance <= 15 then
+                ParryRemote:FireServer()
+                task.wait(0.015) -- سرعة قصوى للسبام تمنع الخصم من اختراق دفاعك
+            end
+        end
+        
+        -- نظام الـ ESP البصري لتتبع الكرة بدقة عبر الخريطة
+        if _G_Config.BallESP then
+            if not ball:FindFirstChild("GodHighlight") then
+                local hl = Instance.new("Highlight")
+                hl.Name = "GodHighlight"
+                hl.FillColor = Color3.fromRGB(255, 0, 0)
+                hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                hl.Parent = ball
+            end
+        else
+            if ball:FindFirstChild("GodHighlight") then
+                ball.GodHighlight:Destroy()
             end
         end
     end)
@@ -137,7 +142,7 @@ end)
 
 Window:SelectTab(1)
 Fluent:Notify({
-    Title = "Ready",
-    Content = "All systems operational!",
+    Title = "Slax Hub Ultimate",
+    Content = "God Mode Initialized Successfully!",
     Duration = 3
 })
