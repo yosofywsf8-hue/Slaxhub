@@ -1,4 +1,4 @@
--- Slax Hub - Final Absolute Fixed Version
+-- Slax Hub - Clean & Fresh Version
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -417,12 +417,12 @@ SaveMusicBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- إصلاح تفعيل زر القائمة المربع (فتح وإغلاق)
+-- زر إظهار وإخفاء القائمة المربع
 ToggleButton.MouseButton1Click:Connect(function()
     MainFrame.Visible = not MainFrame.Visible
 end)
 
--- إصلاح تفعيل زر الإغلاق (X) بالكامل
+-- زر الإغلاق النهائي (X)
 CloseBtn.MouseButton1Click:Connect(function()
     isAutoActive = false
     isNoclipActive = false
