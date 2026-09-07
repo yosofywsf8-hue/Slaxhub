@@ -1,4 +1,4 @@
--- Slax Hub - Final Version (Restored Music Emojis, Clean Other Features)
+-- Slax Hub - Final Version (R6 Korblox Only)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -127,7 +127,7 @@ MainLayout.Padding = UDim.new(0, 8)
 MainLayout.SortOrder = Enum.SortOrder.LayoutOrder
 MainLayout.Parent = ScrollContainer
 
--- 1. Auto Play Button (Clean - No Emojis)
+-- 1. Auto Play Button
 local AutoBtn = Instance.new("TextButton")
 AutoBtn.Size = UDim2.new(1, 0, 0, 34)
 AutoBtn.Text = "Auto Play: OFF"
@@ -141,7 +141,7 @@ local AutoCorner = Instance.new("UICorner")
 AutoCorner.CornerRadius = UDim.new(0, 6)
 AutoCorner.Parent = AutoBtn
 
--- 2. Noclip Button (Clean - No Emojis)
+-- 2. Noclip Button
 local NoclipBtn = Instance.new("TextButton")
 NoclipBtn.Size = UDim2.new(1, 0, 0, 34)
 NoclipBtn.Text = "Noclip: OFF"
@@ -155,7 +155,7 @@ local NoclipCorner = Instance.new("UICorner")
 NoclipCorner.CornerRadius = UDim.new(0, 6)
 NoclipCorner.Parent = NoclipBtn
 
--- 3. Bloxstrap Boost Button (Clean - No Emojis)
+-- 3. Bloxstrap Boost Button
 local BloxstrapBtn = Instance.new("TextButton")
 BloxstrapBtn.Size = UDim2.new(1, 0, 0, 34)
 BloxstrapBtn.Text = "Bloxstrap Boost: OFF"
@@ -169,7 +169,7 @@ local BloxstrapCorner = Instance.new("UICorner")
 BloxstrapCorner.CornerRadius = UDim.new(0, 6)
 BloxstrapCorner.Parent = BloxstrapBtn
 
--- 4. Fake Korblox Button (Clean - No Emojis)
+-- 4. Fake Korblox Button
 local KorbloxBtn = Instance.new("TextButton")
 KorbloxBtn.Size = UDim2.new(1, 0, 0, 34)
 KorbloxBtn.Text = "Fake Korblox: OFF"
@@ -183,7 +183,7 @@ local KorbloxCorner = Instance.new("UICorner")
 KorbloxCorner.CornerRadius = UDim.new(0, 6)
 KorbloxCorner.Parent = KorbloxBtn
 
--- 5. Fake Headless Button (Clean - No Emojis)
+-- 5. Fake Headless Button
 local HeadlessBtn = Instance.new("TextButton")
 HeadlessBtn.Size = UDim2.new(1, 0, 0, 34)
 HeadlessBtn.Text = "Fake Headless: OFF"
@@ -197,7 +197,7 @@ local HeadlessCorner = Instance.new("UICorner")
 HeadlessCorner.CornerRadius = UDim.new(0, 6)
 HeadlessCorner.Parent = HeadlessBtn
 
--- 6. Music Input Row (Restored Emojis)
+-- 6. Music Input Row
 local MusicControlsFrame = Instance.new("Frame")
 MusicControlsFrame.Size = UDim2.new(1, 0, 0, 32)
 MusicControlsFrame.BackgroundTransparency = 1
@@ -282,7 +282,7 @@ ScrollLayout.Padding = UDim.new(0, 4)
 ScrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ScrollLayout.Parent = ScrollList
 
--- 8. Status Label (Restored Emojis)
+-- 8. Status Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 18)
 StatusLabel.Text = "Status: Ready 🎧"
@@ -524,28 +524,6 @@ KorbloxBtn.MouseButton1Click:Connect(function()
     isKorbloxActive = not isKorbloxActive
     KorbloxBtn.Text = isKorbloxActive and "Fake Korblox: ON" or "Fake Korblox: OFF"
     KorbloxBtn.BackgroundColor3 = isKorbloxActive and Color3.fromRGB(255, 140, 0) or Color3.fromRGB(40, 45, 60)
-    
-    local char = LocalPlayer.Character
-    if char then
-        local parts = {
-            char:FindFirstChild("RightLeg"),
-            char:FindFirstChild("RightLowerLeg"),
-            char:FindFirstChild("RightFoot")
-        }
-        for _, part in pairs(parts) do
-            if part and part:IsA("BasePart") then
-                if isKorbloxActive then
-                    part.Transparency = 1
-                    part.LocalTransparencyModifier = 1
-                    part.Size = Vector3.new(0.01, 0.01, 0.01)
-                else
-                    part.Transparency = 0
-                    part.LocalTransparencyModifier = 0
-                    part.Size = Vector3.new(1, 2, 1)
-                end
-            end
-        end
-    end
 end)
 
 HeadlessBtn.MouseButton1Click:Connect(function()
@@ -604,6 +582,20 @@ RunService.Stepped:Connect(function()
     if isNoclipActive then
         for _, part in pairs(myChar:GetChildren()) do
             if part:IsA("BasePart") then part.CanCollide = false end
+        end
+    end
+    
+    -- R6 Korblox Logic (Targets "Right Leg")
+    local rightLeg = myChar:FindFirstChild("Right Leg")
+    if rightLeg and rightLeg:IsA("BasePart") then
+        if isKorbloxActive then
+            rightLeg.Transparency = 1
+            rightLeg.LocalTransparencyModifier = 1
+            rightLeg.Size = Vector3.new(0.01, 0.01, 0.01)
+        else
+            rightLeg.Transparency = 0
+            rightLeg.LocalTransparencyModifier = 0
+            rightLeg.Size = Vector3.new(1, 2, 1)
         end
     end
     
