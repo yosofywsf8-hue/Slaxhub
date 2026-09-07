@@ -1,4 +1,4 @@
--- Steal An Egg - Optimized No-Lag Script by Slax Hub
+-- Steal An Egg - Final Fixed ESP & Speed 350 by Slax Hub
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -123,29 +123,28 @@ EspBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- دالة بحث محسنة وخفيفة لا تسبب دروب فريم
+-- دالة بحث شاملة لكل البيض في الخريطة بدون استثناء
 local function getStrongestEggPart()
     local bestPart = nil
     local maxScore = -1
     local weights = {["Divine"] = 5000, ["Secret"] = 4000, ["Cosmic"] = 3000, ["Mythic"] = 2000, ["Legendary"] = 1000}
     
-    for _, obj in pairs(Workspace:GetChildren()) do
-        if obj:IsA("Folder") or obj:IsA("Model") then
-            for _, child in pairs(obj:GetChildren()) do
-                if child:IsA("Model") and (string.find(string.lower(child.Name), "egg") or child:FindFirstChild("Rarity") or child:FindFirstChild("PetName")) then
-                    local primaryPart = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart")
-                    if primaryPart then
-                        local score = 100
-                        local rarityObj = child:FindFirstChild("Rarity")
-                        if rarityObj and weights[tostring(rarityObj.Value)] then
-                            score = weights[tostring(rarityObj.Value)]
-                        end
-                        
-                        if score > maxScore then
-                            maxScore = score
-                            bestPart = primaryPart
-                        end
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and (string.find(string.lower(obj.Name), "egg") or obj:FindFirstChild("Rarity") or obj:GetAttribute("Rarity")) then
+            local primaryPart = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+            if primaryPart then
+                local score = 100
+                local rarityText = tostring(obj:FindFirstChild("Rarity") and obj.Rarity.Value or obj:GetAttribute("Rarity") or "Legendary")
+                for rName, wVal in pairs(weights) do
+                    if string.find(string.lower(rarityText), string.lower(rName)) then
+                        score = wVal
+                        break
                     end
+                end
+                
+                if score > maxScore then
+                    maxScore = score
+                    bestPart = primaryPart
                 end
             end
         end
@@ -153,20 +152,20 @@ local function getStrongestEggPart()
     return bestPart
 end
 
--- نظام ESP خفيف ومحدث كل فترة بدل الضغط على الإطارات
+-- نظام ESP شامل لكامل الماب مع استخراج البيانات الدقيقة
 task.spawn(function()
     while true do
-        task.wait(1) -- تحديث الـ ESP كل ثانية لعدم التسبب بأي لاج
+        task.wait(1)
         if isEspActive then
             for _, obj in pairs(Workspace:GetDescendants()) do
-                if obj:IsA("Model") and (string.find(string.lower(obj.Name), "egg") or obj:FindFirstChild("Rarity") or obj:FindFirstChild("PetName")) then
+                if obj:IsA("Model") and (string.find(string.lower(obj.Name), "egg") or obj:FindFirstChild("Rarity") or obj:GetAttribute("Rarity") or obj:FindFirstChild("PetName")) then
                     local root = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
                     if root then
                         if not espCache[obj] then
                             local billboard = Instance.new("BillboardGui")
                             billboard.Name = "SlaxUniversalEggESP"
-                            billboard.Size = UDim2.new(0, 200, 0, 60)
-                            billboard.StudsOffset = Vector3.new(0, 3, 0)
+                            billboard.Size = UDim2.new(0, 220, 0, 70)
+                            billboard.StudsOffset = Vector3.new(0, 3.5, 0)
                             billboard.AlwaysOnTop = true
                             
                             local textLabel = Instance.new("TextLabel")
@@ -184,15 +183,16 @@ task.spawn(function()
                         
                         local cache = espCache[obj]
                         if cache and cache.Text then
-                            local rarityVal = obj:FindFirstChild("Rarity") and obj.Rarity.Value or "Legendary"
-                            local petVal = obj:FindFirstChild("PetName") and obj.PetName.Value or obj.Name
-                            local tierVal = obj:FindFirstChild("Tier") and obj.Tier.Value or obj:FindFirstChild("Level") and obj.Level.Value or "Max"
+                            local rarityVal = obj:FindFirstChild("Rarity") and obj.Rarity.Value or obj:GetAttribute("Rarity") or "Legendary"
+                            local petVal = obj:FindFirstChild("PetName") and obj.PetName.Value or obj:GetAttribute("PetName") or obj.Name
+                            local tierVal = obj:FindFirstChild("Tier") and obj.Tier.Value or obj:FindFirstChild("Level") and obj.Level.Value or obj:GetAttribute("Tier") or obj:GetAttribute("Level") or "Max"
                             
-                            cache.Text.Text = string.string and string.format("🥚 %s\n⭐ Rarity: %s\n⚡ Tier: %s", tostring(petVal), tostring(rarityVal), tostring(tierVal)) or ("🥚 " .. tostring(petVal))
+                            cache.Text.Text = string.format("🥚 Egg: %s\n⭐ Rarity: %s\n⚡ Tier: %s", tostring(petVal), tostring(rarityVal), tostring(tierVal))
                             
-                            if string.find(string.lower(tostring(rarityVal)), "divine") or string.find(string.lower(tostring(rarityVal)), "secret") then
+                            local rLower = string.lower(tostring(rarityVal))
+                            if string.find(rLower, "divine") or string.find(rLower, "secret") then
                                 cache.Text.TextColor3 = Color3.fromRGB(255, 50, 50)
-                            elseif string.find(string.lower(tostring(rarityVal)), "cosmic") or string.find(string.lower(tostring(rarityVal)), "mythic") then
+                            elseif string.find(rLower, "cosmic") or string.find(rLower, "mythic") then
                                 cache.Text.TextColor3 = Color3.fromRGB(180, 50, 255)
                             else
                                 cache.Text.TextColor3 = Color3.fromRGB(255, 215, 0)
@@ -203,7 +203,6 @@ task.spawn(function()
             end
         end
         
-        -- تنظيف البيانات التالفة
         for obj, cache in pairs(espCache) do
             if not obj or not obj.Parent then
                 if cache.Gui then cache.Gui:Destroy() end
@@ -213,14 +212,14 @@ task.spawn(function()
     end
 end)
 
--- دالة التنقل السريع بسرعة 500
+-- دالة التنقل السريع بالسرعة الجديدة (350)
 local function tweenTo(targetCFrame)
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     local rootPart = char.HumanoidRootPart
     
     local distance = (rootPart.Position - targetCFrame.Position).Magnitude
-    local speed = 500
+    local speed = 350
     local duration = distance / speed
     
     local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
@@ -230,7 +229,7 @@ local function tweenTo(targetCFrame)
     tween.Completed:Wait()
 end
 
--- حلقة زراعة خفيفة وآمنة
+-- حلقة الزراعة
 task.spawn(function()
     while true do
         task.wait(0.8)
