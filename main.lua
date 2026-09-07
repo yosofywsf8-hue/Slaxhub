@@ -1,10 +1,9 @@
--- Slax Hub - Smart Target Prediction & Lock
+-- Slax Hub - Smart Prediction (No Forced Shift Lock)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
-local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
@@ -90,7 +89,7 @@ Header.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0.7, 0, 1, 0)
 Title.Position = UDim2.new(0.04, 0, 0, 0)
-Title.Text = "Slax Hub | Prediction Lock"
+Title.Text = "Slax Hub | Free Camera"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
@@ -129,7 +128,7 @@ MainLayout.Padding = UDim.new(0, 8)
 MainLayout.SortOrder = Enum.SortOrder.LayoutOrder
 MainLayout.Parent = ScrollContainer
 
--- 1. Prediction Lock Button
+-- 1. Prediction Shortcut Button (No Lock)
 local PredictLockBtn = Instance.new("TextButton")
 PredictLockBtn.Size = UDim2.new(1, 0, 0, 34)
 PredictLockBtn.Text = "Prediction Shortcut: OFF"
@@ -597,17 +596,15 @@ RunService.RenderStepped:Connect(function()
         end
     end
     
-    -- Smart Prediction & Shortcut Tracking (Anticipates enemy forward movement/dodges)
+    -- Prediction Shortcut Logic (Calculates path without changing character CFrame / No forced Shift Lock)
     if isPredictLockActive then
         local targetRoot = getNearestTarget()
         if targetRoot then
-            local root = myChar.HumanoidRootPart
-            local targetVel = targetRoot.AssemblyLinearVelocity -- Get target movement velocity to predict path
-            -- Predict where the enemy will be ahead of time based on their movement speed vector
+            local targetVel = targetRoot.AssemblyLinearVelocity
             local predictedPos = targetRoot.Position + (Vector3.new(targetVel.X, 0, targetVel.Z) * 0.35)
             
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, predictedPos)
-            root.CFrame = CFrame.new(root.Position, Vector3.new(predictedPos.X, root.Position.Y, predictedPos.Z))
+            -- Smoothly directs camera only to the predicted position, leaving character and shift-lock completely free
+            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, predictedPos), 0.2)
         end
     end
     
