@@ -1,4 +1,4 @@
--- Slax Hub - Clean & Fresh Version
+-- Slax Hub - Final Version with Korblox & Headless
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -119,7 +119,7 @@ ScrollContainer.Position = UDim2.new(0.04, 0, 0.09, 0)
 ScrollContainer.BackgroundTransparency = 1
 ScrollContainer.BorderSizePixel = 0
 ScrollContainer.ScrollBarThickness = 3
-ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 440)
+ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 530)
 ScrollContainer.Parent = MainFrame
 
 local MainLayout = Instance.new("UIListLayout")
@@ -129,7 +129,7 @@ MainLayout.Parent = ScrollContainer
 
 -- 1. Auto Play Button
 local AutoBtn = Instance.new("TextButton")
-AutoBtn.Size = UDim2.new(1, 0, 0, 36)
+AutoBtn.Size = UDim2.new(1, 0, 0, 34)
 AutoBtn.Text = "Auto Play: OFF"
 AutoBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
 AutoBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -143,7 +143,7 @@ AutoCorner.Parent = AutoBtn
 
 -- 2. Noclip Button
 local NoclipBtn = Instance.new("TextButton")
-NoclipBtn.Size = UDim2.new(1, 0, 0, 36)
+NoclipBtn.Size = UDim2.new(1, 0, 0, 34)
 NoclipBtn.Text = "Noclip: OFF 👻"
 NoclipBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
 NoclipBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -155,9 +155,9 @@ local NoclipCorner = Instance.new("UICorner")
 NoclipCorner.CornerRadius = UDim.new(0, 6)
 NoclipCorner.Parent = NoclipBtn
 
--- 3. Bloxstrap Graphics Optimizer Button
+-- 3. Bloxstrap Boost Button
 local BloxstrapBtn = Instance.new("TextButton")
-BloxstrapBtn.Size = UDim2.new(1, 0, 0, 36)
+BloxstrapBtn.Size = UDim2.new(1, 0, 0, 34)
 BloxstrapBtn.Text = "Bloxstrap Boost: OFF 🚀"
 BloxstrapBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
 BloxstrapBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -169,7 +169,35 @@ local BloxstrapCorner = Instance.new("UICorner")
 BloxstrapCorner.CornerRadius = UDim.new(0, 6)
 BloxstrapCorner.Parent = BloxstrapBtn
 
--- 4. Music Input Row
+-- 4. Fake Korblox Button
+local KorbloxBtn = Instance.new("TextButton")
+KorbloxBtn.Size = UDim2.new(1, 0, 0, 34)
+KorbloxBtn.Text = "Fake Korblox: OFF 🦵"
+KorbloxBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+KorbloxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+KorbloxBtn.Font = Enum.Font.GothamBold
+KorbloxBtn.TextSize = 11
+KorbloxBtn.Parent = ScrollContainer
+
+local KorbloxCorner = Instance.new("UICorner")
+KorbloxCorner.CornerRadius = UDim.new(0, 6)
+KorbloxCorner.Parent = KorbloxBtn
+
+-- 5. Fake Headless Button
+local HeadlessBtn = Instance.new("TextButton")
+HeadlessBtn.Size = UDim2.new(1, 0, 0, 34)
+HeadlessBtn.Text = "Fake Headless: OFF 👤"
+HeadlessBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+HeadlessBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+HeadlessBtn.Font = Enum.Font.GothamBold
+HeadlessBtn.TextSize = 11
+HeadlessBtn.Parent = ScrollContainer
+
+local HeadlessCorner = Instance.new("UICorner")
+HeadlessCorner.CornerRadius = UDim.new(0, 6)
+HeadlessCorner.Parent = HeadlessBtn
+
+-- 6. Music Input Row
 local MusicControlsFrame = Instance.new("Frame")
 MusicControlsFrame.Size = UDim2.new(1, 0, 0, 32)
 MusicControlsFrame.BackgroundTransparency = 1
@@ -226,9 +254,9 @@ local SaveCorner = Instance.new("UICorner")
 SaveCorner.CornerRadius = UDim.new(0, 6)
 SaveCorner.Parent = SaveMusicBtn
 
--- 5. Saved Songs Frame
+-- 7. Saved Songs Frame
 local SavedSongsScroll = Instance.new("Frame")
-SavedSongsScroll.Size = UDim2.new(1, 0, 0, 170)
+SavedSongsScroll.Size = UDim2.new(1, 0, 0, 150)
 SavedSongsScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 18)
 SavedSongsScroll.BackgroundTransparency = 0.2
 SavedSongsScroll.Parent = ScrollContainer
@@ -248,7 +276,7 @@ ScrollLayout.Padding = UDim.new(0, 4)
 ScrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ScrollLayout.Parent = ScrollList
 
--- 6. Status Label
+-- 8. Status Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 18)
 StatusLabel.Text = "Status: Ready"
@@ -258,7 +286,7 @@ StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 9
 StatusLabel.Parent = ScrollContainer
 
--- 7. Credits Label
+-- 9. Credits Label
 local CreditsLabel = Instance.new("TextLabel")
 CreditsLabel.Size = UDim2.new(1, 0, 0, 20)
 CreditsLabel.Text = "Made by aki | TT: 1x.ud | DC: oa2a"
@@ -280,6 +308,8 @@ currentSound.Parent = SoundService
 local isAutoActive = false
 local isNoclipActive = false
 local isBloxstrapActive = false
+local isKorbloxActive = false
+local isHeadlessActive = false
 
 local savedSongsList = {
     {Name = "Song 1", Id = 102710215948261, Loud = false},
@@ -417,16 +447,18 @@ SaveMusicBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- زر إظهار وإخفاء القائمة المربع
+-- Toggle Menu View
 ToggleButton.MouseButton1Click:Connect(function()
     MainFrame.Visible = not MainFrame.Visible
 end)
 
--- زر الإغلاق النهائي (X)
+-- Close Button (X)
 CloseBtn.MouseButton1Click:Connect(function()
     isAutoActive = false
     isNoclipActive = false
     isBloxstrapActive = false
+    isKorbloxActive = false
+    isHeadlessActive = false
     currentSound:Destroy()
     if LocalPlayer.Character then
         for _, part in pairs(LocalPlayer.Character:GetChildren()) do
@@ -473,6 +505,56 @@ BloxstrapBtn.MouseButton1Click:Connect(function()
     else
         StatusLabel.Text = "Status: Boost Disabled ⚠️"
         StatusLabel.TextColor3 = Color3.fromRGB(200, 50, 50)
+    end
+end)
+
+-- Fake Korblox Logic
+KorbloxBtn.MouseButton1Click:Connect(function()
+    isKorbloxActive = not isKorbloxActive
+    KorbloxBtn.Text = isKorbloxActive and "Fake Korblox: ON 🦵" or "Fake Korblox: OFF 🦵"
+    KorbloxBtn.BackgroundColor3 = isKorbloxActive and Color3.fromRGB(255, 140, 0) or Color3.fromRGB(40, 45, 60)
+    
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("RightLeg") or char:FindFirstChild("RightLowerLeg") then
+        local rLeg = char:FindFirstChild("RightLeg") or char:FindFirstChild("RightLowerLeg")
+        local rUpper = char:FindFirstChild("RightUpperLeg")
+        local rFoot = char:FindFirstChild("RightFoot")
+        if isKorbloxActive then
+            if rLeg then rLeg.Transparency = 1 end
+            if rFoot then rFoot.Transparency = 1 end
+            if rUpper then rUpper.Transparency = 1 end
+        else
+            if rLeg then rLeg.Transparency = 0 end
+            if rFoot then rFoot.Transparency = 0 end
+            if rUpper then rUpper.Transparency = 0 end
+        end
+    end
+end)
+
+-- Fake Headless Logic
+HeadlessBtn.MouseButton1Click:Connect(function()
+    isHeadlessActive = not isHeadlessActive
+    HeadlessBtn.Text = isHeadlessActive and "Fake Headless: ON 👤" or "Fake Headless: OFF 👤"
+    HeadlessBtn.BackgroundColor3 = isHeadlessActive and Color3.fromRGB(150, 0, 255) or Color3.fromRGB(40, 45, 60)
+    
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("Head") then
+        local head = char.Head
+        if isHeadlessActive then
+            head.Transparency = 1
+            for _, child in pairs(head:GetChildren()) do
+                if child:IsA("Decal") then
+                    child.Transparency = 1
+                end
+            end
+        else
+            head.Transparency = 0
+            for _, child in pairs(head:GetChildren()) do
+                if child:IsA("Decal") then
+                    child.Transparency = 0
+                end
+            end
+        end
     end
 end)
 
