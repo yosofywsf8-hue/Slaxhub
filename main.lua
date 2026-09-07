@@ -1,10 +1,10 @@
--- Slax Hub - Complete Custom UI Framework
+-- Slax Hub - Single Frame UI Framework
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local LocalPlayer = Players.LocalPlayer
 
--- Cleanup previous UI
+-- Cleaning up old GUI
 if LocalPlayer.PlayerGui:FindFirstChild("SlaxHubPremium") then
     LocalPlayer.PlayerGui.SlaxHubPremium:Destroy()
 end
@@ -35,17 +35,17 @@ CircleStroke.Color = Color3.fromRGB(100, 110, 140)
 CircleStroke.Thickness = 2
 CircleStroke.Parent = ToggleCircle
 
--- Main Window (Image Background)
+-- Main Window (Background Image)
 local MainFrame = Instance.new("ImageLabel")
-MainFrame.Size = UDim2.new(0, 320, 0, 380)
-MainFrame.Position = UDim2.new(0.2, 0, 0.15, 0)
+MainFrame.Size = UDim2.new(0, 330, 0, 440)
+MainFrame.Position = UDim2.new(0.2, 0, 0.1, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Visible = true
 
--- رابط خلفيتك مصحح ليعمل في الواجهات بشكل مضمون
+-- رابط الخلفية المصحح والمضمون
 MainFrame.Image = "rbxthumb://type=Asset&id=108512464651627&w=420&h=420"
 MainFrame.ScaleType = Enum.ScaleType.Crop
 MainFrame.ImageTransparency = 0.15
@@ -60,7 +60,7 @@ MainStroke.Color = Color3.fromRGB(70, 75, 100)
 MainStroke.Thickness = 1.5
 MainStroke.Parent = MainFrame
 
--- Dark Overlay for High Readability
+-- Dark Overlay
 local Overlay = Instance.new("Frame")
 Overlay.Size = UDim2.new(1, 0, 1, 0)
 Overlay.BackgroundColor3 = Color3.fromRGB(10, 12, 18)
@@ -103,127 +103,78 @@ local CloseCorner = Instance.new("UICorner")
 CloseCorner.CornerRadius = UDim.new(0, 5)
 CloseCorner.Parent = CloseBtn
 
--- Navigation Tabs Bar
-local TabBar = Instance.new("Frame")
-TabBar.Size = UDim2.new(0.92, 0, 0, 28)
-TabBar.Position = UDim2.new(0.04, 0, 0.1, 0)
-TabBar.BackgroundColor3 = Color3.fromRGB(20, 24, 34)
-TabBar.BackgroundTransparency = 0.3
-TabBar.Parent = MainFrame
-
-local TabCorner = Instance.new("UICorner")
-TabCorner.CornerRadius = UDim.new(0, 6)
-TabCorner.Parent = TabBar
-
-local MainTabBtn = Instance.new("TextButton")
-MainTabBtn.Size = UDim2.new(0.48, 0, 1, 0)
-MainTabBtn.Position = UDim2.new(0, 0, 0, 0)
-MainTabBtn.Text = "⚡ Main Features"
-MainTabBtn.BackgroundColor3 = Color3.fromRGB(45, 55, 80)
-MainTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-MainTabBtn.Font = Enum.Font.GothamBold
-MainTabBtn.TextSize = 10
-MainTabBtn.Parent = TabBar
-
-local MainTabCorner = Instance.new("UICorner")
-MainTabCorner.CornerRadius = UDim.new(0, 6)
-MainTabCorner.Parent = MainTabBtn
-
-local MusicTabBtn = Instance.new("TextButton")
-MusicTabBtn.Size = UDim2.new(0.48, 0, 1, 0)
-MusicTabBtn.Position = UDim2.new(0.52, 0, 0, 0)
-MusicTabBtn.Text = "🎵 Music Player"
-MusicTabBtn.BackgroundColor3 = Color3.fromRGB(25, 30, 42)
-MusicTabBtn.TextColor3 = Color3.fromRGB(180, 190, 210)
-MusicTabBtn.Font = Enum.Font.GothamBold
-MusicTabBtn.TextSize = 10
-MusicTabBtn.Parent = TabBar
-
-local MusicTabCorner = Instance.new("UICorner")
-MusicTabCorner.CornerRadius = UDim.new(0, 6)
-MusicTabCorner.Parent = MusicTabBtn
-
--- Tab Containers
-local MainContainer = Instance.new("Frame")
-MainContainer.Size = UDim2.new(0.92, 0, 0.78, 0)
-MainContainer.Position = UDim2.new(0.04, 0, 0.19, 0)
-MainContainer.BackgroundTransparency = 1
-MainContainer.Visible = true
-MainContainer.Parent = MainFrame
-
-local MusicContainer = Instance.new("Frame")
-MusicContainer.Size = UDim2.new(0.92, 0, 0.78, 0)
-MusicContainer.Position = UDim2.new(0.04, 0, 0.19, 0)
-MusicContainer.BackgroundTransparency = 1
-MusicContainer.Visible = false
-MusicContainer.Parent = MainFrame
-
--- Tab Switching Logic
-MainTabBtn.MouseButton1Click:Connect(function()
-    MainContainer.Visible = true
-    MusicContainer.Visible = false
-    MainTabBtn.BackgroundColor3 = Color3.fromRGB(45, 55, 80)
-    MainTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MusicTabBtn.BackgroundColor3 = Color3.fromRGB(25, 30, 42)
-    MusicTabBtn.TextColor3 = Color3.fromRGB(180, 190, 210)
-end)
-
-MusicTabBtn.MouseButton1Click:Connect(function()
-    MainContainer.Visible = false
-    MusicContainer.Visible = true
-    MusicTabBtn.BackgroundColor3 = Color3.fromRGB(45, 55, 80)
-    MusicTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MainTabBtn.BackgroundColor3 = Color3.fromRGB(25, 30, 42)
-    MainTabBtn.TextColor3 = Color3.fromRGB(180, 190, 210)
-end)
-
 ---------------------------------------------------------
--- TAB 1: MAIN FEATURES
+-- SINGLE SCROLLING CONTAINER (EVERYTHING IN ONE PLACE)
 ---------------------------------------------------------
+local ScrollContainer = Instance.new("ScrollingFrame")
+ScrollContainer.Size = UDim2.new(0.92, 0, 0.88, 0)
+ScrollContainer.Position = UDim2.new(0.04, 0, 0.09, 0)
+ScrollContainer.BackgroundTransparency = 1
+ScrollContainer.BorderSizePixel = 0
+ScrollContainer.ScrollBarThickness = 3
+ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 380)
+ScrollContainer.Parent = MainFrame
+
+local MainLayout = Instance.new("UIListLayout")
+MainLayout.Padding = UDim.new(0, 8)
+MainLayout.SortOrder = Enum.SortOrder.LayoutOrder
+MainLayout.Parent = ScrollContainer
+
+-- Section 1: Features
+local FeaturesLabel = Instance.new("TextLabel")
+FeaturesLabel.Size = UDim2.new(1, 0, 0, 20)
+FeaturesLabel.Text = "⚡ MAIN FEATURES"
+FeaturesLabel.TextColor3 = Color3.fromRGB(0, 170, 255)
+FeaturesLabel.BackgroundTransparency = 1
+FeaturesLabel.Font = Enum.Font.GothamBold
+FeaturesLabel.TextSize = 11
+FeaturesLabel.TextXAlignment = Enum.TextXAlignment.Left
+FeaturesLabel.Parent = ScrollContainer
+
 local AutoBtn = Instance.new("TextButton")
-AutoBtn.Size = UDim2.new(1, 0, 0, 36)
-AutoBtn.Position = UDim2.new(0, 0, 0.05, 0)
+AutoBtn.Size = UDim2.new(1, 0, 0, 34)
 AutoBtn.Text = "Auto Play: OFF"
 AutoBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
 AutoBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 AutoBtn.Font = Enum.Font.GothamBold
-AutoBtn.TextSize = 12
-AutoBtn.Parent = MainContainer
+AutoBtn.TextSize = 11
+AutoBtn.Parent = ScrollContainer
 
 local AutoCorner = Instance.new("UICorner")
 AutoCorner.CornerRadius = UDim.new(0, 6)
 AutoCorner.Parent = AutoBtn
 
 local NoclipBtn = Instance.new("TextButton")
-NoclipBtn.Size = UDim2.new(1, 0, 0, 36)
-NoclipBtn.Position = UDim2.new(0, 0, 0.22, 0)
+NoclipBtn.Size = UDim2.new(1, 0, 0, 34)
 NoclipBtn.Text = "Noclip: OFF 👻"
 NoclipBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
 NoclipBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 NoclipBtn.Font = Enum.Font.GothamBold
-NoclipBtn.TextSize = 12
-NoclipBtn.Parent = MainContainer
+NoclipBtn.TextSize = 11
+NoclipBtn.Parent = ScrollContainer
 
 local NoclipCorner = Instance.new("UICorner")
 NoclipCorner.CornerRadius = UDim.new(0, 6)
 NoclipCorner.Parent = NoclipBtn
 
-local CreditsLabel = Instance.new("TextLabel")
-CreditsLabel.Size = UDim2.new(1, 0, 0, 30)
-CreditsLabel.Position = UDim2.new(0, 0, 0.85, 0)
-CreditsLabel.Text = "Made by aki | TT: 1x.ud | DC: oa2a"
-CreditsLabel.TextColor3 = Color3.fromRGB(180, 190, 210)
-CreditsLabel.BackgroundTransparency = 1
-CreditsLabel.Font = Enum.Font.Gotham
-CreditsLabel.TextSize = 10
-CreditsLabel.Parent = MainContainer
+-- Section 2: Music Player
+local MusicLabel = Instance.new("TextLabel")
+MusicLabel.Size = UDim2.new(1, 0, 0, 20)
+MusicLabel.Text = "🎵 MUSIC PLAYER"
+MusicLabel.TextColor3 = Color3.fromRGB(0, 170, 255)
+MusicLabel.BackgroundTransparency = 1
+MusicLabel.Font = Enum.Font.GothamBold
+MusicLabel.TextSize = 11
+MusicLabel.TextXAlignment = Enum.TextXAlignment.Left
+MusicLabel.Parent = ScrollContainer
 
----------------------------------------------------------
--- TAB 2: MUSIC PLAYER SYSTEM
----------------------------------------------------------
+local MusicControlsFrame = Instance.new("Frame")
+MusicControlsFrame.Size = UDim2.new(1, 0, 0, 30)
+MusicControlsFrame.BackgroundTransparency = 1
+MusicControlsFrame.Parent = ScrollContainer
+
 local MusicBox = Instance.new("TextBox")
-MusicBox.Size = UDim2.new(0.52, 0, 0, 30)
-MusicBox.Position = UDim2.new(0, 0, 0.02, 0)
+MusicBox.Size = UDim2.new(0.52, 0, 1, 0)
 MusicBox.PlaceholderText = "حط ID الاغنية هنا"
 MusicBox.Text = ""
 MusicBox.BackgroundColor3 = Color3.fromRGB(25, 30, 42)
@@ -231,78 +182,89 @@ MusicBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 MusicBox.PlaceholderColor3 = Color3.fromRGB(140, 150, 170)
 MusicBox.Font = Enum.Font.Gotham
 MusicBox.TextSize = 10
-MusicBox.Parent = MusicContainer
+MusicBox.Parent = MusicControlsFrame
 
 local BoxCorner = Instance.new("UICorner")
 BoxCorner.CornerRadius = UDim.new(0, 6)
 BoxCorner.Parent = MusicBox
 
 local PlayMusicBtn = Instance.new("TextButton")
-PlayMusicBtn.Size = UDim2.new(0.13, 0, 0, 30)
-PlayMusicBtn.Position = UDim2.new(0.55, 0, 0.02, 0)
+PlayMusicBtn.Size = UDim2.new(0.14, 0, 1, 0)
+PlayMusicBtn.Position = UDim2.new(0.55, 0, 0, 0)
 PlayMusicBtn.Text = "▶️"
 PlayMusicBtn.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
 PlayMusicBtn.TextSize = 10
-PlayMusicBtn.Parent = MusicContainer
+PlayMusicBtn.Parent = MusicControlsFrame
 
 local PlayCorner = Instance.new("UICorner")
 PlayCorner.CornerRadius = UDim.new(0, 6)
 PlayCorner.Parent = PlayMusicBtn
 
 local StopMusicBtn = Instance.new("TextButton")
-StopMusicBtn.Size = UDim2.new(0.13, 0, 0, 30)
-StopMusicBtn.Position = UDim2.new(0.70, 0, 0.02, 0)
+StopMusicBtn.Size = UDim2.new(0.14, 0, 1, 0)
+StopMusicBtn.Position = UDim2.new(0.70, 0, 0, 0)
 StopMusicBtn.Text = "⏹️"
 StopMusicBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
 StopMusicBtn.TextSize = 10
-StopMusicBtn.Parent = MusicContainer
+StopMusicBtn.Parent = MusicControlsFrame
 
 local StopCorner = Instance.new("UICorner")
 StopCorner.CornerRadius = UDim.new(0, 6)
 StopCorner.Parent = StopMusicBtn
 
 local SaveMusicBtn = Instance.new("TextButton")
-SaveMusicBtn.Size = UDim2.new(0.13, 0, 0, 30)
-SaveMusicBtn.Position = UDim2.new(0.85, 0, 0.02, 0)
+SaveMusicBtn.Size = UDim2.new(0.14, 0, 1, 0)
+SaveMusicBtn.Position = UDim2.new(0.85, 0, 0, 0)
 SaveMusicBtn.Text = "💾"
 SaveMusicBtn.BackgroundColor3 = Color3.fromRGB(0, 122, 255)
 SaveMusicBtn.TextSize = 10
-SaveMusicBtn.Parent = MusicContainer
+SaveMusicBtn.Parent = MusicControlsFrame
 
 local SaveCorner = Instance.new("UICorner")
 SaveCorner.CornerRadius = UDim.new(0, 6)
 SaveCorner.Parent = SaveMusicBtn
 
-local SavedSongsScroll = Instance.new("ScrollingFrame")
-SavedSongsScroll.Size = UDim2.new(1, 0, 0, 180)
-SavedSongsScroll.Position = UDim2.new(0, 0, 0.16, 0)
+local SavedSongsScroll = Instance.new("Frame")
+SavedSongsScroll.Size = UDim2.new(1, 0, 0, 140)
 SavedSongsScroll.BackgroundColor3 = Color3.fromRGB(12, 14, 18)
 SavedSongsScroll.BackgroundTransparency = 0.2
-SavedSongsScroll.BorderSizePixel = 0
-SavedSongsScroll.ScrollBarThickness = 3
-SavedSongsScroll.Parent = MusicContainer
+SavedSongsScroll.Parent = ScrollContainer
 
 local ScrollCorner = Instance.new("UICorner")
 ScrollCorner.CornerRadius = UDim.new(0, 6)
 ScrollCorner.Parent = SavedSongsScroll
 
+local ScrollList = Instance.new("ScrollingFrame")
+ScrollList.Size = UDim2.new(1, 0, 1, 0)
+ScrollList.BackgroundTransparency = 1
+ScrollList.ScrollBarThickness = 2
+ScrollList.Parent = SavedSongsScroll
+
 local ScrollLayout = Instance.new("UIListLayout")
 ScrollLayout.Padding = UDim.new(0, 4)
 ScrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ScrollLayout.Parent = SavedSongsScroll
+ScrollLayout.Parent = ScrollList
 
 local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(1, 0, 0, 20)
-StatusLabel.Position = UDim2.new(0, 0, 0.88, 0)
+StatusLabel.Size = UDim2.new(1, 0, 0, 18)
 StatusLabel.Text = "Status: Ready"
 StatusLabel.TextColor3 = Color3.fromRGB(160, 165, 180)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 10
-StatusLabel.Parent = MusicContainer
+StatusLabel.Parent = ScrollContainer
+
+local CreditsLabel = Instance.new("TextLabel")
+CreditsLabel.Size = UDim2.new(1, 0, 0, 20)
+CreditsLabel.Text = "Made by aki | TT: 1x.ud | DC: oa2a"
+CreditsLabel.TextColor3 = Color3.fromRGB(180, 190, 210)
+CreditsLabel.BackgroundTransparency = 1
+CreditsLabel.Font = Enum.Font.Gotham
+CreditsLabel.TextSize = 9
+CreditsLabel.Parent = ScrollContainer
 
 ---------------------------------------------------------
--- CORE SCRIPT LOGIC
+-- CORE LOGIC
 ---------------------------------------------------------
 local currentSound = Instance.new("Sound")
 currentSound.Name = "SlaxLocalSound"
@@ -335,7 +297,7 @@ local function stopSong()
 end
 
 local function refreshSavedSongsUI()
-    for _, child in pairs(SavedSongsScroll:GetChildren()) do
+    for _, child in pairs(ScrollList:GetChildren()) do
         if child:IsA("Frame") then child:Destroy() end
     end
     
@@ -346,7 +308,7 @@ local function refreshSavedSongsUI()
         ItemFrame.Size = UDim2.new(0.98, 0, 0, 28)
         ItemFrame.BackgroundColor3 = Color3.fromRGB(24, 28, 38)
         ItemFrame.BackgroundTransparency = 0.1
-        ItemFrame.Parent = SavedSongsScroll
+        ItemFrame.Parent = ScrollList
         
         local ItemCorner = Instance.new("UICorner")
         ItemCorner.CornerRadius = UDim.new(0, 4)
@@ -422,7 +384,7 @@ local function refreshSavedSongsUI()
             refreshSavedSongsUI()
         end)
     end
-    SavedSongsScroll.CanvasSize = UDim2.new(0, 0, 0, ySize)
+    ScrollList.CanvasSize = UDim2.new(0, 0, 0, ySize)
 end
 
 refreshSavedSongsUI()
