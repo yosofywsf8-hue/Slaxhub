@@ -1,4 +1,4 @@
--- Slax Hub - Fixed UI with Korblox & Headless
+-- Slax Hub - Final Clean Version (Korblox Fixed & No Emojis)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -42,7 +42,7 @@ SquareStroke.Thickness = 2
 SquareStroke.Parent = ToggleButton
 
 ---------------------------------------------------------
--- MAIN WINDOW (زيادة الطول لتستوعب كافة الأزرار)
+-- MAIN WINDOW
 ---------------------------------------------------------
 local MainFrame = Instance.new("ImageLabel")
 MainFrame.Size = UDim2.new(0, 310, 0, 510)
@@ -144,7 +144,7 @@ AutoCorner.Parent = AutoBtn
 -- 2. Noclip Button
 local NoclipBtn = Instance.new("TextButton")
 NoclipBtn.Size = UDim2.new(1, 0, 0, 34)
-NoclipBtn.Text = "Noclip: OFF 👻"
+NoclipBtn.Text = "Noclip: OFF"
 NoclipBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
 NoclipBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 NoclipBtn.Font = Enum.Font.GothamBold
@@ -158,7 +158,7 @@ NoclipCorner.Parent = NoclipBtn
 -- 3. Bloxstrap Boost Button
 local BloxstrapBtn = Instance.new("TextButton")
 BloxstrapBtn.Size = UDim2.new(1, 0, 0, 34)
-BloxstrapBtn.Text = "Bloxstrap Boost: OFF 🚀"
+BloxstrapBtn.Text = "Bloxstrap Boost: OFF"
 BloxstrapBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
 BloxstrapBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 BloxstrapBtn.Font = Enum.Font.GothamBold
@@ -169,10 +169,10 @@ local BloxstrapCorner = Instance.new("UICorner")
 BloxstrapCorner.CornerRadius = UDim.new(0, 6)
 BloxstrapCorner.Parent = BloxstrapBtn
 
--- 4. Fake Korblox Button (مؤكد ظهوره الآن)
+-- 4. Fake Korblox Button
 local KorbloxBtn = Instance.new("TextButton")
 KorbloxBtn.Size = UDim2.new(1, 0, 0, 34)
-KorbloxBtn.Text = "Fake Korblox: OFF 🦵"
+KorbloxBtn.Text = "Fake Korblox: OFF"
 KorbloxBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
 KorbloxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 KorbloxBtn.Font = Enum.Font.GothamBold
@@ -183,10 +183,10 @@ local KorbloxCorner = Instance.new("UICorner")
 KorbloxCorner.CornerRadius = UDim.new(0, 6)
 KorbloxCorner.Parent = KorbloxBtn
 
--- 5. Fake Headless Button (مؤكد ظهوره الآن)
+-- 5. Fake Headless Button
 local HeadlessBtn = Instance.new("TextButton")
 HeadlessBtn.Size = UDim2.new(1, 0, 0, 34)
-HeadlessBtn.Text = "Fake Headless: OFF 👤"
+HeadlessBtn.Text = "Fake Headless: OFF"
 HeadlessBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
 HeadlessBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 HeadlessBtn.Font = Enum.Font.GothamBold
@@ -321,14 +321,14 @@ local function playSongById(id)
     if id then
         currentSound.SoundId = "rbxassetid://" .. tostring(id)
         currentSound:Play()
-        StatusLabel.Text = "Status: Playing ID " .. tostring(id) .. " 🎵"
+        StatusLabel.Text = "Status: Playing ID " .. tostring(id)
         StatusLabel.TextColor3 = Color3.fromRGB(0, 180, 255)
     end
 end
 
 local function stopSong()
     currentSound:Stop()
-    StatusLabel.Text = "Status: Stopped ⏹️"
+    StatusLabel.Text = "Status: Stopped"
     StatusLabel.TextColor3 = Color3.fromRGB(200, 50, 50)
 end
 
@@ -365,7 +365,7 @@ local function refreshSavedSongsUI()
             local WarnBadge = Instance.new("TextLabel")
             WarnBadge.Size = UDim2.new(0.22, 0, 0.7, 0)
             WarnBadge.Position = UDim2.new(0.38, 0, 0.15, 0)
-            WarnBadge.Text = "⚠️عالية"
+            WarnBadge.Text = "عالية"
             WarnBadge.BackgroundColor3 = Color3.fromRGB(220, 100, 0)
             WarnBadge.TextColor3 = Color3.fromRGB(255, 255, 255)
             WarnBadge.Font = Enum.Font.GothamBold
@@ -434,7 +434,7 @@ StopMusicBtn.MouseButton1Click:Connect(stopSong)
 
 SaveMusicBtn.MouseButton1Click:Connect(function()
     if #savedSongsList >= 5 then
-        StatusLabel.Text = "⚠️ وصلت الحد الأقصى! (5 أغاني فقط)"
+        StatusLabel.Text = "وصلت الحد الأقصى (5 أغاني)"
         StatusLabel.TextColor3 = Color3.fromRGB(255, 70, 70)
         return
     end
@@ -476,13 +476,13 @@ end)
 
 NoclipBtn.MouseButton1Click:Connect(function()
     isNoclipActive = not isNoclipActive
-    NoclipBtn.Text = isNoclipActive and "Noclip: ON 👻" or "Noclip: OFF 👻"
+    NoclipBtn.Text = isNoclipActive and "Noclip: ON" or "Noclip: OFF"
     NoclipBtn.BackgroundColor3 = isNoclipActive and Color3.fromRGB(140, 50, 210) or Color3.fromRGB(40, 45, 60)
 end)
 
 BloxstrapBtn.MouseButton1Click:Connect(function()
     isBloxstrapActive = not isBloxstrapActive
-    BloxstrapBtn.Text = isBloxstrapActive and "Bloxstrap Boost: ON 🚀" or "Bloxstrap Boost: OFF 🚀"
+    BloxstrapBtn.Text = isBloxstrapActive and "Bloxstrap Boost: ON" or "Bloxstrap Boost: OFF"
     BloxstrapBtn.BackgroundColor3 = isBloxstrapActive and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(40, 45, 60)
     
     if isBloxstrapActive then
@@ -500,33 +500,32 @@ BloxstrapBtn.MouseButton1Click:Connect(function()
                 part.Reflectance = 0
             end
         end
-        StatusLabel.Text = "Status: Bloxstrap Boost Enabled 🚀"
+        StatusLabel.Text = "Status: Bloxstrap Boost Enabled"
         StatusLabel.TextColor3 = Color3.fromRGB(0, 180, 255)
     else
-        StatusLabel.Text = "Status: Boost Disabled ⚠️"
+        StatusLabel.Text = "Status: Boost Disabled"
         StatusLabel.TextColor3 = Color3.fromRGB(200, 50, 50)
     end
 end)
 
--- Fake Korblox Logic
+-- Fixed Fake Korblox Logic (Supports R6 and R15 parts fully)
 KorbloxBtn.MouseButton1Click:Connect(function()
     isKorbloxActive = not isKorbloxActive
-    KorbloxBtn.Text = isKorbloxActive and "Fake Korblox: ON 🦵" or "Fake Korblox: OFF 🦵"
+    KorbloxBtn.Text = isKorbloxActive and "Fake Korblox: ON" or "Fake Korblox: OFF"
     KorbloxBtn.BackgroundColor3 = isKorbloxActive and Color3.fromRGB(255, 140, 0) or Color3.fromRGB(40, 45, 60)
     
     local char = LocalPlayer.Character
     if char then
-        local rLeg = char:FindFirstChild("RightLeg") or char:FindFirstChild("RightLowerLeg")
-        local rUpper = char:FindFirstChild("RightUpperLeg")
-        local rFoot = char:FindFirstChild("RightFoot")
-        if isKorbloxActive then
-            if rLeg then rLeg.Transparency = 1 end
-            if rFoot then rFoot.Transparency = 1 end
-            if rUpper then rUpper.Transparency = 1 end
-        else
-            if rLeg then rLeg.Transparency = 0 end
-            if rFoot then rFoot.Transparency = 0 end
-            if rUpper then rUpper.Transparency = 0 end
+        local partsToHide = {
+            char:FindFirstChild("RightLeg"),
+            char:FindFirstChild("RightLowerLeg"),
+            char:FindFirstChild("RightFoot")
+        }
+        for _, part in pairs(partsToHide) do
+            if part and part:IsA("BasePart") then
+                part.Transparency = isKorbloxActive and 1 or 0
+                part.LocalTransparencyModifier = isKorbloxActive and 1 or 0
+            end
         end
     end
 end)
@@ -534,25 +533,17 @@ end)
 -- Fake Headless Logic
 HeadlessBtn.MouseButton1Click:Connect(function()
     isHeadlessActive = not isHeadlessActive
-    HeadlessBtn.Text = isHeadlessActive and "Fake Headless: ON 👤" or "Fake Headless: OFF 👤"
+    HeadlessBtn.Text = isHeadlessActive and "Fake Headless: ON" or "Fake Headless: OFF"
     HeadlessBtn.BackgroundColor3 = isHeadlessActive and Color3.fromRGB(150, 0, 255) or Color3.fromRGB(40, 45, 60)
     
     local char = LocalPlayer.Character
     if char and char:FindFirstChild("Head") then
         local head = char.Head
-        if isHeadlessActive then
-            head.Transparency = 1
-            for _, child in pairs(head:GetChildren()) do
-                if child:IsA("Decal") then
-                    child.Transparency = 1
-                end
-            end
-        else
-            head.Transparency = 0
-            for _, child in pairs(head:GetChildren()) do
-                if child:IsA("Decal") then
-                    child.Transparency = 0
-                end
+        head.Transparency = isHeadlessActive and 1 or 0
+        head.LocalTransparencyModifier = isHeadlessActive and 1 or 0
+        for _, child in pairs(head:GetChildren()) do
+            if child:IsA("Decal") then
+                child.Transparency = isHeadlessActive and 1 or 0
             end
         end
     end
