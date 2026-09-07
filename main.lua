@@ -1,16 +1,16 @@
--- Timebomb Duels Mobile - Fixed Noclip, Speed & Song Saver
+-- Timebomb Duels Mobile - Music Hub & Auto Pass (No Speed / Fixed List)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Cleanup previous GUI
-if LocalPlayer.PlayerGui:FindFirstChild("TimebombFixedGUI") then
-    LocalPlayer.PlayerGui.TimebombFixedGUI:Destroy()
+if LocalPlayer.PlayerGui:FindFirstChild("TimebombMusicGUI") then
+    LocalPlayer.PlayerGui.TimebombMusicGUI:Destroy()
 end
 
 -- ScreenGui Setup
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "TimebombFixedGUI"
+ScreenGui.Name = "TimebombMusicGUI"
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
@@ -36,8 +36,8 @@ CircleStroke.Parent = ToggleCircle
 
 -- Main Frame
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 260, 0, 410)
-MainFrame.Position = UDim2.new(0.18, 0, 0.15, 0)
+MainFrame.Size = UDim2.new(0, 260, 0, 350)
+MainFrame.Position = UDim2.new(0.18, 0, 0.18, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -57,7 +57,7 @@ MainStroke.Parent = MainFrame
 -- Title Bar
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0.75, 0, 0, 25)
-Title.Position = UDim2.new(0.04, 0, 0.015, 0)
+Title.Position = UDim2.new(0.04, 0, 0.02, 0)
 Title.Text = "Timebomb Ultra Hub"
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
 Title.BackgroundTransparency = 1
@@ -69,7 +69,7 @@ Title.Parent = MainFrame
 -- Credits
 local Credits = Instance.new("TextLabel")
 Credits.Size = UDim2.new(0.92, 0, 0, 15)
-Credits.Position = UDim2.new(0.04, 0, 0.075, 0)
+Credits.Position = UDim2.new(0.04, 0, 0.08, 0)
 Credits.Text = "Made by aki | TT: 1x.ud | DC: oa2a"
 Credits.TextColor3 = Color3.fromRGB(160, 170, 190)
 Credits.BackgroundTransparency = 1
@@ -81,7 +81,7 @@ Credits.Parent = MainFrame
 -- Close Button (❌)
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 24, 0, 24)
-CloseBtn.Position = UDim2.new(0.87, 0, 0.015, 0)
+CloseBtn.Position = UDim2.new(0.87, 0, 0.02, 0)
 CloseBtn.Text = "❌"
 CloseBtn.TextSize = 10
 CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
@@ -96,7 +96,7 @@ CloseCorner.Parent = CloseBtn
 -- Auto Pass Toggle Button
 local AutoBtn = Instance.new("TextButton")
 AutoBtn.Size = UDim2.new(0.92, 0, 0, 32)
-AutoBtn.Position = UDim2.new(0.04, 0, 0.125, 0)
+AutoBtn.Position = UDim2.new(0.04, 0, 0.14, 0)
 AutoBtn.Text = "Auto Play: OFF"
 AutoBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
 AutoBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -111,7 +111,7 @@ AutoCorner.Parent = AutoBtn
 -- Noclip Toggle Button
 local NoclipBtn = Instance.new("TextButton")
 NoclipBtn.Size = UDim2.new(0.92, 0, 0, 32)
-NoclipBtn.Position = UDim2.new(0.04, 0, 0.215, 0)
+NoclipBtn.Position = UDim2.new(0.04, 0, 0.25, 0)
 NoclipBtn.Text = "Noclip: OFF 👻"
 NoclipBtn.BackgroundColor3 = Color3.fromRGB(50, 55, 70)
 NoclipBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -123,59 +123,10 @@ local NoclipCorner = Instance.new("UICorner")
 NoclipCorner.CornerRadius = UDim.new(0, 6)
 NoclipCorner.Parent = NoclipBtn
 
--- Speed Section Label
-local SpeedLabel = Instance.new("TextLabel")
-SpeedLabel.Size = UDim2.new(0.92, 0, 0, 16)
-SpeedLabel.Position = UDim2.new(0.04, 0, 0.305, 0)
-SpeedLabel.Text = "WalkSpeed: 16 (Normal)"
-SpeedLabel.TextColor3 = Color3.fromRGB(220, 225, 240)
-SpeedLabel.BackgroundTransparency = 1
-SpeedLabel.Font = Enum.Font.GothamBold
-SpeedLabel.TextSize = 11
-SpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
-SpeedLabel.Parent = MainFrame
-
--- Speed Buttons Frame (1 to 10)
-local SpeedFrame = Instance.new("Frame")
-SpeedFrame.Size = UDim2.new(0.92, 0, 0, 28)
-SpeedFrame.Position = UDim2.new(0.04, 0, 0.35, 0)
-SpeedFrame.BackgroundTransparency = 1
-SpeedFrame.Parent = MainFrame
-
-local SpeedLayout = Instance.new("UIListLayout")
-SpeedLayout.FillDirection = Enum.FillDirection.Horizontal
-SpeedLayout.Padding = UDim.new(0, 3)
-SpeedLayout.Parent = SpeedFrame
-
-local currentTargetSpeed = 16
-for i = 1, 10 do
-    local SBtn = Instance.new("TextButton")
-    SBtn.Size = UDim2.new(0, 20, 0, 26)
-    SBtn.Text = tostring(i)
-    SBtn.BackgroundColor3 = (i == 1) and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(40, 45, 60)
-    SBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    SBtn.Font = Enum.Font.GothamBold
-    SBtn.TextSize = 10
-    SBtn.Parent = SpeedFrame
-    
-    local SCorner = Instance.new("UICorner")
-    SCorner.CornerRadius = UDim.new(0, 4)
-    SCorner.Parent = SBtn
-    
-    SBtn.MouseButton1Click:Connect(function()
-        for _, btn in pairs(SpeedFrame:GetChildren()) do
-            if btn:IsA("TextButton") then btn.BackgroundColor3 = Color3.fromRGB(40, 45, 60) end
-        end
-        SBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-        currentTargetSpeed = 16 + (i - 1) * 4
-        SpeedLabel.Text = "WalkSpeed: " .. tostring(currentTargetSpeed) .. " (Lvl " .. i .. ")"
-    end)
-end
-
 -- Music Input Box
 local MusicBox = Instance.new("TextBox")
-MusicBox.Size = UDim2.new(0.5, 0, 0, 28)
-MusicBox.Position = UDim2.new(0.04, 0, 0.43, 0)
+MusicBox.Size = UDim2.new(0.5, 0, 0, 30)
+MusicBox.Position = UDim2.new(0.04, 0, 0.36, 0)
 MusicBox.PlaceholderText = "حط ID الاغنية هنا"
 MusicBox.Text = ""
 MusicBox.BackgroundColor3 = Color3.fromRGB(35, 40, 52)
@@ -191,8 +142,8 @@ BoxCorner.Parent = MusicBox
 
 -- Play Button
 local PlayMusicBtn = Instance.new("TextButton")
-PlayMusicBtn.Size = UDim2.new(0.12, 0, 0, 28)
-PlayMusicBtn.Position = UDim2.new(0.56, 0, 0.43, 0)
+PlayMusicBtn.Size = UDim2.new(0.12, 0, 0, 30)
+PlayMusicBtn.Position = UDim2.new(0.56, 0, 0.36, 0)
 PlayMusicBtn.Text = "▶️"
 PlayMusicBtn.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
 PlayMusicBtn.TextSize = 11
@@ -204,8 +155,8 @@ PlayCorner.Parent = PlayMusicBtn
 
 -- Save Button
 local SaveMusicBtn = Instance.new("TextButton")
-SaveMusicBtn.Size = UDim2.new(0.12, 0, 0, 28)
-SaveMusicBtn.Position = UDim2.new(0.70, 0, 0.43, 0)
+SaveMusicBtn.Size = UDim2.new(0.12, 0, 0, 30)
+SaveMusicBtn.Position = UDim2.new(0.70, 0, 0.36, 0)
 SaveMusicBtn.Text = "💾"
 SaveMusicBtn.BackgroundColor3 = Color3.fromRGB(0, 122, 255)
 SaveMusicBtn.TextSize = 11
@@ -217,8 +168,8 @@ SaveCorner.Parent = SaveMusicBtn
 
 -- Stop Button
 local StopMusicBtn = Instance.new("TextButton")
-StopMusicBtn.Size = UDim2.new(0.12, 0, 0, 28)
-StopMusicBtn.Position = UDim2.new(0.84, 0, 0.43, 0)
+StopMusicBtn.Size = UDim2.new(0.12, 0, 0, 30)
+StopMusicBtn.Position = UDim2.new(0.84, 0, 0.36, 0)
 StopMusicBtn.Text = "⏹️"
 StopMusicBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 StopMusicBtn.TextSize = 11
@@ -228,9 +179,21 @@ local StopCorner = Instance.new("UICorner")
 StopCorner.CornerRadius = UDim.new(0, 6)
 StopCorner.Parent = StopMusicBtn
 
+-- Saved Songs Label
+local ListLabel = Instance.new("TextLabel")
+ListLabel.Size = UDim2.new(0.92, 0, 0, 16)
+ListLabel.Position = UDim2.new(0.04, 0, 0.46, 0)
+ListLabel.Text = "📁 قائمة الأغاني المحفوظة:"
+ListLabel.TextColor3 = Color3.fromRGB(200, 205, 220)
+ListLabel.BackgroundTransparency = 1
+ListLabel.Font = Enum.Font.GothamBold
+ListLabel.TextSize = 10
+ListLabel.TextXAlignment = Enum.TextXAlignment.Left
+ListLabel.Parent = MainFrame
+
 -- Saved Songs Scroll List Frame
 local SavedSongsScroll = Instance.new("ScrollingFrame")
-SavedSongsScroll.Size = UDim2.new(0.92, 0, 0, 130)
+SavedSongsScroll.Size = UDim2.new(0.92, 0, 0, 140)
 SavedSongsScroll.Position = UDim2.new(0.04, 0, 0.52, 0)
 SavedSongsScroll.BackgroundColor3 = Color3.fromRGB(15, 17, 22)
 SavedSongsScroll.BorderSizePixel = 0
@@ -250,7 +213,7 @@ ScrollLayout.Parent = SavedSongsScroll
 -- Status Label
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 20)
-StatusLabel.Position = UDim2.new(0, 0, 0.94, 0)
+StatusLabel.Position = UDim2.new(0, 0, 0.93, 0)
 StatusLabel.Text = "Status: Ready"
 StatusLabel.TextColor3 = Color3.fromRGB(140, 145, 160)
 StatusLabel.BackgroundTransparency = 1
@@ -258,7 +221,7 @@ StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 11
 StatusLabel.Parent = MainFrame
 
--- Variables & Sound
+-- Sound Setup (Looped = true Enabled permanently)
 local currentSound = Instance.new("Sound")
 currentSound.Name = "TimebombCustomSound"
 currentSound.Volume = 2
@@ -269,7 +232,7 @@ local isAutoActive = false
 local isNoclipActive = false
 local savedSongsList = {}
 
--- Function to play sound
+-- Function to play song
 local function playSongById(id)
     if id then
         currentSound.SoundId = "rbxassetid://" .. tostring(id)
@@ -279,7 +242,7 @@ local function playSongById(id)
     end
 end
 
--- Refresh Saved Songs UI
+-- Refresh Saved Songs List UI
 local function refreshSavedSongsUI()
     for _, child in pairs(SavedSongsScroll:GetChildren()) do
         if child:IsA("Frame") then child:Destroy() end
@@ -344,7 +307,7 @@ local function refreshSavedSongsUI()
     SavedSongsScroll.CanvasSize = UDim2.new(0, 0, 0, ySize)
 end
 
--- Play Input Song
+-- Play Direct Input
 PlayMusicBtn.MouseButton1Click:Connect(function()
     local soundId = tonumber(MusicBox.Text:match("%d+"))
     if soundId then
@@ -384,7 +347,6 @@ CloseBtn.MouseButton1Click:Connect(function()
     isNoclipActive = false
     currentSound:Destroy()
     
-    -- Fix character collision on destroy
     if LocalPlayer.Character then
         for _, part in pairs(LocalPlayer.Character:GetChildren()) do
             if part:IsA("BasePart") then part.CanCollide = true end
@@ -405,7 +367,7 @@ AutoBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Fixed Noclip Toggle (Enables/Disables Collision Properly)
+-- Noclip Toggle
 NoclipBtn.MouseButton1Click:Connect(function()
     isNoclipActive = not isNoclipActive
     if isNoclipActive then
@@ -415,7 +377,6 @@ NoclipBtn.MouseButton1Click:Connect(function()
         NoclipBtn.Text = "Noclip: OFF 👻"
         NoclipBtn.BackgroundColor3 = Color3.fromRGB(50, 55, 70)
         
-        -- Restore Collision immediately on OFF
         if LocalPlayer.Character then
             for _, part in pairs(LocalPlayer.Character:GetChildren()) do
                 if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
@@ -426,7 +387,7 @@ NoclipBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- Helper Functions
+-- Bomb Check
 local function holdsBomb()
     local myChar = LocalPlayer.Character
     if not myChar then return false end
@@ -440,6 +401,7 @@ local function holdsBomb()
     return false
 end
 
+-- Target Check
 local function getArenaTarget()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
@@ -462,15 +424,12 @@ local function getArenaTarget()
     return nearest
 end
 
--- Main Heartbeat Execution
+-- Main Stepped Loop
 RunService.Stepped:Connect(function()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("Humanoid") or not myChar:FindFirstChild("HumanoidRootPart") then return end
     
-    -- Fixed WalkSpeed enforcement loop
-    myChar.Humanoid.WalkSpeed = currentTargetSpeed
-    
-    -- Noclip Loop
+    -- Noclip Execution
     if isNoclipActive then
         for _, part in pairs(myChar:GetChildren()) do
             if part:IsA("BasePart") then
@@ -479,7 +438,7 @@ RunService.Stepped:Connect(function()
         end
     end
     
-    -- Auto Pass Loop
+    -- Auto Pass Execution
     if isAutoActive and holdsBomb() then
         local targetPlayer = getArenaTarget()
         if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
