@@ -1,4 +1,4 @@
--- Steal An Egg - Fixed Images & Anti-Cheat Hub by Slax Hub
+-- Steal An Egg - Auto-Collect & Anti-Cheat Hub by Slax Hub
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -32,7 +32,7 @@ UIStroke.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
 Title.BackgroundTransparency = 1
-Title.Text = "SLAX HUB - FIXED IMAGES"
+Title.Text = "SLAX HUB - AUTO COLLECT"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 11
@@ -132,10 +132,31 @@ GoBtn.MouseButton1Click:Connect(function()
     GoBtn.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
 end)
 
--- دالة الحركة الآمنة لتفادي الانتي تشيت
-local function safeTweenTo(targetCFrame)
+-- دالة التفاعل التلقائي مع البيضة (تفعيل الـ ProximityPrompt أو النقر)
+local function interactWithTarget(targetPart)
+    if not targetPart or not targetPart.Parent then return end
+    local model = targetPart.Parent
+    
+    -- محاولة تفعيل ProximityPrompt إن وجد
+    for _, desc in pairs(model:GetDescendants()) do
+        if desc:IsA("ProximityPrompt") then
+            pcall(function()
+                fireproximityprompt(desc)
+            end)
+        end
+    end
+    
+    -- إرسال حدث لمس أو تفعيل مباشر للبارت
+    pcall(function()
+        firetouchinterest(LocalPlayer.Character.HumanoidRootPart, targetPart, 0)
+        firetouchinterest(LocalPlayer.Character.HumanoidRootPart, targetPart, 1)
+    end)
+end
+
+-- دالة الحركة الآمنة مع أخذ البيضة فوراً
+local function safeTweenTo(targetPart)
     local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    if not char or not char:FindFirstChild("HumanoidRootPart") or not targetPart then return end
     local rootPart = char.HumanoidRootPart
     
     for _, part in pairs(char:GetDescendants()) do
@@ -144,23 +165,33 @@ local function safeTweenTo(targetCFrame)
     
     local highOffset = Vector3.new(0, 25, 0)
     local currentPos = rootPart.Position
-    local targetPos = targetCFrame.Position
+    local targetPos = targetPart.Position
     
+    -- الارتفاع للأعلى لتفادي الحراس
     local upCFrame = CFrame.new(currentPos + highOffset)
     local tweenUp = TweenService:Create(rootPart, TweenInfo.new((rootPart.Position - upCFrame.Position).Magnitude / 350, Enum.EasingStyle.Linear), {CFrame = upCFrame})
     tweenUp:Play()
     tweenUp.Completed:Wait()
     
+    -- الذهاب فوق البيضة
     local aboveTargetCFrame = CFrame.new(targetPos + Vector3.new(0, 25, 0))
     local tweenMove = TweenService:Create(rootPart, TweenInfo.new((rootPart.Position - aboveTargetCFrame.Position).Magnitude / 350, Enum.EasingStyle.Linear), {CFrame = aboveTargetCFrame})
     tweenMove:Play()
     tweenMove.Completed:Wait()
     
-    rootPart.CFrame = targetCFrame + Vector3.new(0, 3, 0)
+    -- الهبوط على البيضة تماماً
+    rootPart.CFrame = targetPart.CFrame + Vector3.new(0, 2, 0)
     task.wait(0.2)
     
+    -- تنفيذ الالتقاط التلقائي عدة مرات لضمان الشيل
+    for i = 1, 3 do
+        interactWithTarget(targetPart)
+        task.wait(0.1)
+    end
+    
+    -- الصعود السريع للعودة لمنطقة الأمان
     local safeHighCFrame = CFrame.new(safeZonePosition.Position + highOffset)
-    local tweenSafe = TweenService:GetCollection and TweenService:Create(rootPart, TweenInfo.new((rootPart.Position - safeHighCFrame.Position).Magnitude / 350, Enum.EasingStyle.Linear), {CFrame = safeHighCFrame}) or TweenService:Create(rootPart, TweenInfo.new(1, Enum.EasingStyle.Linear), {CFrame = safeHighCFrame})
+    local tweenSafe = TweenService:Create(rootPart, TweenInfo.new((rootPart.Position - safeHighCFrame.Position).Magnitude / 350, Enum.EasingStyle.Linear), {CFrame = safeHighCFrame})
     tweenSafe:Play()
     tweenSafe.Completed:Wait()
     
@@ -171,30 +202,19 @@ local function safeTweenTo(targetCFrame)
     end
 end
 
--- استخراج الصورة بشكل صحيح ودعم الأيقونات البديلة للبيض والحيوانات
+-- استخراج الصورة
 local function getObjectImage(obj)
-    -- البحث عن أي صورة مرتبطة بالموديل (Texture أو Decal)
     for _, descendant in pairs(obj:GetDescendants()) do
-        if descendant:IsA("Decal") or descendant:IsA("Texture") then
-            if descendant.Texture and descendant.Texture ~= "" then
-                return descendant.Texture
-            end
-        elseif descendant:IsA("ImageLabel") or descendant:IsA("ImageButton") then
-            if descendant.Image and descendant.Image ~= "" then
-                return descendant.Image
-            end
+        if (descendant:IsA("Decal") or descendant:IsA("Texture")) and descendant.Texture ~= "" then
+            return descendant.Texture
+        elseif (descendant:IsA("ImageLabel") or descendant:IsA("ImageButton")) and descendant.Image ~= "" then
+            return descendant.Image
         end
     end
-    
-    -- فحص الخصائص أو الـ Attributes إذا وجدت
-    local attrImg = obj:GetAttribute("Image") or obj:GetAttribute("Thumbnail")
-    if attrImg then return tostring(attrImg) end
-
-    -- أيقونة افتراضية واضحة ومضمونة للبيض والحيوانات في حال عدم وجود صورة مخصصة
     return "rbxassetid://6023426915"
 end
 
--- تحديث القائمة ديناميكياً وعرض الصور
+-- تحديث القائمة والصور
 task.spawn(function()
     while true do
         task.wait(1.5)
@@ -228,7 +248,6 @@ task.spawn(function()
                     c.CornerRadius = UDim.new(0, 4)
                     c.Parent = itemBtn
                     
-                    -- إعداد صورة العنصر
                     local icon = Instance.new("ImageLabel")
                     icon.Size = UDim2.new(0, 28, 0, 28)
                     icon.Position = UDim2.new(0.02, 0, 0.12, 0)
@@ -265,12 +284,12 @@ task.spawn(function()
     end
 end)
 
--- حلقة التنفيذ التلقائي عند الضغط على GO
+-- تنفيذ الأخذ التلقائي عند الضغط على GO
 task.spawn(function()
     while true do
         task.wait(0.5)
         if isRunning and safeZonePosition and selectedTargetPart and selectedTargetPart.Parent then
-            safeTweenTo(selectedTargetPart.CFrame)
+            safeTweenTo(selectedTargetPart)
             task.wait(1)
         end
     end
