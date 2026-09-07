@@ -1,10 +1,12 @@
--- Slax Hub - Final Version (R6 Korblox Only)
+-- Slax Hub - Final Safe Version (Smooth Shift Lock + Visuals + Music)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
 
 -- Cleanup previous UI
 if LocalPlayer.PlayerGui:FindFirstChild("SlaxHubPremium") then
@@ -45,7 +47,7 @@ SquareStroke.Parent = ToggleButton
 -- MAIN WINDOW
 ---------------------------------------------------------
 local MainFrame = Instance.new("ImageLabel")
-MainFrame.Size = UDim2.new(0, 310, 0, 510)
+MainFrame.Size = UDim2.new(0, 310, 0, 470)
 MainFrame.Position = UDim2.new(0.2, 0, 0.1, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
@@ -88,7 +90,7 @@ Header.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0.7, 0, 1, 0)
 Title.Position = UDim2.new(0.04, 0, 0, 0)
-Title.Text = "Slax Hub | Timebomb Duels"
+Title.Text = "Slax Hub | Safe Mode"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
@@ -119,7 +121,7 @@ ScrollContainer.Position = UDim2.new(0.04, 0, 0.09, 0)
 ScrollContainer.BackgroundTransparency = 1
 ScrollContainer.BorderSizePixel = 0
 ScrollContainer.ScrollBarThickness = 3
-ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 570)
+ScrollContainer.CanvasSize = UDim2.new(0, 0, 0, 560)
 ScrollContainer.Parent = MainFrame
 
 local MainLayout = Instance.new("UIListLayout")
@@ -127,19 +129,19 @@ MainLayout.Padding = UDim.new(0, 8)
 MainLayout.SortOrder = Enum.SortOrder.LayoutOrder
 MainLayout.Parent = ScrollContainer
 
--- 1. Auto Play Button
-local AutoBtn = Instance.new("TextButton")
-AutoBtn.Size = UDim2.new(1, 0, 0, 34)
-AutoBtn.Text = "Auto Play: OFF"
-AutoBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
-AutoBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-AutoBtn.Font = Enum.Font.GothamBold
-AutoBtn.TextSize = 11
-AutoBtn.Parent = ScrollContainer
+-- 1. Shift Lock Button
+local ShiftLockBtn = Instance.new("TextButton")
+ShiftLockBtn.Size = UDim2.new(1, 0, 0, 34)
+ShiftLockBtn.Text = "Shift Lock: OFF"
+ShiftLockBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+ShiftLockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ShiftLockBtn.Font = Enum.Font.GothamBold
+ShiftLockBtn.TextSize = 11
+ShiftLockBtn.Parent = ScrollContainer
 
-local AutoCorner = Instance.new("UICorner")
-AutoCorner.CornerRadius = UDim.new(0, 6)
-AutoCorner.Parent = AutoBtn
+local ShiftLockCorner = Instance.new("UICorner")
+ShiftLockCorner.CornerRadius = UDim.new(0, 6)
+ShiftLockCorner.Parent = ShiftLockBtn
 
 -- 2. Noclip Button
 local NoclipBtn = Instance.new("TextButton")
@@ -311,7 +313,7 @@ currentSound.Volume = 2
 currentSound.Looped = true
 currentSound.Parent = SoundService
 
-local isAutoActive = false
+local isShiftLockActive = false
 local isNoclipActive = false
 local isBloxstrapActive = false
 local isKorbloxActive = false
@@ -466,7 +468,8 @@ end)
 
 -- Close Button (X)
 CloseBtn.MouseButton1Click:Connect(function()
-    isAutoActive = false
+    isShiftLockState = false
+    isShiftLockActive = false
     isNoclipActive = false
     isBloxstrapActive = false
     isKorbloxActive = false
@@ -480,10 +483,10 @@ CloseBtn.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
-AutoBtn.MouseButton1Click:Connect(function()
-    isAutoActive = not isAutoActive
-    AutoBtn.Text = isAutoActive and "Auto Play: ON" or "Auto Play: OFF"
-    AutoBtn.BackgroundColor3 = isAutoActive and Color3.fromRGB(40, 167, 69) or Color3.fromRGB(220, 53, 69)
+ShiftLockBtn.MouseButton1Click:Connect(function()
+    isShiftLockActive = not isShiftLockActive
+    ShiftLockBtn.Text = isShiftLockActive and "Shift Lock: ON" or "Shift Lock: OFF"
+    ShiftLockBtn.BackgroundColor3 = isShiftLockActive and Color3.fromRGB(0, 122, 255) or Color3.fromRGB(40, 45, 60)
 end)
 
 NoclipBtn.MouseButton1Click:Connect(function()
@@ -532,50 +535,38 @@ HeadlessBtn.MouseButton1Click:Connect(function()
     HeadlessBtn.BackgroundColor3 = isHeadlessActive and Color3.fromRGB(150, 0, 255) or Color3.fromRGB(40, 45, 60)
     
     local char = LocalPlayer.Character
-    if char and char:FindFirstChild("Head") then
-        local head = char.Head
-        head.Transparency = isHeadlessActive and 1 or 0
-        head.LocalTransparencyModifier = isHeadlessActive and 1 or 0
-        for _, child in pairs(head:GetChildren()) do
-            if child:IsA("Decal") then
-                child.Transparency = isHeadlessActive and 1 or 0
+    if char then
+        local head = char:FindFirstChild("Head")
+        if head then
+            head.Transparency = isHeadlessActive and 1 or 0
+            head.LocalTransparencyModifier = isHeadlessActive and 1 or 0
+            for _, child in pairs(head:GetChildren()) do
+                if child:IsA("Decal") then
+                    child.Transparency = isHeadlessActive and 1 or 0
+                end
             end
         end
     end
 end)
 
-local function holdsBomb()
-    local myChar = LocalPlayer.Character
-    if not myChar then return false end
-    local inChar = myChar:FindFirstChild("Bomb") or myChar:FindFirstChildWhichIsA("Tool")
-    if inChar and string.find(string.lower(inChar.Name), "bomb") then return true end
-    local inBackpack = LocalPlayer.Backpack:FindFirstChild("Bomb") or LocalPlayer.Backpack:FindFirstChildWhichIsA("Tool")
-    if inBackpack and string.find(string.lower(inBackpack.Name), "bomb") then return true end
-    return false
-end
-
-local function getArenaTarget()
-    local myChar = LocalPlayer.Character
-    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
-    local myPos = myChar.HumanoidRootPart.Position
-    local nearest = nil
-    local shortestDist = math.huge
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local hum = player.Character:FindFirstChild("Humanoid")
-            if hum and hum.Health > 0 then
-                local dist = (myPos - player.Character.HumanoidRootPart.Position).Magnitude
-                if dist < 120 and dist < shortestDist then
-                    shortestDist = dist
-                    nearest = player
+-- Persistent character load handler (Keeps Headless active after respawn)
+LocalPlayer.CharacterAdded:Connect(function(newChar)
+    task.wait(1.2)
+    if isHeadlessActive then
+        local head = newChar:WaitForChild("Head", 3)
+        if head then
+            head.Transparency = 1
+            head.LocalTransparencyModifier = 1
+            for _, child in pairs(head:GetChildren()) do
+                if child:IsA("Decal") then
+                    child.Transparency = 1
                 end
             end
         end
     end
-    return nearest
-end
+end)
 
-RunService.Stepped:Connect(function()
+RunService.RenderStepped:Connect(function()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("Humanoid") or not myChar:FindFirstChild("HumanoidRootPart") then return end
     
@@ -585,7 +576,16 @@ RunService.Stepped:Connect(function()
         end
     end
     
-    -- R6 Korblox Logic (Targets "Right Leg")
+    -- Smooth Shift Lock Logic (Forces character orientation to smoothly align with camera look vector)
+    if isShiftLockActive then
+        LocalPlayer.DevEnableMouseLock = true
+        local root = myChar.HumanoidRootPart
+        local camCF = Camera.CFrame
+        local targetCFrame = CFrame.new(root.Position, Vector3.new(camCF.LookVector.X * 10000 + root.Position.X, root.Position.Y, camCF.LookVector.Z * 10000 + root.Position.Z))
+        root.CFrame = root.CFrame:Lerp(targetCFrame, 0.3)
+    end
+    
+    -- R6 Korblox Logic
     local rightLeg = myChar:FindFirstChild("Right Leg")
     if rightLeg and rightLeg:IsA("BasePart") then
         if isKorbloxActive then
@@ -596,13 +596,6 @@ RunService.Stepped:Connect(function()
             rightLeg.Transparency = 0
             rightLeg.LocalTransparencyModifier = 0
             rightLeg.Size = Vector3.new(1, 2, 1)
-        end
-    end
-    
-    if isAutoActive and holdsBomb() then
-        local targetPlayer = getArenaTarget()
-        if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            myChar.Humanoid:MoveTo(targetPlayer.Character.HumanoidRootPart.Position)
         end
     end
 end)
