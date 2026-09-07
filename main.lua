@@ -1,4 +1,4 @@
--- Slax Hub - Smart Prediction (No Forced Shift Lock)
+-- Slax Hub - Original Auto Play / Target Lock Version
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -89,7 +89,7 @@ Header.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0.7, 0, 1, 0)
 Title.Position = UDim2.new(0.04, 0, 0, 0)
-Title.Text = "Slax Hub | Free Camera"
+Title.Text = "Slax Hub | Auto Play"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
@@ -128,19 +128,19 @@ MainLayout.Padding = UDim.new(0, 8)
 MainLayout.SortOrder = Enum.SortOrder.LayoutOrder
 MainLayout.Parent = ScrollContainer
 
--- 1. Prediction Shortcut Button (No Lock)
-local PredictLockBtn = Instance.new("TextButton")
-PredictLockBtn.Size = UDim2.new(1, 0, 0, 34)
-PredictLockBtn.Text = "Prediction Shortcut: OFF"
-PredictLockBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
-PredictLockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-PredictLockBtn.Font = Enum.Font.GothamBold
-PredictLockBtn.TextSize = 10
-PredictLockBtn.Parent = ScrollContainer
+-- 1. Auto Play Button
+local AutoPlayBtn = Instance.new("TextButton")
+AutoPlayBtn.Size = UDim2.new(1, 0, 0, 34)
+AutoPlayBtn.Text = "Auto Play: OFF"
+AutoPlayBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+AutoPlayBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoPlayBtn.Font = Enum.Font.GothamBold
+AutoPlayBtn.TextSize = 10
+AutoPlayBtn.Parent = ScrollContainer
 
-local PredictLockCorner = Instance.new("UICorner")
-PredictLockCorner.CornerRadius = UDim.new(0, 6)
-PredictLockCorner.Parent = PredictLockBtn
+local AutoPlayCorner = Instance.new("UICorner")
+AutoPlayCorner.CornerRadius = UDim.new(0, 6)
+AutoPlayCorner.Parent = AutoPlayBtn
 
 -- 2. Noclip Button
 local NoclipBtn = Instance.new("TextButton")
@@ -312,7 +312,7 @@ currentSound.Volume = 2
 currentSound.Looped = true
 currentSound.Parent = SoundService
 
-local isPredictLockActive = false
+local isAutoPlayActive = false
 local isNoclipActive = false
 local isBloxstrapActive = false
 local isKorbloxActive = false
@@ -467,7 +467,7 @@ end)
 
 -- Close Button (X)
 CloseBtn.MouseButton1Click:Connect(function()
-    isPredictLockActive = false
+    isAutoPlayActive = false
     isNoclipActive = false
     isBloxstrapActive = false
     isKorbloxActive = false
@@ -481,10 +481,10 @@ CloseBtn.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
-PredictLockBtn.MouseButton1Click:Connect(function()
-    isPredictLockActive = not isPredictLockActive
-    PredictLockBtn.Text = isPredictLockActive and "Prediction Shortcut: ON" or "Prediction Shortcut: OFF"
-    PredictLockBtn.BackgroundColor3 = isPredictLockActive and Color3.fromRGB(0, 122, 255) or Color3.fromRGB(40, 45, 60)
+AutoPlayBtn.MouseButton1Click:Connect(function()
+    isAutoPlayActive = not isAutoPlayActive
+    AutoPlayBtn.Text = isAutoPlayActive and "Auto Play: ON" or "Auto Play: OFF"
+    AutoPlayBtn.BackgroundColor3 = isAutoPlayActive and Color3.fromRGB(0, 122, 255) or Color3.fromRGB(40, 45, 60)
 end)
 
 NoclipBtn.MouseButton1Click:Connect(function()
@@ -571,7 +571,7 @@ local function getNearestTarget()
     local myPos = myChar.HumanoidRootPart.Position
     
     local closestTarget = nil
-    local shortestDist = 130
+    local shortestDist = 120
     
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") and plr.Character.Humanoid.Health > 0 then
@@ -596,15 +596,12 @@ RunService.RenderStepped:Connect(function()
         end
     end
     
-    -- Prediction Shortcut Logic (Calculates path without changing character CFrame / No forced Shift Lock)
-    if isPredictLockActive then
+    -- Original Auto Play / Target Lock Logic
+    if isAutoPlayActive then
         local targetRoot = getNearestTarget()
         if targetRoot then
-            local targetVel = targetRoot.AssemblyLinearVelocity
-            local predictedPos = targetRoot.Position + (Vector3.new(targetVel.X, 0, targetVel.Z) * 0.35)
-            
-            -- Smoothly directs camera only to the predicted position, leaving character and shift-lock completely free
-            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, predictedPos), 0.2)
+            local targetPos = targetRoot.Position
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPos)
         end
     end
     
