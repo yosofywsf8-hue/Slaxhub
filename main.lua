@@ -1,4 +1,4 @@
--- Slax Hub - Final Safe Version (Smooth Shift Lock + Visuals + Music)
+-- Slax Hub - Smart Target Prediction & Lock
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -90,7 +90,7 @@ Header.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0.7, 0, 1, 0)
 Title.Position = UDim2.new(0.04, 0, 0, 0)
-Title.Text = "Slax Hub | Safe Mode"
+Title.Text = "Slax Hub | Prediction Lock"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
@@ -129,19 +129,19 @@ MainLayout.Padding = UDim.new(0, 8)
 MainLayout.SortOrder = Enum.SortOrder.LayoutOrder
 MainLayout.Parent = ScrollContainer
 
--- 1. Shift Lock Button
-local ShiftLockBtn = Instance.new("TextButton")
-ShiftLockBtn.Size = UDim2.new(1, 0, 0, 34)
-ShiftLockBtn.Text = "Shift Lock: OFF"
-ShiftLockBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
-ShiftLockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ShiftLockBtn.Font = Enum.Font.GothamBold
-ShiftLockBtn.TextSize = 11
-ShiftLockBtn.Parent = ScrollContainer
+-- 1. Prediction Lock Button
+local PredictLockBtn = Instance.new("TextButton")
+PredictLockBtn.Size = UDim2.new(1, 0, 0, 34)
+PredictLockBtn.Text = "Prediction Shortcut: OFF"
+PredictLockBtn.BackgroundColor3 = Color3.fromRGB(40, 45, 60)
+PredictLockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+PredictLockBtn.Font = Enum.Font.GothamBold
+PredictLockBtn.TextSize = 10
+PredictLockBtn.Parent = ScrollContainer
 
-local ShiftLockCorner = Instance.new("UICorner")
-ShiftLockCorner.CornerRadius = UDim.new(0, 6)
-ShiftLockCorner.Parent = ShiftLockBtn
+local PredictLockCorner = Instance.new("UICorner")
+PredictLockCorner.CornerRadius = UDim.new(0, 6)
+PredictLockCorner.Parent = PredictLockBtn
 
 -- 2. Noclip Button
 local NoclipBtn = Instance.new("TextButton")
@@ -313,7 +313,7 @@ currentSound.Volume = 2
 currentSound.Looped = true
 currentSound.Parent = SoundService
 
-local isShiftLockActive = false
+local isPredictLockActive = false
 local isNoclipActive = false
 local isBloxstrapActive = false
 local isKorbloxActive = false
@@ -468,8 +468,7 @@ end)
 
 -- Close Button (X)
 CloseBtn.MouseButton1Click:Connect(function()
-    isShiftLockState = false
-    isShiftLockActive = false
+    isPredictLockActive = false
     isNoclipActive = false
     isBloxstrapActive = false
     isKorbloxActive = false
@@ -483,10 +482,10 @@ CloseBtn.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
 
-ShiftLockBtn.MouseButton1Click:Connect(function()
-    isShiftLockActive = not isShiftLockActive
-    ShiftLockBtn.Text = isShiftLockActive and "Shift Lock: ON" or "Shift Lock: OFF"
-    ShiftLockBtn.BackgroundColor3 = isShiftLockActive and Color3.fromRGB(0, 122, 255) or Color3.fromRGB(40, 45, 60)
+PredictLockBtn.MouseButton1Click:Connect(function()
+    isPredictLockActive = not isPredictLockActive
+    PredictLockBtn.Text = isPredictLockActive and "Prediction Shortcut: ON" or "Prediction Shortcut: OFF"
+    PredictLockBtn.BackgroundColor3 = isPredictLockActive and Color3.fromRGB(0, 122, 255) or Color3.fromRGB(40, 45, 60)
 end)
 
 NoclipBtn.MouseButton1Click:Connect(function()
@@ -566,6 +565,28 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
     end
 end)
 
+-- Helper to find nearest target
+local function getNearestTarget()
+    local myChar = LocalPlayer.Character
+    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
+    local myPos = myChar.HumanoidRootPart.Position
+    
+    local closestTarget = nil
+    local shortestDist = 130
+    
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") and plr.Character.Humanoid.Health > 0 then
+            local targetRoot = plr.Character.HumanoidRootPart
+            local dist = (targetRoot.Position - myPos).Magnitude
+            if dist < shortestDist then
+                shortestDist = dist
+                closestTarget = targetRoot
+            end
+        end
+    end
+    return closestTarget
+end
+
 RunService.RenderStepped:Connect(function()
     local myChar = LocalPlayer.Character
     if not myChar or not myChar:FindFirstChild("Humanoid") or not myChar:FindFirstChild("HumanoidRootPart") then return end
@@ -576,13 +597,18 @@ RunService.RenderStepped:Connect(function()
         end
     end
     
-    -- Smooth Shift Lock Logic (Forces character orientation to smoothly align with camera look vector)
-    if isShiftLockActive then
-        LocalPlayer.DevEnableMouseLock = true
-        local root = myChar.HumanoidRootPart
-        local camCF = Camera.CFrame
-        local targetCFrame = CFrame.new(root.Position, Vector3.new(camCF.LookVector.X * 10000 + root.Position.X, root.Position.Y, camCF.LookVector.Z * 10000 + root.Position.Z))
-        root.CFrame = root.CFrame:Lerp(targetCFrame, 0.3)
+    -- Smart Prediction & Shortcut Tracking (Anticipates enemy forward movement/dodges)
+    if isPredictLockActive then
+        local targetRoot = getNearestTarget()
+        if targetRoot then
+            local root = myChar.HumanoidRootPart
+            local targetVel = targetRoot.AssemblyLinearVelocity -- Get target movement velocity to predict path
+            -- Predict where the enemy will be ahead of time based on their movement speed vector
+            local predictedPos = targetRoot.Position + (Vector3.new(targetVel.X, 0, targetVel.Z) * 0.35)
+            
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, predictedPos)
+            root.CFrame = CFrame.new(root.Position, Vector3.new(predictedPos.X, root.Position.Y, predictedPos.Z))
+        end
     end
     
     -- R6 Korblox Logic
