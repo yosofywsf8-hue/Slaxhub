@@ -1,16 +1,16 @@
--- Timebomb Duels Mobile - Music Hub & Auto Pass (No Speed / Fixed List)
+-- Slax Hub Mobile - Music Hub with Default Songs
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Cleanup previous GUI
-if LocalPlayer.PlayerGui:FindFirstChild("TimebombMusicGUI") then
-    LocalPlayer.PlayerGui.TimebombMusicGUI:Destroy()
+if LocalPlayer.PlayerGui:FindFirstChild("SlaxHubGUI") then
+    LocalPlayer.PlayerGui.SlaxHubGUI:Destroy()
 end
 
 -- ScreenGui Setup
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "TimebombMusicGUI"
+ScreenGui.Name = "SlaxHubGUI"
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
@@ -54,15 +54,15 @@ MainStroke.Color = Color3.fromRGB(50, 55, 70)
 MainStroke.Thickness = 1.5
 MainStroke.Parent = MainFrame
 
--- Title Bar
+-- Title Bar (Updated to Slax Hub)
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0.75, 0, 0, 25)
 Title.Position = UDim2.new(0.04, 0, 0.02, 0)
-Title.Text = "Timebomb Ultra Hub"
+Title.Text = "Slax Hub"
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 13
+Title.TextSize = 14
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = MainFrame
 
@@ -221,16 +221,22 @@ StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 11
 StatusLabel.Parent = MainFrame
 
--- Sound Setup (Looped = true Enabled permanently)
+-- Sound Setup (Looped permanently)
 local currentSound = Instance.new("Sound")
-currentSound.Name = "TimebombCustomSound"
+currentSound.Name = "SlaxCustomSound"
 currentSound.Volume = 2
 currentSound.Looped = true
 currentSound.Parent = workspace
 
 local isAutoActive = false
 local isNoclipActive = false
-local savedSongsList = {}
+
+-- Default Pre-saved Songs
+local savedSongsList = {
+    {Name = "Song 1", Id = 102710215948261},
+    {Name = "Song 2", Id = 86503267790406},
+    {Name = "Song 3", Id = 111018848542448}
+}
 
 -- Function to play song
 local function playSongById(id)
@@ -306,6 +312,9 @@ local function refreshSavedSongsUI()
     end
     SavedSongsScroll.CanvasSize = UDim2.new(0, 0, 0, ySize)
 end
+
+-- Load Default Songs List on Startup
+refreshSavedSongsUI()
 
 -- Play Direct Input
 PlayMusicBtn.MouseButton1Click:Connect(function()
