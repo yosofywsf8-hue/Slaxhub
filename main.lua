@@ -1,4 +1,4 @@
--- Slax Hub Mobile - Music Hub with Default Songs
+-- Slax Hub Mobile - Stop Button Integrated Per Saved Song Item
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
@@ -54,7 +54,7 @@ MainStroke.Color = Color3.fromRGB(50, 55, 70)
 MainStroke.Thickness = 1.5
 MainStroke.Parent = MainFrame
 
--- Title Bar (Updated to Slax Hub)
+-- Title Bar
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0.75, 0, 0, 25)
 Title.Position = UDim2.new(0.04, 0, 0.02, 0)
@@ -125,7 +125,7 @@ NoclipCorner.Parent = NoclipBtn
 
 -- Music Input Box
 local MusicBox = Instance.new("TextBox")
-MusicBox.Size = UDim2.new(0.5, 0, 0, 30)
+MusicBox.Size = UDim2.new(0.62, 0, 0, 30)
 MusicBox.Position = UDim2.new(0.04, 0, 0.36, 0)
 MusicBox.PlaceholderText = "حط ID الاغنية هنا"
 MusicBox.Text = ""
@@ -142,8 +142,8 @@ BoxCorner.Parent = MusicBox
 
 -- Play Button
 local PlayMusicBtn = Instance.new("TextButton")
-PlayMusicBtn.Size = UDim2.new(0.12, 0, 0, 30)
-PlayMusicBtn.Position = UDim2.new(0.56, 0, 0.36, 0)
+PlayMusicBtn.Size = UDim2.new(0.13, 0, 0, 30)
+PlayMusicBtn.Position = UDim2.new(0.68, 0, 0.36, 0)
 PlayMusicBtn.Text = "▶️"
 PlayMusicBtn.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
 PlayMusicBtn.TextSize = 11
@@ -155,8 +155,8 @@ PlayCorner.Parent = PlayMusicBtn
 
 -- Save Button
 local SaveMusicBtn = Instance.new("TextButton")
-SaveMusicBtn.Size = UDim2.new(0.12, 0, 0, 30)
-SaveMusicBtn.Position = UDim2.new(0.70, 0, 0.36, 0)
+SaveMusicBtn.Size = UDim2.new(0.13, 0, 0, 30)
+SaveMusicBtn.Position = UDim2.new(0.83, 0, 0.36, 0)
 SaveMusicBtn.Text = "💾"
 SaveMusicBtn.BackgroundColor3 = Color3.fromRGB(0, 122, 255)
 SaveMusicBtn.TextSize = 11
@@ -165,19 +165,6 @@ SaveMusicBtn.Parent = MainFrame
 local SaveCorner = Instance.new("UICorner")
 SaveCorner.CornerRadius = UDim.new(0, 6)
 SaveCorner.Parent = SaveMusicBtn
-
--- Stop Button
-local StopMusicBtn = Instance.new("TextButton")
-StopMusicBtn.Size = UDim2.new(0.12, 0, 0, 30)
-StopMusicBtn.Position = UDim2.new(0.84, 0, 0.36, 0)
-StopMusicBtn.Text = "⏹️"
-StopMusicBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-StopMusicBtn.TextSize = 11
-StopMusicBtn.Parent = MainFrame
-
-local StopCorner = Instance.new("UICorner")
-StopCorner.CornerRadius = UDim.new(0, 6)
-StopCorner.Parent = StopMusicBtn
 
 -- Saved Songs Label
 local ListLabel = Instance.new("TextLabel")
@@ -231,11 +218,11 @@ currentSound.Parent = workspace
 local isAutoActive = false
 local isNoclipActive = false
 
--- Default Pre-saved Songs
+-- Default Pre-saved Songs (With Loud Warning on Song 3)
 local savedSongsList = {
     {Name = "Song 1", Id = 102710215948261},
     {Name = "Song 2", Id = 86503267790406},
-    {Name = "Song 3", Id = 111018848542448}
+    {Name = "Song 3 ⚠️(صوت عالي)", Id = 111018848542448}
 }
 
 -- Function to play song
@@ -267,34 +254,55 @@ local function refreshSavedSongsUI()
         ItemCorner.Parent = ItemFrame
         
         local SongText = Instance.new("TextLabel")
-        SongText.Size = UDim2.new(0.65, 0, 1, 0)
-        SongText.Position = UDim2.new(0.03, 0, 0, 0)
-        SongText.Text = songData.Name .. " (" .. songData.Id .. ")"
-        SongText.TextColor3 = Color3.fromRGB(220, 220, 230)
+        SongText.Size = UDim2.new(0.52, 0, 1, 0)
+        SongText.Position = UDim2.new(0.02, 0, 0, 0)
+        SongText.Text = songData.Name
+        
+        if string.find(songData.Name, "⚠️") then
+            SongText.TextColor3 = Color3.fromRGB(255, 100, 100)
+        else
+            SongText.TextColor3 = Color3.fromRGB(220, 220, 230)
+        end
+        
         SongText.BackgroundTransparency = 1
         SongText.Font = Enum.Font.Gotham
-        SongText.TextSize = 9
+        SongText.TextSize = 8
         SongText.TextXAlignment = Enum.TextXAlignment.Left
         SongText.Parent = ItemFrame
         
+        -- Inline Play Button (▶️)
         local PlayItemBtn = Instance.new("TextButton")
-        PlayItemBtn.Size = UDim2.new(0.13, 0, 0.8, 0)
-        PlayItemBtn.Position = UDim2.new(0.69, 0, 0.1, 0)
+        PlayItemBtn.Size = UDim2.new(0.12, 0, 0.8, 0)
+        PlayItemBtn.Position = UDim2.new(0.56, 0, 0.1, 0)
         PlayItemBtn.Text = "▶️"
         PlayItemBtn.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
-        PlayItemBtn.TextSize = 9
+        PlayItemBtn.TextSize = 8
         PlayItemBtn.Parent = ItemFrame
         
         local ItemPlayCorner = Instance.new("UICorner")
         ItemPlayCorner.CornerRadius = UDim.new(0, 4)
         ItemPlayCorner.Parent = PlayItemBtn
         
+        -- Inline Stop Button (⏹️)
+        local StopItemBtn = Instance.new("TextButton")
+        StopItemBtn.Size = UDim2.new(0.12, 0, 0.8, 0)
+        StopItemBtn.Position = UDim2.new(0.70, 0, 0.1, 0)
+        StopItemBtn.Text = "⏹️"
+        StopItemBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
+        StopItemBtn.TextSize = 8
+        StopItemBtn.Parent = ItemFrame
+        
+        local ItemStopCorner = Instance.new("UICorner")
+        ItemStopCorner.CornerRadius = UDim.new(0, 4)
+        ItemStopCorner.Parent = StopItemBtn
+        
+        -- Inline Delete Button (🗑️)
         local DelItemBtn = Instance.new("TextButton")
-        DelItemBtn.Size = UDim2.new(0.13, 0, 0.8, 0)
+        DelItemBtn.Size = UDim2.new(0.12, 0, 0.8, 0)
         DelItemBtn.Position = UDim2.new(0.84, 0, 0.1, 0)
         DelItemBtn.Text = "🗑️"
-        DelItemBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        DelItemBtn.TextSize = 9
+        DelItemBtn.BackgroundColor3 = Color3.fromRGB(100, 105, 120)
+        DelItemBtn.TextSize = 8
         DelItemBtn.Parent = ItemFrame
         
         local ItemDelCorner = Instance.new("UICorner")
@@ -303,6 +311,12 @@ local function refreshSavedSongsUI()
         
         PlayItemBtn.MouseButton1Click:Connect(function()
             playSongById(songData.Id)
+        end)
+        
+        StopItemBtn.MouseButton1Click:Connect(function()
+            currentSound:Stop()
+            StatusLabel.Text = "Status: Music Stopped ⏹️"
+            StatusLabel.TextColor3 = Color3.fromRGB(200, 50, 50)
         end)
         
         DelItemBtn.MouseButton1Click:Connect(function()
@@ -336,13 +350,6 @@ SaveMusicBtn.MouseButton1Click:Connect(function()
         MusicBox.PlaceholderText = "تم الحفظ!"
         refreshSavedSongsUI()
     end
-end)
-
--- Stop Music
-StopMusicBtn.MouseButton1Click:Connect(function()
-    currentSound:Stop()
-    StatusLabel.Text = "Status: Music Stopped ⏹️"
-    StatusLabel.TextColor3 = Color3.fromRGB(200, 50, 50)
 end)
 
 -- GUI Toggle
