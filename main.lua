@@ -1,4 +1,4 @@
--- Slax Hub - Combined Single List Framework
+-- Slax Hub - Square Toggle Button Version
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -15,27 +15,35 @@ ScreenGui.Name = "SlaxHubPremium"
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
--- Floating Toggle Circle Button
-local ToggleCircle = Instance.new("TextButton")
-ToggleCircle.Size = UDim2.new(0, 48, 0, 48)
-ToggleCircle.Position = UDim2.new(0.02, 0, 0.2, 0)
-ToggleCircle.BackgroundColor3 = Color3.fromRGB(20, 25, 35)
-ToggleCircle.Text = "💣"
-ToggleCircle.TextSize = 22
-ToggleCircle.Active = true
-ToggleCircle.Draggable = true
-ToggleCircle.Parent = ScreenGui
+---------------------------------------------------------
+-- SQUARE TOGGLE BUTTON WITH CUSTOM IMAGE
+---------------------------------------------------------
+local ToggleButton = Instance.new("ImageButton")
+ToggleButton.Size = UDim2.new(0, 52, 0, 52)
+ToggleButton.Position = UDim2.new(0.02, 0, 0.2, 0)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+ToggleButton.BorderSizePixel = 0
+ToggleButton.Active = true
+ToggleButton.Draggable = true
+ToggleButton.ScaleType = Enum.ScaleType.Crop
+ToggleButton.Parent = ScreenGui
 
-local CircleCorner = Instance.new("UICorner")
-CircleCorner.CornerRadius = UDim.new(1, 0)
-CircleCorner.Parent = ToggleCircle
+-- تم وضع الأيدي الخاص بك هنا
+ToggleButton.Image = "rbxassetid://124643845022233" 
 
-local CircleStroke = Instance.new("UIStroke")
-CircleStroke.Color = Color3.fromRGB(100, 110, 140)
-CircleStroke.Thickness = 2
-CircleStroke.Parent = ToggleCircle
+-- زوايا مقطعة/منحنية للمربع
+local SquareCorner = Instance.new("UICorner")
+SquareCorner.CornerRadius = UDim.new(0, 8)
+SquareCorner.Parent = ToggleButton
 
--- Main Background Window
+local SquareStroke = Instance.new("UIStroke")
+SquareStroke.Color = Color3.fromRGB(255, 30, 30)
+SquareStroke.Thickness = 1.5
+SquareStroke.Parent = ToggleButton
+
+---------------------------------------------------------
+-- MAIN WINDOW
+---------------------------------------------------------
 local MainFrame = Instance.new("ImageLabel")
 MainFrame.Size = UDim2.new(0, 320, 0, 450)
 MainFrame.Position = UDim2.new(0.2, 0, 0.1, 0)
@@ -45,7 +53,6 @@ MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Visible = true
 
--- رابط الخلفية المصحح ليعمل تلقائياً
 MainFrame.Image = "rbxthumb://type=Asset&id=108512464651627&w=420&h=420"
 MainFrame.ScaleType = Enum.ScaleType.Crop
 MainFrame.ImageTransparency = 0.15
@@ -148,7 +155,7 @@ local NoclipCorner = Instance.new("UICorner")
 NoclipCorner.CornerRadius = UDim.new(0, 6)
 NoclipCorner.Parent = NoclipBtn
 
--- 3. Music Input Row (Box + Buttons)
+-- 3. Music Input Row
 local MusicControlsFrame = Instance.new("Frame")
 MusicControlsFrame.Size = UDim2.new(1, 0, 0, 32)
 MusicControlsFrame.BackgroundTransparency = 1
@@ -248,7 +255,7 @@ CreditsLabel.TextSize = 9
 CreditsLabel.Parent = ScrollContainer
 
 ---------------------------------------------------------
--- CORE FUNCTIONALITY
+-- CORE LOGIC
 ---------------------------------------------------------
 local currentSound = Instance.new("Sound")
 currentSound.Name = "SlaxLocalSound"
@@ -395,7 +402,7 @@ SaveMusicBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-ToggleCircle.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
+ToggleButton.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
 
 CloseBtn.MouseButton1Click:Connect(function()
     isAutoActive = false
