@@ -1,4 +1,4 @@
--- Slax Hub - Custom Premium UI Framework with Custom Background
+-- Slax Hub - Complete Custom UI Framework
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -44,9 +44,11 @@ MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Visible = true
-MainFrame.Image = "rbxassetid://108512464651627" -- خلفيتك الخاصة
+
+-- رابط خلفيتك مصحح ليعمل في الواجهات بشكل مضمون
+MainFrame.Image = "rbxthumb://type=Asset&id=108512464651627&w=420&h=420"
 MainFrame.ScaleType = Enum.ScaleType.Crop
-MainFrame.ImageTransparency = 0.2
+MainFrame.ImageTransparency = 0.15
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
@@ -62,7 +64,7 @@ MainStroke.Parent = MainFrame
 local Overlay = Instance.new("Frame")
 Overlay.Size = UDim2.new(1, 0, 1, 0)
 Overlay.BackgroundColor3 = Color3.fromRGB(10, 12, 18)
-Overlay.BackgroundTransparency = 0.4
+Overlay.BackgroundTransparency = 0.35
 Overlay.BorderSizePixel = 0
 Overlay.Parent = MainFrame
 
