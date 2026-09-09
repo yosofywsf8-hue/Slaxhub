@@ -1,140 +1,126 @@
--- T_T Hub | Verified Working Blade Ball Engine (Delta Edition)
-local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua'))()
-
-local Window = Rayfield:CreateWindow({
-    Name = "T_T Hub | Blade Ball Pro",
-    LoadingTitle = "Initializing T_T Engine...",
-    LoadingSubtitle = "powered by Chaos Lord & Delta",
-    ConfigurationSaving = {
-        Enabled = false,
-        FolderName = nil,
-        FileName = "ChaosHubConfig"
-    },
-    Discord = {
-        Enabled = false,
-        Invite = "yourdiscordinvite",
-        RememberJoins = true
-    },
-    KeySystem = false,
-    KeySettings = {
-        Title = "T_T Hub Key",
-        Subtitle = "Enter your access key",
-        Note = "Join our Discord for the key",
-        FileName = "T_TKey",
-        SaveKey = true,
-        GrabKeyFromSite = false,
-        Key = {"yourkeyhere"}
-    }
-})
-
-local MainTab = Window:CreateTab("Combat", 4483362458)
-local MainSection = MainTab:CreateSection("Core Features")
-
-Rayfield:Notify({
-   Title = "Execution Started",
-   Content = "T_T Hub Loaded Successfully!",
-   Duration = 4,
-   Image = nil
-})
-
+-- SlaxHub Pro Engine | Blade Ball Core
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
-local autoParryEnabled = false
-local triggerBotEnabled = false
-local lastParryTick = 0
-
--- دالة بحث ذكية ومتطورة للوصول لزر الصد دون أخطاء
-local function getParryRemote()
-    local success, result = pcall(function()
-        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-        if remotes then
-            if remotes:FindFirstChild("ParryButtonPress") then
-                return remotes.ParryButtonPress
-            elseif remotes:FindFirstChild("Parry") then
-                return remotes.Parry
-            end
-        end
-        for _, v in pairs(ReplicatedStorage:GetDescendants()) do
-            if v:IsA("RemoteEvent") and (v.Name == "ParryButtonPress" or v.Name == "Parry") then
-                return v
-            end
-        end
-        return nil
-    end)
-    return success and result or nil
+-- إزالة الواجهة القديمة إن وجدت لتجنب التداخل
+if CoreGui:FindFirstChild("SlaxHubPro") then
+    CoreGui.SlaxHubPro:Destroy()
 end
 
--- واجهة التحكم للأوتو باري
-MainTab:CreateToggle({
-    Name = "Auto Parry (Delta Safe)",
-    CurrentValue = false,
-    Flag = "AutoParryToggle",
-    Callback = function(Value)
-        autoParryEnabled = Value
-        Rayfield:Notify({
-            Title = "Auto Parry",
-            Content = autoParryEnabled and "Active 🟢" : "Disabled 🔴",
-            Duration = 2
-        })
-    end,
-})
+-- بناء واجهة احترافية وخفيفة جداً (Custom Minimal GUI)
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SlaxHubPro"
+ScreenGui.Parent = CoreGui
+ScreenGui.ResetOnSpawn = false
 
--- واجهة التحكم للـ Trigger Bot
-MainTab:CreateToggle({
-    Name = "Trigger Bot (Instant Clash)",
-    CurrentValue = false,
-    Flag = "TriggerBotToggle",
-    Callback = function(Value)
-        triggerBotEnabled = Value
-        Rayfield:Notify({
-            Title = "Trigger Bot",
-            Content = triggerBotEnabled and "Trigger Active ⚡" : "Trigger Off 🔴",
-            Duration = 2
-        })
-    end,
-})
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 220, 0, 130)
+MainFrame.Position = UDim2.new(0.05, 0, 0.2, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
 
--- التشغيل الفعلي والمراقب الحركي
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundTransparency = 1
+Title.Text = "SLAX HUB // PRO"
+Title.TextColor3 = Color3.fromRGB(0, 255, 150)
+Title.TextSize = 14
+Title.Font = Enum.Font.Code
+Title.Parent = MainFrame
+
+-- زر تفعيل الأوتو باري الاحترافي
+local ParryBtn = Instance.new("TextButton")
+ParryBtn.Size = UDim2.new(0.9, 0, 0, 35)
+ParryBtn.Position = UDim2.new(0.05, 0, 0.3, 0)
+ParryBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+ParryBtn.Text = "Auto Parry: [ OFF ]"
+ParryBtn.TextColor3 = Color3.fromRGB(255, 50, 50)
+ParryBtn.TextSize, ParryBtn.Font = 12, Enum.Font.Code
+ParryBtn.Parent = MainFrame
+Instance.new("UICorner", ParryBtn).CornerRadius = UDim.new(0, 6)
+
+-- زر تفعيل الـ Trigger Bot
+local TriggerBtn = Instance.new("TextButton")
+TriggerBtn.Size = UDim2.new(0.9, 0, 0, 35)
+TriggerBtn.Position = UDim2.new(0.05, 0, 0.65, 0)
+TriggerBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+TriggerBtn.Text = "Trigger Bot: [ OFF ]"
+TriggerBtn.TextColor3 = Color3.fromRGB(255, 50, 50)
+TriggerBtn.TextSize, TriggerBtn.Font = 12, Enum.Font.Code
+TriggerBtn.Parent = MainFrame
+Instance.new("UICorner", TriggerBtn).CornerRadius = UDim.new(0, 6)
+
+local autoParryActive = false
+local triggerBotActive = false
+local lastAction = 0
+
+ParryBtn.MouseButton1Click:Connect(function()
+    autoParryActive = not autoParryActive
+    ParryBtn.Text = autoParryActive and "Auto Parry: [ ON ]" or "Auto Parry: [ OFF ]"
+    ParryBtn.TextColor3 = autoParryActive and Color3.fromRGB(50, 255, 100) or Color3.fromRGB(255, 50, 50)
+end)
+
+TriggerBtn.MouseButton1Click:Connect(function()
+    triggerBotActive = not triggerBotActive
+    TriggerBtn.Text = triggerBotActive and "Trigger Bot: [ ON ]" or "Trigger Bot: [ OFF ]"
+    TriggerBtn.TextColor3 = triggerBotActive and Color3.fromRGB(50, 255, 100) or Color3.fromRGB(255, 50, 50)
+end)
+
+-- محرك الاستدعاء المباشر والآمن المتوافق مع Delta
+local function getRemote()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if remotes and remotes:FindFirstChild("ParryButtonPress") then
+        return remotes.ParryButtonPress
+    end
+    for _, v in pairs(ReplicatedStorage:GetDescendants()) do
+        if v:IsA("RemoteEvent") and (v.Name == "ParryButtonPress" or v.Name == "Parry") then
+            return v
+        end
+    end
+    return nil
+end
+
 RunService.Heartbeat:Connect(function()
-    if not autoParryEnabled and not triggerBotEnabled then return end
+    if not autoParryActive and not triggerBotActive then return end
     
     pcall(function()
-        local character = LocalPlayer.Character
-        if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-        local rootPart = character.HumanoidRootPart
+        local char = LocalPlayer.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+        local hrp = char.HumanoidRootPart
         
-        local remote = getParryRemote()
+        local remote = getRemote()
         if not remote then return end
         
-        local ballsFolder = workspace:FindFirstChild("Balls")
-        if not ballsFolder then return end
+        local balls = workspace:FindFirstChild("Balls")
+        if not balls then return end
         
-        local currentTime = tick()
-        if currentTime - lastParryTick < 0.1 then return end
+        local now = tick()
+        if now - lastAction < 0.08 then return end
         
-        for _, ball in pairs(ballsFolder:GetChildren()) do
+        for _, ball in pairs(balls:GetChildren()) do
             if ball:IsA("BasePart") then
-                local distance = (rootPart.Position - ball.Position).Magnitude
-                local velocity = ball.AssemblyLinearVelocity.Magnitude
+                local dist = (hrp.Position - ball.Position).Magnitude
+                local vel = ball.AssemblyLinearVelocity.Magnitude
                 
-                if velocity > 0 then
-                    local timeToReach = distance / velocity
+                if vel > 0 then
+                    local timeToHit = dist / vel
                     
-                    -- نظام الأوتو باري المعتمد على التوقيت والمسافة
-                    if autoParryEnabled and (timeToReach <= 0.4 or distance <= 16) then
+                    if autoParryActive and (timeToHit <= 0.38 or dist <= 15) then
                         remote:FireServer()
-                        lastParryTick = currentTime + 0.05
-                        task.wait(0.05)
-                    end
-                    
-                    -- نظام الـ Trigger Bot للاشتباك الفوري في المدى القريب جداً
-                    if triggerBotEnabled and distance <= 9.0 then
+                        lastAction = now + 0.03
+                    elseif triggerBotActive and dist <= 10 then
                         remote:FireServer()
-                        lastParryTick = currentTime + 0.02
-                        task.wait(0.03)
+                        lastAction = now + 0.01
                     end
                 end
             end
