@@ -1,17 +1,22 @@
--- Blade Ball - Direct Working Auto Parry (No Crash)
+-- Blade Ball - Delta Optimized Auto Parry
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
-local playerGui = LocalPlayer:WaitForChild("PlayerGui")
-local remotes = ReplicatedStorage:WaitForChild("Remotes")
-local parryEvent = remotes:WaitForChild("ParryButtonPress")
+-- التحقق من الاتصال بالريموت الخاص باللعبة
+local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+local parryEvent = remotes and remotes:FindFirstChild("ParryButtonPress")
 
--- تشغيل تلقائي بمجرد تفعيل السكربت
-print("[Slax Hub] Auto Parry Initialized & Running!")
+if not parryEvent then
+    warn("[Delta Hub] Parry Remote not found! Make sure you are inside an active match.")
+else
+    print("[Delta Hub] Auto Parry successfully loaded and linked!")
+end
 
 RunService.Heartbeat:Connect(function()
+    if not parryEvent then return end
+    
     pcall(function()
         local character = LocalPlayer.Character
         if not character or not character:FindFirstChild("HumanoidRootPart") then return end
@@ -21,7 +26,6 @@ RunService.Heartbeat:Connect(function()
         if not ballsFolder then return end
         
         for _, ball in pairs(ballsFolder:GetChildren()) do
-            -- التحقق من الكرة الحقيقية الموجهة إليك
             if ball:IsA("BasePart") then
                 local distance = (rootPart.Position - ball.Position).Magnitude
                 local velocity = ball.AssemblyLinearVelocity.Magnitude
@@ -29,9 +33,9 @@ RunService.Heartbeat:Connect(function()
                 if velocity > 0 then
                     local timeToReach = distance / velocity
                     
-                    -- المسافة ووقت الاستجابة المباشر للصد الفوري
-                    if timeToReach <= 0.4 or distance <= 16 then
-                        parryEvent:Fire()
+                    -- عتبة الاستجابة المتوافقة مع أداء دلتا
+                    if timeToReach <= 0.38 or distance <= 15 then
+                        parryEvent:FireServer()
                         task.wait(0.1)
                     end
                 end
