@@ -1,4 +1,4 @@
--- 🏆 Blade Ball Anti-Ban & Smooth Mobile Parry Engine
+-- 🏆 Blade Ball Ultimate Anti-Ban & Single-Hit Mobile Engine
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -8,12 +8,12 @@ local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- إعدادات آمنة للجوال ومنع الطرد
+-- إعدادات صارمة تمنع الطرد والضرب المزدوج تماماً
 local Config = {
     Active = true,
-    ParryRange = 38,          -- مسافة آمنة ومستقرة للصد
-    SlashRange = 55,          -- مسافة الكرات السريعة
-    Cooldown = 0.35,          -- فاصل زمني صارم لمنع السبام والطرد من السيرفر
+    ParryRange = 36,          -- مسافة الصد الآمنة
+    SlashRange = 52,          -- مسافة الكرات السريعة
+    Cooldown = 0.6,           -- مهلة زمنية صارمة (لا يمكن ضرب كرتين في أقل من 0.6 ثانية)
 }
 
 -- البحث الذكي عن الريموت
@@ -35,16 +35,16 @@ local parryRemote = getParryRemote()
 
 -- واجهة الجوال (زر عائم)
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BladeBallSafeGUI"
+screenGui.Name = "BladeBallAntiBanGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
 local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(0, 150, 0, 30)
-statusLabel.Position = UDim2.new(0.5, -75, 0.02, 0)
+statusLabel.Size = UDim2.new(0, 160, 0, 30)
+statusLabel.Position = UDim2.new(0.5, -80, 0.02, 0)
 statusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
-statusLabel.Text = "🛡️ Safe Engine: ON"
+statusLabel.Text = "🛡️ Ultra Safe: ON"
 statusLabel.Font = Enum.Font.GothamBold
 statusLabel.TextSize = 12
 statusLabel.Parent = screenGui
@@ -72,7 +72,7 @@ toggleButton.MouseButton1Click:Connect(function()
     if Config.Active then
         toggleButton.Text = "ON 🟢"
         toggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-        statusLabel.Text = "🛡️ Safe Engine: ON"
+        statusLabel.Text = "🛡️ Ultra Safe: ON"
         statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
     else
         toggleButton.Text = "OFF 🔴"
@@ -81,24 +81,6 @@ toggleButton.MouseButton1Click:Connect(function()
         statusLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
     end
 end)
-
--- دالة الصد الآمنة (بدون سبام)
-local lastParryTick = 0
-local function triggerParry()
-    local currentTick = tick()
-    if currentTick - lastParryTick < Config.Cooldown then return end
-    lastParryTick = currentTick
-    
-    if parryRemote then
-        pcall(function()
-            if parryRemote:IsA("RemoteEvent") then
-                parryRemote:FireServer()
-            elseif parryRemote:IsA("RemoteFunction") then
-                parryRemote:InvokeServer()
-            end
-        end)
-    end
-end
 
 -- البحث عن الكرة
 local function findBall()
@@ -117,8 +99,9 @@ end
 
 local lastPos = Vector3.new()
 local lastTick = tick()
+local lastParryTime = 0
 
--- حلقة المراقبة مع منع التجميد تماماً
+-- حلقة مراقبة ذكية ونظيفة تمنع التوقف والضرب المزدوج تماماً
 RunService.Heartbeat:Connect(function()
     if not Config.Active then return end
     
@@ -129,21 +112,35 @@ RunService.Heartbeat:Connect(function()
     local deltaTime = currentTick - lastTick
     if deltaTime <= 0 then deltaTime = 0.01 end
     
+    -- حساب السرعة واتجاه الكرة
     local speed = (ball.Position - lastPos).Magnitude / deltaTime
     lastPos = ball.Position
     lastTick = currentTick
     
     local dist = (rootPart.Position - ball.Position).Magnitude
     
+    -- تحديد المدى المناسب
     local activeRange = Config.ParryRange
     if speed > 110 then
         activeRange = Config.SlashRange
     end
     
-    -- الصد بطلقة واحدة دقيقة تمنع توقف اللاعب وتمنع الطرد
+    -- التحقق من المهلة الزمنية (Cooldown) بدقة شديدة لمنع الطرد والضرب المزدوج والتوقف
     if dist <= activeRange then
-        triggerParry()
+        if (currentTick - lastParryTime) >= Config.Cooldown then
+            lastParryTime = currentTick
+            
+            if parryRemote then
+                pcall(function()
+                    if parryRemote:IsA("RemoteEvent") then
+                        parryRemote:FireServer()
+                    elseif parryRemote:IsA("RemoteFunction") then
+                        parryRemote:InvokeServer()
+                    end
+                end)
+            end
+        end
     end
 end)
 
-print("🏆 Blade Ball Anti-Ban Engine Loaded!")
+print("🏆 Ultimate Single-Hit Engine Loaded!")
