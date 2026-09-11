@@ -1,41 +1,36 @@
--- 🏆 Blade Ball Ultimate Anti-Ban & Single-Hit Mobile Engine
+-- 🏆 Blade Ball Lag-Free & Anti-Freeze Mobile Engine
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- إعدادات صارمة تمنع الطرد والضرب المزدوج تماماً
 local Config = {
     Active = true,
-    ParryRange = 36,          -- مسافة الصد الآمنة
-    SlashRange = 52,          -- مسافة الكرات السريعة
-    Cooldown = 0.6,           -- مهلة زمنية صارمة (لا يمكن ضرب كرتين في أقل من 0.6 ثانية)
+    ParryRange = 36,
+    SlashRange = 50,
+    Cooldown = 0.5,
 }
 
--- البحث الذكي عن الريموت
-local function getParryRemote()
-    local remote = ReplicatedStorage:FindFirstChild("Packages") 
-        and ReplicatedStorage.Packages:FindFirstChild("_Index") 
-        and ReplicatedStorage.Packages._Index:FindFirstChild("sleitnick_net@0.1.0") 
-        and ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"].net:FindFirstChild("ParryButton")
-    
-    if not remote then
-        remote = ReplicatedStorage:FindFirstChild("Parry") or 
-                 ReplicatedStorage:FindFirstChild("Swing") or
-                 Workspace:FindFirstChild("ParryButton")
+-- البحث عن زر الصد الحقيقي في واجهة اللعبة
+local function getParryButtonUI()
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        for _, gui in ipairs(playerGui:GetDescendants()) do
+            if gui:IsA("GuiButton") and (string.lower(gui.Name):find("parry") or string.lower(gui.Name):find("ability") or string.lower(gui.Name):find("skill")) then
+                return gui
+            end
+        end
     end
-    return remote
+    return nil
 end
 
-local parryRemote = getParryRemote()
-
--- واجهة الجوال (زر عائم)
+-- واجهة الجوال
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BladeBallAntiBanGUI"
+screenGui.Name = "BladeBallInstantGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
@@ -44,7 +39,7 @@ statusLabel.Size = UDim2.new(0, 160, 0, 30)
 statusLabel.Position = UDim2.new(0.5, -80, 0.02, 0)
 statusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
-statusLabel.Text = "🛡️ Ultra Safe: ON"
+statusLabel.Text = "🛡️ Smooth: ON"
 statusLabel.Font = Enum.Font.GothamBold
 statusLabel.TextSize = 12
 statusLabel.Parent = screenGui
@@ -72,7 +67,7 @@ toggleButton.MouseButton1Click:Connect(function()
     if Config.Active then
         toggleButton.Text = "ON 🟢"
         toggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-        statusLabel.Text = "🛡️ Ultra Safe: ON"
+        statusLabel.Text = "🛡️ Smooth: ON"
         statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
     else
         toggleButton.Text = "OFF 🔴"
@@ -82,7 +77,6 @@ toggleButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- البحث عن الكرة
 local function findBall()
     for _, obj in ipairs(Workspace:GetChildren()) do
         if obj:IsA("BasePart") and (obj.Name == "Ball" or obj.Name == "DefaultBall" or obj:FindFirstChild("Trail")) then
@@ -101,7 +95,7 @@ local lastPos = Vector3.new()
 local lastTick = tick()
 local lastParryTime = 0
 
--- حلقة مراقبة ذكية ونظيفة تمنع التوقف والضرب المزدوج تماماً
+-- حلقة خالية من أي تجميد أو توقف للحركة
 RunService.Heartbeat:Connect(function()
     if not Config.Active then return end
     
@@ -112,35 +106,36 @@ RunService.Heartbeat:Connect(function()
     local deltaTime = currentTick - lastTick
     if deltaTime <= 0 then deltaTime = 0.01 end
     
-    -- حساب السرعة واتجاه الكرة
     local speed = (ball.Position - lastPos).Magnitude / deltaTime
     lastPos = ball.Position
     lastTick = currentTick
     
     local dist = (rootPart.Position - ball.Position).Magnitude
-    
-    -- تحديد المدى المناسب
     local activeRange = Config.ParryRange
     if speed > 110 then
         activeRange = Config.SlashRange
     end
     
-    -- التحقق من المهلة الزمنية (Cooldown) بدقة شديدة لمنع الطرد والضرب المزدوج والتوقف
     if dist <= activeRange then
         if (currentTick - lastParryTime) >= Config.Cooldown then
             lastParryTime = currentTick
             
-            if parryRemote then
-                pcall(function()
-                    if parryRemote:IsA("RemoteEvent") then
-                        parryRemote:FireServer()
-                    elseif parryRemote:IsA("RemoteFunction") then
-                        parryRemote:InvokeServer()
-                    end
-                end)
-            end
+            -- تنفيذ الضغط الفوري في مسار منفصل (Task) لمنع تجميد حركة اللاعب نهائياً
+            task.spawn(function()
+                local parryBtn = getParryButtonUI()
+                if parryBtn then
+                    local absPos = parryBtn.AbsolutePosition
+                    local absSize = parryBtn.AbsoluteSize
+                    local clickX = absPos.X + (absSize.X / 2)
+                    local clickY = absPos.Y + (absSize.Y / 2)
+                    
+                    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
+                    task.wait(0.01) -- وقت قصير جداً لا يؤثر على حركة الشخصية
+                    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
+                end
+            end)
         end
     end
 end)
 
-print("🏆 Ultimate Single-Hit Engine Loaded!")
+print("🏆 Smooth Anti-Freeze Engine Loaded!")
