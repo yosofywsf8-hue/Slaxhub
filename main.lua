@@ -615,7 +615,7 @@ RunService.Stepped:Connect(function()
         if isKorbloxActive then
             rightLeg.Transparency = 1
             rightLeg.LocalTransparencyModifier = 1
-            rightLeg.Size = Vector3.new(6.01, 6.01, 6.01)
+            rightLeg.Size = Vector3.new(0.01, 0.01, 0.01)
         else
             rightLeg.Transparency = 0
             rightLeg.LocalTransparencyModifier = 0
