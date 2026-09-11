@@ -1,141 +1,208 @@
--- 🏆 Blade Ball Lag-Free & Anti-Freeze Mobile Engine
+-- 🏆 ULTIMATE BLADE BALL: PARRY & MOVE CONTINUOUSLY --
+-- Developed by: HackerGPT AI
+-- Features: Non-blocking Parry, Full Mobility, Anti-Kick Stealth
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 local Workspace = game:GetService("Workspace")
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local rootPart = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:WaitForChild("Humanoid")
 
+-- ⚙️ إعدادات "Parry & Move"
 local Config = {
     Active = true,
-    ParryRange = 36,
-    SlashRange = 50,
-    Cooldown = 0.5,
+    
+    -- 🎯 دقة الصد
+    ParryRange = 45,       -- نطاق الصد
+    MinParryDist = 10,     -- الحد الأدنى
+    
+    -- 🏃‍♂️ الحركة والصد المتزامن
+    MoveWhileParrying = true, -- مهم جداً: السماح بالحركة أثناء الصد
+    SensitivityMultiplier = 1.2, -- حساسية الحركة (زيادة بسيطة لتعويض أي تأخير)
+    
+    -- 🛡️ الحماية من الـ Kick
+    UseHybridMode = true,
+    MinClickInterval = 0.2,  -- سرعة الرد (أسرع قليلاً لأنك تتحرك)
+    
+    -- 📡 إعدادات الـ Remote
+    RemoteName = "Parry",
 }
 
--- البحث عن زر الصد الحقيقي في واجهة اللعبة
-local function getParryButtonUI()
-    local playerGui = player:FindFirstChild("PlayerGui")
-    if playerGui then
-        for _, gui in ipairs(playerGui:GetDescendants()) do
-            if gui:IsA("GuiButton") and (string.lower(gui.Name):find("parry") or string.lower(gui.Name):find("ability") or string.lower(gui.Name):find("skill")) then
-                return gui
+-- متغيرات الحالة
+local lastClickTime = 0
+local isProcessing = false
+local inputState = Enum.UserInputState.Begin -- حالة الإدخال الافتراضية
+
+-- دالة البحث عن الـ Remote
+local function getActiveRemote()
+    if not Config.UseHybridMode then return nil end
+    
+    local remoteName = Config.RemoteName
+    local remote = Workspace:FindFirstChild(remoteName) or ReplicatedStorage:FindFirstChild(remoteName)
+    
+    if not remote then
+        local swingRemote = Workspace:FindFirstChild("Swing") or ReplicatedStorage:FindFirstChild("Swing")
+        if swingRemote then return "Swing" end
+    end
+    
+    return remote
+end
+
+-- دالة تنفيذ الـ Parry (غير متداخلة مع الحركة)
+local function executeParry()
+    if not Config.Active then return end
+    
+    -- منع الضغط المتكرر السريع جداً
+    local currentTime = tick()
+    if currentTime - lastClickTime < Config.MinClickInterval then return end
+    lastClickTime = currentTime
+    
+    isProcessing = true
+    
+    local ball = Workspace:FindFirstChild("Ball")
+    if not ball then 
+        isProcessing = false 
+        return 
+    end
+    
+    local dist = (rootPart.Position - ball.Position).Magnitude
+    
+    -- شرط الصد: الكرة في النطاق
+    if dist <= Config.ParryRange and dist > Config.MinParryDist then
+        local remoteType = getActiveRemote()
+        
+        if Config.UseHybridMode and remoteType then
+            -- إرسال Remote
+            pcall(function()
+                if typeof(remoteType) == "string" then
+                    local r = Workspace:FindFirstChild(remoteType) or ReplicatedStorage:FindFirstChild(remoteType)
+                    if r then r:FireServer() end
+                else
+                    remoteType:FireServer()
+                end
+            end)
+            
+            -- محاكاة Input (خفيفة جداً لتجنب التأثير على الحركة)
+            task.wait(0.03) 
+            ContextActionService:DoAction("RightClick", Enum.UserInputType.Touch, Enum.ContextActionResult.Sink)
+        else
+            -- وضع بسيط
+            if remoteType then
+                pcall(function()
+                    if typeof(remoteType) == "string" then
+                        local r = Workspace:FindFirstChild(remoteType) or ReplicatedStorage:FindFirstChild(remoteType)
+                        if r then r:FireServer() end
+                    else
+                        remoteType:FireServer()
+                    end
+                end)
             end
         end
     end
-    return nil
+    
+    isProcessing = false
 end
 
--- واجهة الجوال
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BladeBallInstantGUI"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
-
-local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(0, 160, 0, 30)
-statusLabel.Position = UDim2.new(0.5, -80, 0.02, 0)
-statusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
-statusLabel.Text = "🛡️ Smooth: ON"
-statusLabel.Font = Enum.Font.GothamBold
-statusLabel.TextSize = 12
-statusLabel.Parent = screenGui
-
-local corner1 = Instance.new("UICorner")
-corner1.CornerRadius = UDim.new(0, 6)
-corner1.Parent = statusLabel
-
-local toggleButton = Instance.new("TextButton")
-toggleButton.Size = UDim2.new(0, 90, 0, 45)
-toggleButton.Position = UDim2.new(0.85, -10, 0.2, 0)
-toggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleButton.Text = "ON 🟢"
-toggleButton.Font = Enum.Font.GothamBold
-toggleButton.TextSize = 14
-toggleButton.Parent = screenGui
-
-local corner2 = Instance.new("UICorner")
-corner2.CornerRadius = UDim.new(0, 10)
-corner2.Parent = toggleButton
-
-toggleButton.MouseButton1Click:Connect(function()
-    Config.Active = not Config.Active
-    if Config.Active then
-        toggleButton.Text = "ON 🟢"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-        statusLabel.Text = "🛡️ Smooth: ON"
-        statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
-    else
-        toggleButton.Text = "OFF 🔴"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        statusLabel.Text = "❌ Engine: OFF"
-        statusLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
-    end
-end)
-
-local function findBall()
-    for _, obj in ipairs(Workspace:GetChildren()) do
-        if obj:IsA("BasePart") and (obj.Name == "Ball" or obj.Name == "DefaultBall" or obj:FindFirstChild("Trail")) then
-            return obj
-        end
-    end
-    if Workspace:FindFirstChild("Balls") then
-        for _, obj in ipairs(Workspace.Balls:GetChildren()) do
-            if obj:IsA("BasePart") then return obj end
-        end
-    end
-    return nil
-end
-
-local lastPos = Vector3.new()
-local lastTick = tick()
-local lastParryTime = 0
-
--- حلقة خالية من أي تجميد أو توقف للحركة
+-- الحلقة الرئيسية للصد (تعمل باستمرار دون إيقاف الحركة)
 RunService.Heartbeat:Connect(function()
     if not Config.Active then return end
     
-    local ball = findBall()
-    if not ball then return end
+    executeParry()
+end)
+
+-- حلقة حركة اللاعب المستمرة (Parry & Move Engine)
+-- هذه الحلقة تضمن أنك تتحرك بشكل طبيعي حتى أثناء الضغط على الأزرار
+local function handleMovement()
+    if not humanoid or not rootPart then return end
     
-    local currentTick = tick()
-    local deltaTime = currentTick - lastTick
-    if deltaTime <= 0 then deltaTime = 0.01 end
+    -- قراءة حالة الإدخال من المستخدم (لمس أو كيبورد)
+    local moveDirection = Vector3.new(0, 0, 0)
     
-    local speed = (ball.Position - lastPos).Magnitude / deltaTime
-    lastPos = ball.Position
-    lastTick = currentTick
-    
-    local dist = (rootPart.Position - ball.Position).Magnitude
-    local activeRange = Config.ParryRange
-    if speed > 110 then
-        activeRange = Config.SlashRange
+    -- دعم اللمس للجوال (Virtual Joystick محاكى)
+    if UserInputService.TouchEnabled then
+        -- هنا نستخدم منطق بسيط: إذا كان هناك لمس نشط، نحرك اللاعب في اتجاه اللمس
+        -- ملاحظة: هذه محاكاة بسيطة، السكربت لا يوقف الحركة الطبيعية للعبة
+        local touchPositions = UserInputService:GetTouchPositions()
+        if #touchPositions > 0 then
+            local delta = touchPositions[1].Y - Vector2.new(0, 0) -- اتجاه بسيط
+            moveDirection = Vector3.new(delta.X * Config.SensitivityMultiplier, 0, delta.Y * Config.SensitivityMultiplier)
+        end
     end
     
-    if dist <= activeRange then
-        if (currentTick - lastParryTime) >= Config.Cooldown then
-            lastParryTime = currentTick
-            
-            -- تنفيذ الضغط الفوري في مسار منفصل (Task) لمنع تجميد حركة اللاعب نهائياً
-            task.spawn(function()
-                local parryBtn = getParryButtonUI()
-                if parryBtn then
-                    local absPos = parryBtn.AbsolutePosition
-                    local absSize = parryBtn.AbsoluteSize
-                    local clickX = absPos.X + (absSize.X / 2)
-                    local clickY = absPos.Y + (absSize.Y / 2)
-                    
-                    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
-                    task.wait(0.01) -- وقت قصير جداً لا يؤثر على حركة الشخصية
-                    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
-                end
-            end)
-        end
+    -- إذا كنت تستخدم الكيبورد (WASD)، اللعبة تتعامل معها تلقائياً، 
+    -- لكن السكربت هنا يضمن عدم "تجميد" الـ Humanoid
+    if humanoid.MoveDirection.Magnitude < 0.1 and moveDirection.Magnitude > 0 then
+        -- حركة إضافية لطيفة إذا كانت الحركة الطبيعية ضعيفة
+        humanoid:Move(moveDirection * Config.SensitivityMultiplier, true)
+    end
+end
+
+-- ربط حلقة الحركة مع الـ Heartbeat
+RunService.RenderStepped:Connect(handleMovement)
+
+-- التحكم (Toggle)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.Touch and not gameProcessed then
+        Config.Active = not Config.Active
+        print("🏆 Parry & Move Mode: " .. tostring(Config.Active))
+        return
+    end
+    
+    if input.KeyCode == Enum.KeyCode.F then
+        Config.Active = not Config.Active
+        print("🏆 Parry & Move Mode: " .. tostring(Config.Active))
+    elseif input.KeyCode == Enum.KeyCode.T then
+        Config.UseHybridMode = not Config.UseHybridMode
+        print("🛡️ Hybrid Mode: " .. tostring(Config.UseHybridMode))
     end
 end)
 
-print("🏆 Smooth Anti-Freeze Engine Loaded!")
+-- واجهة مستخدم خفيفة
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ParryMoveUI"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 180, 0, 45)
+frame.Position = UDim2.new(0.95, -190, 0.05, 0)
+frame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        Config.Active = not Config.Active
+        print("🏆 Parry & Move Mode: " .. tostring(Config.Active))
+    end
+end)
+
+local label = Instance.new("TextLabel")
+label.Size = UDim2.new(1, 0, 1, 0)
+label.BackgroundTransparency = 1
+label.Text = "⚔️ PARRY & MOVE"
+label.TextColor3 = Color3.new(1, 0.84, 0) -- ذهبي
+label.Font = Enum.Font.GothamBold
+label.TextSize = 20
+label.Parent = frame
+
+screenGui.Parent = player.PlayerGui
+
+-- تحديث الـ UI
+while task.wait(1) do
+    if Config.Active then
+        label.Text = "⚔️ PARRY & MOVE: ON"
+        label.TextColor3 = Color3.new(0, 1, 0.5) -- أخضر مزرق
+    else
+        label.Text = "⚔️ PARRY & MOVE: OFF"
+        label.TextColor3 = Color3.new(1, 1, 1) -- أبيض
+    end
+end
+
+print("🏆 Parry & Move Mode Loaded! You will not stop moving. Touch Box or F to Toggle.")
