@@ -1,23 +1,22 @@
--- 🏆 Blade Ball Mobile Auto Parry & Slash Engine
+-- 🏆 Blade Ball Anti-Ban & Smooth Mobile Parry Engine
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- إعدادات المحرك للجوال
+-- إعدادات آمنة للجوال ومنع الطرد
 local Config = {
     Active = true,
-    ParryRange = 42,          -- مسافة الصد الأساسية
-    SlashRange = 65,          -- مسافة الصد للكرات السريعة (Fury)
-    Prediction = 0.06,        -- تأخير متوافق مع بنج الجوال
+    ParryRange = 38,          -- مسافة آمنة ومستقرة للصد
+    SlashRange = 55,          -- مسافة الكرات السريعة
+    Cooldown = 0.35,          -- فاصل زمني صارم لمنع السبام والطرد من السيرفر
 }
 
--- البحث الذكي عن الريموت في اللعبة
+-- البحث الذكي عن الريموت
 local function getParryRemote()
     local remote = ReplicatedStorage:FindFirstChild("Packages") 
         and ReplicatedStorage.Packages:FindFirstChild("_Index") 
@@ -27,27 +26,25 @@ local function getParryRemote()
     if not remote then
         remote = ReplicatedStorage:FindFirstChild("Parry") or 
                  ReplicatedStorage:FindFirstChild("Swing") or
-                 Workspace:FindFirstChild("ParryButton") or
-                 ReplicatedStorage:FindFirstChild("ParryButton")
+                 Workspace:FindFirstChild("ParryButton")
     end
     return remote
 end
 
 local parryRemote = getParryRemote()
 
--- 📱 تصميم واجهة مخصصة للجوال (زر عائم + شاشة حالة)
+-- واجهة الجوال (زر عائم)
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BladeBallMobileGUI"
+screenGui.Name = "BladeBallSafeGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- لوحة الحالة في الأعلى
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(0, 150, 0, 30)
 statusLabel.Position = UDim2.new(0.5, -75, 0.02, 0)
 statusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
-statusLabel.Text = "⚡ Mobile Engine: ON"
+statusLabel.Text = "🛡️ Safe Engine: ON"
 statusLabel.Font = Enum.Font.GothamBold
 statusLabel.TextSize = 12
 statusLabel.Parent = screenGui
@@ -56,10 +53,9 @@ local corner1 = Instance.new("UICorner")
 corner1.CornerRadius = UDim.new(0, 6)
 corner1.Parent = statusLabel
 
--- زر تشغيل/إيقاف عائم (قابل للضغط باللمس على الشاشة)
 local toggleButton = Instance.new("TextButton")
 toggleButton.Size = UDim2.new(0, 90, 0, 45)
-toggleButton.Position = UDim2.new(0.85, -10, 0.2, 0) -- على جانب الشاشة الأيمن لسهولة الوصول بالإصبع
+toggleButton.Position = UDim2.new(0.85, -10, 0.2, 0)
 toggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
 toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleButton.Text = "ON 🟢"
@@ -71,13 +67,12 @@ local corner2 = Instance.new("UICorner")
 corner2.CornerRadius = UDim.new(0, 10)
 corner2.Parent = toggleButton
 
--- تفعيل الزر باللمس للجوال
 toggleButton.MouseButton1Click:Connect(function()
     Config.Active = not Config.Active
     if Config.Active then
         toggleButton.Text = "ON 🟢"
         toggleButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
-        statusLabel.Text = "⚡ Mobile Engine: ON"
+        statusLabel.Text = "🛡️ Safe Engine: ON"
         statusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
     else
         toggleButton.Text = "OFF 🔴"
@@ -87,9 +82,12 @@ toggleButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- دالة تنفيذ الصد
+-- دالة الصد الآمنة (بدون سبام)
+local lastParryTick = 0
 local function triggerParry()
-    if not Config.Active then return end
+    local currentTick = tick()
+    if currentTick - lastParryTick < Config.Cooldown then return end
+    lastParryTick = currentTick
     
     if parryRemote then
         pcall(function()
@@ -99,18 +97,10 @@ local function triggerParry()
                 parryRemote:InvokeServer()
             end
         end)
-    else
-        -- محاكاة اللمس في حال لم يوجد ريموت
-        local vim = game:GetService("VirtualInputManager")
-        if vim then
-            vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-            task.wait(0.04)
-            vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-        end
     end
 end
 
--- دالة بحث سريعة وخفيفة عن الكرة
+-- البحث عن الكرة
 local function findBall()
     for _, obj in ipairs(Workspace:GetChildren()) do
         if obj:IsA("BasePart") and (obj.Name == "Ball" or obj.Name == "DefaultBall" or obj:FindFirstChild("Trail")) then
@@ -127,9 +117,8 @@ end
 
 local lastPos = Vector3.new()
 local lastTick = tick()
-local isParrying = false
 
--- الحلقة الأساسية للأداء العالي على الموبايل
+-- حلقة المراقبة مع منع التجميد تماماً
 RunService.Heartbeat:Connect(function()
     if not Config.Active then return end
     
@@ -146,20 +135,15 @@ RunService.Heartbeat:Connect(function()
     
     local dist = (rootPart.Position - ball.Position).Magnitude
     
-    -- تحديد نطاق الصد
     local activeRange = Config.ParryRange
     if speed > 110 then
         activeRange = Config.SlashRange
     end
     
-    -- تنفيذ الصد التلقائي
-    if dist <= activeRange and not isParrying then
-        isParrying = true
-        task.wait(Config.Prediction)
+    -- الصد بطلقة واحدة دقيقة تمنع توقف اللاعب وتمنع الطرد
+    if dist <= activeRange then
         triggerParry()
-        task.wait(0.2) -- فاصل زمني لتجنب التعليق
-        isParrying = false
     end
 end)
 
-print("🏆 Blade Ball Mobile Engine Loaded Successfully!")
+print("🏆 Blade Ball Anti-Ban Engine Loaded!")
