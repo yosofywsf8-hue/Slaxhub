@@ -613,7 +613,7 @@ RunService.Stepped:Connect(function()
     local rightLeg = myChar:FindFirstChild("Right Leg")
     if rightLeg and rightLeg:IsA("BasePart") then
         if isKorbloxActive then
-            rightLeg.Transparency = 1
+            rightLeg.Transparency = 6
             rightLeg.LocalTransparencyModifier = 1
             rightLeg.Size = Vector3.new(0.01, 0.01, 0.01)
         else
