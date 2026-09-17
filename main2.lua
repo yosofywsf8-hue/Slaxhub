@@ -1,206 +1,198 @@
--- ============================================
--- Blade Ball Auto Parry (Mobile-Friendly)
--- بدون Immortality
--- ============================================
+--[[
+    ═══════════════════════════════════════════════════════════
+    🔥 Roblox FFlags Auto-Installer (Lua Script)
+    ═══════════════════════════════════════════════════════════
+    ▸ يشغل خارج Roblox (على الكمبيوتر)
+    ▸ يتطلب مفسر Lua مثبت (Lua 5.1+ أو LuaJIT)
+    ▸ يلقى أحدث إصدار Roblox تلقائياً
+    ▸ ينشئ ClientAppSettings.json بأقوى الإعدادات المسموحة
+    ▸ يحفظ نسخة احتياطية من الملف القديم
+    ═══════════════════════════════════════════════════════════
+]]
 
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
+-- ═══════════════ الإعدادات (عدّل هنا حسب حاجتك) ═══════════════
+local MODE = "balanced"  -- خيارات: "balanced" | "max_performance" | "custom"
 
-local Player = Players.LocalPlayer
-
--- انتظر اللعبة تحمّل
-local Balls = workspace:WaitForChild("Balls", 30)
-local Remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
-
--- الريموت المسؤول عن الباري
-local ParryRemote = Remotes:WaitForChild("ParryButtonPress", 30)
-
-if not ParryRemote then
-    warn("[AutoParry] ما لقيت ParryButtonPress")
-    return
-end
-
--- ============================================
--- الإعدادات
--- ============================================
-local CONFIG = {
-    AutoParry = true,       -- باري تلقائي
-    AutoSpam = false,       -- ضغط تلقائي
-    SpamDelay = 0.1,        -- سرعة الس팸
-    ParryCooldown = 0.15,   -- كول داون بين كل باري
-    MaxDistance = 60,       -- أقصى مسافة
+-- الإعدادات المتوازنة (صورة حلوة + أداء عالي)
+local FLAGS_BALANCED = {
+    ["DFIntTaskSchedulerTargetFps"]        = 240,       -- إلغاء قيد الفريمات
+    ["DFIntConnectionMTUSize"]             = 1490,      -- تقليل البنق
+    ["DFIntCSGLevelOfDetailSwitchingDistance"] = 100,   -- تخفيف VRAM
+    ["FIntRenderShadowIntensity"]          = 0,         -- إلغاء الظلال
+    ["FFlagDisablePostFx"]                 = true,      -- إلغاء التأثيرات
+    ["DFIntDebugDynamicRenderKiloPixels"]  = 786432,    -- دقة 1024x768
+    ["FStringGetPlayerImageDefaultTimeout"] = "1",      -- تحميل أسرع للصور
 }
 
-local lastParry = 0
-local spamThread = nil
+-- أقصى أداء (صورة ضبابية بس أداء خارق)
+local FLAGS_MAX_PERF = {
+    ["DFIntTaskSchedulerTargetFps"]        = 240,
+    ["DFIntConnectionMTUSize"]             = 1490,
+    ["DFIntCSGLevelOfDetailSwitchingDistance"] = 0,
+    ["FIntRenderShadowIntensity"]          = 0,
+    ["FFlagDisablePostFx"]                 = true,
+    ["DFIntDebugDynamicRenderKiloPixels"]  = 393216,    -- دقة منخفضة جداً
+    ["FStringGetPlayerImageDefaultTimeout"] = "1",
+}
 
--- ============================================
--- دالة الباري
--- ============================================
-local function doParry()
-    if tick() - lastParry < CONFIG.ParryCooldown then
-        return
+-- إعدادات مخصصة (اكتب اللي تبيه)
+local FLAGS_CUSTOM = {
+    ["DFIntTaskSchedulerTargetFps"]        = 240,
+    -- ["اسم_الفلاج"] = القيمة,
+}
+
+-- ═══════════════ اختيار الإعدادات ═══════════════
+local function getSelectedFlags()
+    if MODE == "balanced" then
+        return FLAGS_BALANCED
+    elseif MODE == "max_performance" then
+        return FLAGS_MAX_PERF
+    elseif MODE == "custom" then
+        return FLAGS_CUSTOM
+    else
+        error("MODE غير صحيح! استخدم: balanced | max_performance | custom")
     end
-    lastParry = tick()
-    pcall(function()
-        ParryRemote:Fire()
-    end)
 end
 
--- ============================================
--- فحص إذا الكرة تستهدف اللاعب
--- ============================================
-local function isTargetingMe(ball)
-    local target = ball:GetAttribute("target")
-    if target == Player.Name then
-        return true
-    end
-    -- فحص إضافي: Highlight أو علامة
-    for _, v in ipairs(Player.Character:GetChildren()) do
-        if v:IsA("Highlight") then
-            return true
+-- ═══════════════ تحويل Lua Table إلى JSON ═══════════════
+local function toJSON(tbl)
+    local parts = {}
+    for key, value in pairs(tbl) do
+        local v
+        if type(value) == "string" then
+            v = '"' .. value .. '"'
+        elseif type(value) == "boolean" then
+            v = value and "true" or "false"
+        elseif type(value) == "number" then
+            v = tostring(value)
+        else
+            v = '"' .. tostring(value) .. '"'
         end
+        table.insert(parts, '  "' .. key .. '": ' .. v)
+    end
+    return "{\n" .. table.concat(parts, ",\n") .. "\n}"
+end
+
+-- ═══════════════ تنفيذ أوامر النظام ═══════════════
+local function exec(cmd)
+    local handle = io.popen(cmd)
+    if not handle then return nil end
+    local result = handle:read("*a")
+    handle:close()
+    return result
+end
+
+-- ═══════════════ إيجاد أحدث مجلد إصدار Roblox ═══════════════
+local function findLatestRobloxVersion()
+    local localAppData = os.getenv("LOCALAPPDATA")
+    if not localAppData then
+        return nil, "ما قدرنا نلقى مجلد LOCALAPPDATA"
+    end
+
+    local versionsPath = localAppData .. "\\Roblox\\Versions"
+    print("🔍 نبحث في: " .. versionsPath)
+
+    -- نستخدم dir عشان نلقى المجلدات
+    local output = exec('dir /B /AD "' .. versionsPath .. '" 2>nul')
+    if not output or output == "" then
+        return nil, "ما لقينا مجلد الإصدارات. تأكد إن Roblox مثبت."
+    end
+
+    local latest = nil
+    for folder in output:gmatch("[^\r\n]+") do
+        if folder:match("^version%-") then
+            -- نختار آخر واحد (عادة الأحدث)
+            latest = folder
+        end
+    end
+
+    if not latest then
+        return nil, "ما لقينا أي مجلد يبدأ بـ version-"
+    end
+
+    return versionsPath .. "\\" .. latest
+end
+
+-- ═══════════════ حفظ نسخة احتياطية ═══════════════
+local function backupExistingFile(filePath)
+    local f = io.open(filePath, "r")
+    if not f then return false end
+    local content = f:read("*a")
+    f:close()
+
+    local backupPath = filePath .. ".backup_" .. os.time()
+    local bf = io.open(backupPath, "w")
+    if bf then
+        bf:write(content)
+        bf:close()
+        print("💾 نسخة احتياطية: " .. backupPath)
+        return true
     end
     return false
 end
 
--- ============================================
--- حساب وقت الوصول
--- ============================================
-local function timeToReach(ball)
-    if not Player.Character then return math.huge end
-    local root = Player.Character:FindFirstChild("HumanoidRootPart")
-    if not root then return math.huge end
-    
-    local speed = ball.AssemblyLinearVelocity.Magnitude
-    if speed < 1 then return math.huge end
-    
-    local distance = (ball.Position - root.Position).Magnitude
-    return distance / speed
-end
-
--- ============================================
--- المراقبة الرئيسية
--- ============================================
-local function watchBall(ball)
-    if not ball:IsA("BasePart") then return end
-    
-    -- نتأكد إنها كرة حقيقية
-    if ball:GetAttribute("realBall") ~= true then
-        -- ننتظر ممكن تصير حقيقية
-        ball:GetAttributeChangedSignal("realBall"):Connect(function()
-            if ball:GetAttribute("realBall") == true then
-                -- نبدأ المراقبة
-            end
-        end)
+-- ═══════════════ إنشاء مجلد إذا ما موجود ═══════════════
+local function ensureDirectory(path)
+    -- نتحقق إذا موجود
+    local test = io.open(path .. "\\_test.tmp", "w")
+    if test then
+        test:close()
+        os.remove(path .. "\\_test.tmp")
+        return true
     end
-    
-    -- مراقبة تغير الهدف
-    ball:GetAttributeChangedSignal("target"):Connect(function()
-        if not CONFIG.AutoParry then return end
-        if isTargetingMe(ball) then
-            doParry()
-        end
-    end)
-    
-    -- مراقبة مستمرة (احتياط)
-    task.spawn(function()
-        while ball.Parent do
-            if CONFIG.AutoParry and isTargetingMe(ball) then
-                local t = timeToReach(ball)
-                if t < 0.4 then
-                    doParry()
-                end
-            end
-            task.wait(0.01)
-        end
-    end)
+    -- ننشئه
+    exec('mkdir "' .. path .. '" 2>nul')
+    return true
 end
 
--- ============================================
--- تشغيل
--- ============================================
-for _, ball in ipairs(Balls:GetChildren()) do
-    watchBall(ball)
-end
+-- ═══════════════ الدالة الرئيسية ═══════════════
+local function install()
+    print("═══════════════════════════════════════════════════")
+    print("🔥 Roblox FFlags Installer")
+    print("   الوضع الحالي: " .. MODE)
+    print("═══════════════════════════════════════════════════")
 
-Balls.ChildAdded:Connect(watchBall)
-
--- ============================================
--- Auto Spam
--- ============================================
-local function startSpam()
-    if spamThread then return end
-    spamThread = task.spawn(function()
-        while CONFIG.AutoSpam do
-            doParry()
-            task.wait(CONFIG.SpamDelay)
-        end
-        spamThread = nil
-    end)
-end
-
--- ============================================
--- واجهة بسيطة للجوال
--- ============================================
-local gui = Instance.new("ScreenGui")
-gui.Name = "AutoParryGUI"
-gui.ResetOnSpawn = false
-gui.Parent = Player:WaitForChild("PlayerGui")
-
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 180, 0, 150)
-frame.Position = UDim2.new(0, 20, 0.3, 0)
-frame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Draggable = true
-frame.Parent = gui
-
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 10)
-corner.Parent = frame
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 30)
-title.BackgroundTransparency = 1
-title.Text = "Auto Parry"
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 16
-title.Parent = frame
-
-local function makeButton(name, yPos, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.9, 0, 0, 35)
-    btn.Position = UDim2.new(0.05, 0, 0, yPos)
-    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.Gotham
-    btn.TextSize = 14
-    btn.Text = name
-    btn.Parent = frame
-    
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, 6)
-    c.Parent = btn
-    
-    btn.MouseButton1Click:Connect(callback)
-    return btn
-end
-
-local parryBtn = makeButton("Auto Parry: ON", 40, function()
-    CONFIG.AutoParry = not CONFIG.AutoParry
-    parryBtn.Text = "Auto Parry: " .. (CONFIG.AutoParry and "ON" or "OFF")
-end)
-
-local spamBtn = makeButton("Auto Spam: OFF", 85, function()
-    CONFIG.AutoSpam = not CONFIG.AutoSpam
-    spamBtn.Text = "Auto Spam: " .. (CONFIG.AutoSpam and "ON" or "OFF")
-    if CONFIG.AutoSpam then
-        startSpam()
+    -- 1. لقاء مجلد الإصدار
+    local versionPath, err = findLatestRobloxVersion()
+    if not versionPath then
+        print("❌ خطأ: " .. err)
+        return
     end
-end)
+    print("✅ لقينا الإصدار: " .. versionPath)
 
-print("[AutoParry] تم التشغيل بنجاح ✅")
+    -- 2. إنشاء مجلد ClientSettings
+    local settingsPath = versionPath .. "\\ClientSettings"
+    ensureDirectory(settingsPath)
+    print("📁 مجلد الإعدادات: " .. settingsPath)
+
+    -- 3. حفظ نسخة احتياطية إذا الملف موجود
+    local filePath = settingsPath .. "\\ClientAppSettings.json"
+    backupExistingFile(filePath)
+
+    -- 4. توليد محتوى JSON
+    local flags = getSelectedFlags()
+    local json = toJSON(flags)
+
+    -- 5. كتابة الملف
+    local file, writeErr = io.open(filePath, "w")
+    if not file then
+        print("❌ ما قدرنا نكتب الملف: " .. tostring(writeErr))
+        print("   جرّب تشغل السكربت كـ Administrator")
+        return
+    end
+    file:write(json)
+    file:close()
+
+    print("═══════════════════════════════════════════════════")
+    print("✅ تم التثبيت بنجاح!")
+    print("📄 المسار: " .. filePath)
+    print("═══════════════════════════════════════════════════")
+    print("\n📋 الإعدادات المطبقة:")
+    for k, v in pairs(flags) do
+        print("   • " .. k .. " = " .. tostring(v))
+    end
+    print("\n⚠️  ملاحظة: سكّر Roblox وشغّله من جديد عشان تتفعل الإعدادات.")
+end
+
+-- ═══════════════ تشغيل ═══════════════
+install()
