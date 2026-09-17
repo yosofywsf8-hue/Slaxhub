@@ -1,31 +1,31 @@
--- ☢️ ANTI-STUTTER & MOVEMENT FPS FIX (120Hz ULTRA STABLE) ☢️
+-- 🚀 120Hz FPS BOOSTER (LOW PING & NETWORK SAFE) 🚀
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 
-print("☢️ Injecting Movement Optimization & Anti-Stutter Engine...")
+print("🚀 Restoring Network & Optimizing FPS Safely...")
 
--- [1] FFlags لمنع التقطيع عند الحركة والتضاريس
+-- [1] FFlags آمنة للـ FPS فقط دون التلاعب بالشبكة أو البنج
 pcall(function()
-    local AntiStutterFlags = {
+    local SafeFlags = {
         {"TaskSchedulerTargetFps", "120"},
         {"FIntTargetFps", "120"},
         {"GameBasicSettingsFramerateCap5", "False"},
         
-        -- إيقاف التحميل الديناميكي المسبب للاق الحركة
+        -- إيقاف التنازل الحراري والبطارية
         {"FFlagEnableMobileThermalThrottling", "False"},
         {"FFlagEnableMobileBatterySavingMode", "False"},
-        {"DFIntTaskSchedulerTargetFps", "120"},
         
-        -- تسريع استجابة الفيزياء ومنع التقطيع
-        {"S2PhysicsSenderRate", "128"},
-        {"PhysicsMemoryTelemetryHundredthsPercentage", "0"},
-        {"TimestepArbiterHumanoidLinearVelThreshold", "1"},
-        {"TimestepArbiterHumanoidTurningVelThreshold", "1"}
+        -- تخفيف الجرافيكس والـ Telemetry
+        {"TextureQualityOverrideEnabled", "True"},
+        {"TextureQualityOverride", "0"},
+        {"DisableDPIScale", "True"},
+        {"BrowserTrackerIdTelemetryEnabled", "False"},
+        {"DisableFastLogTelemetry", "True"}
     }
 
-    for _, flag in ipairs(AntiStutterFlags) do
+    for _, flag in ipairs(SafeFlags) do
         pcall(function()
             if setfflag then
                 setfflag(flag[1], flag[2])
@@ -40,39 +40,28 @@ pcall(function()
     end
 end)
 
--- [2] تخفيف تأثيرات الشخصية واللاعبين أثناء الحركة
-local function SmoothCharacter(char)
-    if not char then return end
-    pcall(function()
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.Material = Enum.Material.SmoothPlastic
-                part.CastShadow = false
-            elseif part:IsA("Decal") or part:IsA("Texture") then
-                part.Transparency = 1
-            elseif part:IsA("ParticleEmitter") or part:IsA("Trail") then
-                part.Enabled = false
-            end
-        end
-    end)
+-- [2] تخفيف جرافيكس الشخصية والأجسام لتخفيف العبء على المعالج
+local function LowGraphicObj(obj)
+    if obj:IsA("BasePart") then
+        obj.Material = Enum.Material.SmoothPlastic
+        obj.CastShadow = false
+    elseif obj:IsA("Decal") or obj:IsA("Texture") then
+        obj.Transparency = 1
+    elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Fire") or obj:IsA("Smoke") then
+        obj.Enabled = false
+    end
 end
 
--- تطبيق التخفيف على شخصيتك وكل اللاعبين المترسبنين
-if player.Character then SmoothCharacter(player.Character) end
-player.CharacterAdded:Connect(SmoothCharacter)
+for _, v in ipairs(Workspace:GetDescendants()) do LowGraphicObj(v) end
+Workspace.DescendantAdded:Connect(LowGraphicObj)
 
-for _, otherPlayer in ipairs(Players:GetPlayers()) do
-    if otherPlayer.Character then SmoothCharacter(otherPlayer.Character) end
-    otherPlayer.CharacterAdded:Connect(SmoothCharacter)
-end
-
--- [3] تنظيف الذاكرة تلقائياً (Garbage Collection) لمنع هبوط الفريمات المفاجئ
+-- [3] تنظيف الذاكرة الخفيف
 task.spawn(function()
-    while task.wait(10) do
+    while task.wait(30) do
         pcall(function()
             collectgarbage("collect")
         end)
     end
 end)
 
-print("☢️ Movement Fix Active! Try walking now.")
+print("🚀 Network Restored! Ping should return to normal now.")
