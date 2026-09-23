@@ -1,6 +1,8 @@
 local cloneref = cloneref or function(o) return o end
 local replicated_storage = cloneref(game:GetService('ReplicatedStorage'))
 local workspace = cloneref(game:GetService('Workspace'))
+local players = cloneref(game:GetService('Players'))
+local local_player = players.LocalPlayer
 
 -- ==========================================
 -- 1. استخراج التوكن (Token Finder)
@@ -94,29 +96,64 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
 end
 
 -- ==========================================
--- 4. المتغير والإنهاء الذكي للحلقة
+-- 4. دالة تنفيذ الباري (Trigger Parry)
+-- ==========================================
+local function fire_parry()
+    for _remote, _original in pairs(_reverted) do
+        local _packet = {
+            _original[1],
+            _original[2],
+            _tokenize(_original[2]),
+            0.5,
+            workspace.CurrentCamera and workspace.CurrentCamera.CFrame or CFrame.new(),
+            {},
+            {0, 0},
+            false
+        }
+        
+        if _remote:IsA('RemoteEvent') then
+            _remote:FireServer(unpack(_packet))
+        elseif _remote:IsA('RemoteFunction') then
+            _remote:InvokeServer(unpack(_packet))
+        end
+    end
+end
+
+-- ==========================================
+-- 5. منطق الاوتو باري الذكي (Auto Parry Logic)
 -- ==========================================
 local AutoParryEnabled = false
+local ParryDistance = 25 -- مسافة التصدي الافتراضية
+
+local function get_ball()
+    local balls_folder = workspace:FindFirstChild("Balls")
+    if balls_folder then
+        for _, ball in pairs(balls_folder:GetChildren()) do
+            if ball:IsA("BasePart") then
+                return ball
+            end
+        end
+    end
+    return nil
+end
 
 task.spawn(function()
     while task.wait() do
         if AutoParryEnabled then
-            for _remote, _original in pairs(_reverted) do
-                local _packet = {
-                    _original[1],
-                    _original[2],
-                    _tokenize(_original[2]),
-                    0.5,
-                    workspace.CurrentCamera and workspace.CurrentCamera.CFrame or CFrame.new(),
-                    {},
-                    {0, 0},
-                    false
-                }
+            local character = local_player.Character
+            local hrp = character and character:FindFirstChild("HumanoidRootPart")
+            local ball = get_ball()
+
+            if hrp and ball then
+                local distance = (hrp.Position - ball.Position).Magnitude
+                local velocity = ball.AssemblyLinearVelocity.Magnitude
                 
-                if _remote:IsA('RemoteEvent') then
-                    _remote:FireServer(unpack(_packet))
-                elseif _remote:IsA('RemoteFunction') then
-                    _remote:InvokeServer(unpack(_packet))
+                -- حساب مسافة التفاعل بناءً على سرعة الكرة
+                local dynamic_distance = math.clamp(velocity * 0.4, ParryDistance, 100)
+
+                if distance <= dynamic_distance then
+                    fire_parry()
+                    task.wait(0.2) -- وقت انتتظار بسيط لتفادي التكرار المزدوج على نفس الكرة
                 end
             end
         end
@@ -124,7 +161,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 5. واجهة المستخدم (Fluent UI / Slax Hub)
+-- 6. واجهة المستخدم (Fluent UI / Slax Hub)
 -- ==========================================
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
@@ -141,7 +178,6 @@ local Tabs = {
     Main = Window:AddTab({ Title = "Main", Icon = "rbxassetid://4483345998" })
 }
 
--- خيار التشغيل والإيقاف
 local Toggle = Tabs.Main:AddToggle("AutoParryToggle", {
     Title = "Auto Parry",
     Default = false
@@ -150,5 +186,16 @@ local Toggle = Tabs.Main:AddToggle("AutoParryToggle", {
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
+
+local Slider = Tabs.Main:AddSlider("ParryDistanceSlider", {
+    Title = "Parry Distance",
+    Default = 25,
+    Min = 10,
+    Max = 60,
+    Rounding = 0,
+    Callback = function(Value)
+        ParryDistance = Value
+    end
+})
 
 Window:SelectTab(1)
