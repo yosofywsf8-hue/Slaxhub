@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (CPS Customization Edition)
+-- Blade Ball Script - Bypass & Fluent UI (High-Speed TriggerBot)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v3.1 (CPS Customization)",
+    SubTitle = "v3.4 (High-Speed TriggerBot)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -18,6 +18,7 @@ local Window = Fluent:CreateWindow({
 local Tabs = {
     Main = Window:AddTab({ Title = "Main Auto", Icon = "swords" }),
     Spam = Window:AddTab({ Title = "Spam Modes", Icon = "zap" }),
+    Trigger = Window:AddTab({ Title = "TriggerBot", Icon = "target" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
@@ -32,9 +33,12 @@ local AutoParryEnabled = false
 local ParryAccuracyValue = 8
 
 local AutoSpamEnabled = false
-local ManualSpamEnabled = false
-local SpamDistance = 14
-local SpamCPS = 200 -- الـ CPS الطبيعي الافتراضي
+local ManualSpamActive = false
+local SpamDistance = 15
+local SpamCPS = 200
+
+local TriggerBotActive = false
+local TriggerDistance = 35 -- مسافة أوسع لتناسب السرعات العالية جداً
 
 -- Token Retrieval Logic
 local _token = nil
@@ -148,12 +152,42 @@ local function GetPing()
     return math.clamp(ping, 0.02, 0.4)
 end
 
--- Main Auto Parry Loop Logic
+-- Fast TriggerBot Dedicated Loop (Zero Latency Execution)
+task.spawn(function()
+    local lastTriggerTime = 0
+
+    while task.wait(0.001) do -- إستجابة فورية خارقة (1ms)
+        if TriggerBotActive and not ManualSpamActive then
+            local ball = GetBall()
+            if ball then
+                local character = LocalPlayer.Character
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    local playerPos = character.HumanoidRootPart.Position
+                    local ballPos = ball.Position
+                    local distance = (playerPos - ballPos).Magnitude
+
+                    local target = ball:GetAttribute("target")
+                    local isTarget = (target == LocalPlayer.Name)
+
+                    -- يرسل الصد فوراً بدون تأخير وبدون حسابات تعقيدية عندما تكون الكرة مستهدفتك وقريبة
+                    if isTarget and distance <= TriggerDistance then
+                        if tick() - lastTriggerTime >= 0.15 then
+                            lastTriggerTime = tick()
+                            FireParryBypass()
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Main Auto Parry & Standard Loop
 task.spawn(function()
     local lastParryTime = 0
 
-    while task.wait(0.003) do
-        if AutoParryEnabled and not ManualSpamEnabled then
+    while task.wait(0.002) do
+        if AutoParryEnabled and not ManualSpamActive and not TriggerBotActive then
             local ball = GetBall()
             if ball then
                 local character = LocalPlayer.Character
@@ -172,8 +206,7 @@ task.spawn(function()
 
                     local timeToReach = (speed > 0) and (distance / speed) or 999
 
-                    -- Auto Spam Logic عند المسافة القريبة
-                    if AutoSpamEnabled and distance <= SpamDistance then
+                    if AutoSpamEnabled and distance <= SpamDistance and isTarget then
                         FireParryBypass()
                         task.wait(1 / SpamCPS)
                     elseif isTarget and dotProduct > 0 then
@@ -195,10 +228,10 @@ task.spawn(function()
     end
 end)
 
--- Manual Spam Loop Logic (Controlled by CPS)
+-- Manual Spam Thread Loop
 task.spawn(function()
     while true do
-        if ManualSpamEnabled then
+        if ManualSpamActive then
             FireParryBypass()
             task.wait(1 / SpamCPS)
         else
@@ -208,7 +241,7 @@ task.spawn(function()
 end)
 
 -- Main Controls
-local ToggleAuto = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Ping Adaptive)", Default = false })
+local ToggleAuto = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Standard)", Default = false })
 ToggleAuto:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
@@ -225,20 +258,25 @@ Tabs.Main:AddSlider("ParryAccuracy", {
     end
 })
 
--- Spam Mode Controls
-local ToggleAutoSpam = Tabs.Spam:AddToggle("AutoSpam", {Title = "Enable Auto Spam", Default = false })
+-- Spam Controls
+local ToggleAutoSpam = Tabs.Spam:AddToggle("AutoSpam", {Title = "Enable Smart Auto Spam", Default = false })
 ToggleAutoSpam:OnChanged(function(Value)
     AutoSpamEnabled = Value
 end)
 
-local ToggleManualSpam = Tabs.Spam:AddToggle("ManualSpam", {Title = "Enable Manual Spam", Default = false })
-ToggleManualSpam:OnChanged(function(Value)
-    ManualSpamEnabled = Value
-end)
+Tabs.Spam:AddKeybind("ManualSpamKey", {
+    Title = "Manual Spam Keybind",
+    Description = "زر تفعيل السبام اليدوي",
+    Mode = "Hold",
+    Default = "E",
+    Callback = function(Value)
+        ManualSpamActive = Value
+    end
+})
 
 Tabs.Spam:AddSlider("SpamCPS", {
     Title = "Spam Speed (CPS)",
-    Description = "حدد عدد الضغطات في الثانية (طبيعي: 200 - أقصى حد: 500)",
+    Description = "سرعة الضغطات في الثانية (200 إلى 500)",
     Default = 200,
     Min = 50,
     Max = 500,
@@ -249,14 +287,37 @@ Tabs.Spam:AddSlider("SpamCPS", {
 })
 
 Tabs.Spam:AddSlider("SpamDist", {
-    Title = "Auto Spam Distance",
-    Description = "المسافة القريبة للبدء التلقائي في السبام (الموصى بها: 12 - 16)",
-    Default = 14,
+    Title = "Smart Auto Spam Distance",
+    Description = "المسافة القريبة للسبام التلقائي",
+    Default = 15,
     Min = 5,
     Max = 25,
     Rounding = 0,
     Callback = function(Value)
         SpamDistance = Value
+    end
+})
+
+-- TriggerBot (High-Speed Balls) Controls
+Tabs.Trigger:AddKeybind("TriggerBotKey", {
+    Title = "Fast-Ball TriggerBot Keybind",
+    Description = "زر التريجر بوت للضربات السريعة (اضغطه باستمرار في المشابكات السريعة والكرات القوية)",
+    Mode = "Hold",
+    Default = "V",
+    Callback = function(Value)
+        TriggerBotActive = Value
+    end
+})
+
+Tabs.Trigger:AddSlider("TriggerDist", {
+    Title = "Fast-Ball Detection Distance",
+    Description = "المسافة المخصصة لاكتشاف الكرة السريعة (الموصى بها للسرعات العالية: 30 - 45)",
+    Default = 35,
+    Min = 15,
+    Max = 60,
+    Rounding = 0,
+    Callback = function(Value)
+        TriggerDistance = Value
     end
 })
 
@@ -271,6 +332,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "تم ضبط الـ CPS للسبام حتى 500 بنجاح!",
+    Content = "تم تحديث الـ TriggerBot المخصص للضربات السريعة الخارقة بنجاح!",
     Duration = 5
 })
