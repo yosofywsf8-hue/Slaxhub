@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (Accuracy & Timing Edition)
+-- Blade Ball Script - Bypass & Fluent UI (Anti-Double Parry Edition)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v2.5 (Accuracy System)",
+    SubTitle = "v2.6 (Anti-Double Parry)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -27,7 +27,7 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
-local ParryAccuracy = 0.25 -- الوقت بالثواني المتبقي لوصول الكرة (كلما قل الرقم كان الصد أحدث وأدق)
+local ParryAccuracy = 0.25
 
 -- Token Retrieval Logic
 local _token = nil
@@ -135,10 +135,12 @@ local function GetBall()
     return nil
 end
 
--- Pure Accuracy / Timing Based Parry Loop
+-- Anti-Double Parry Loop Logic
 task.spawn(function()
     local lastParryTime = 0
-    while task.wait(0.003) do
+    local isParrying = false
+
+    while task.wait(0.005) do
         if AutoParryEnabled then
             local ball = GetBall()
             if ball then
@@ -150,21 +152,25 @@ task.spawn(function()
                     local velocity = ball.AssemblyLinearVelocity
                     local speed = velocity.Magnitude
 
-                    -- حساب اتجاه الكرة والسرعة المتجهة نحو اللاعب
                     local directionToPlayer = (playerPos - ballPos).Unit
                     local dotProduct = velocity:Dot(directionToPlayer)
 
                     local target = ball:GetAttribute("target")
                     local isTarget = (target == LocalPlayer.Name)
 
-                    -- حساب وقت الوصول الدقيق (Time To Reach) بالثواني
                     local timeToReach = (speed > 0) and (distance / speed) or 999
 
-                    -- الصد يعتمد فقط وحصرياً على التوقيت والدقة (Accuracy) والاستهداف الفعلي
-                    if isTarget and dotProduct > 0 then
+                    -- إذا تغير الهدف أو ابتعدت الكرة نلغي حالة الصد
+                    if not isTarget or dotProduct <= 0 then
+                        isParrying = false
+                    end
+
+                    -- حماية من الضرب المزدوج (فقط لو لم ينفذ صداً منذ لحظات)
+                    if isTarget and dotProduct > 0 and not isParrying then
                         if timeToReach <= ParryAccuracy then
-                            if tick() - lastParryTime >= 0.18 then
+                            if tick() - lastParryTime >= 0.35 then -- Cooldown أطول يمنع الـ Double Parry
                                 lastParryTime = tick()
+                                isParrying = true
                                 FireParryBypass()
                             end
                         end
@@ -176,14 +182,14 @@ task.spawn(function()
 end)
 
 -- UI Controls
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Accuracy Based)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (No Double Hit)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
 Tabs.Main:AddSlider("ParryAccuracy", {
     Title = "Parry Timing Accuracy",
-    Description = "الوقت المتبقي للصد بالثواني (0.15 = صد مثالي جداً، 0.30 = صد آمن مبكر)",
+    Description = "التوقيت بالثواني (الموصى به: 0.22 - 0.26)",
     Default = 0.25,
     Min = 0.10,
     Max = 0.40,
@@ -204,6 +210,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "تم تحويل النظام للعمل بنظام الدقة والتوقيت (Accuracy Timing)!",
+    Content = "تم إضافة نظام منع الصد المزدوج (Anti-Double Parry)!",
     Duration = 5
 })
