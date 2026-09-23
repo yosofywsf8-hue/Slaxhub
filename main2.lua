@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (0-100 Accuracy Scale)
+-- Blade Ball Script - Bypass & Fluent UI (CPS Customization Edition)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v2.8 (100 Accuracy Scale)",
+    SubTitle = "v3.1 (CPS Customization)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -17,6 +17,7 @@ local Window = Fluent:CreateWindow({
 
 local Tabs = {
     Main = Window:AddTab({ Title = "Main Auto", Icon = "swords" }),
+    Spam = Window:AddTab({ Title = "Spam Modes", Icon = "zap" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
@@ -28,7 +29,12 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
-local ParryAccuracyValue = 80 -- القيمة المبدئية من 100
+local ParryAccuracyValue = 8
+
+local AutoSpamEnabled = false
+local ManualSpamEnabled = false
+local SpamDistance = 14
+local SpamCPS = 200 -- الـ CPS الطبيعي الافتراضي
 
 -- Token Retrieval Logic
 local _token = nil
@@ -142,12 +148,12 @@ local function GetPing()
     return math.clamp(ping, 0.02, 0.4)
 end
 
--- 100 Accuracy Scale Loop Logic
+-- Main Auto Parry Loop Logic
 task.spawn(function()
     local lastParryTime = 0
 
     while task.wait(0.003) do
-        if AutoParryEnabled then
+        if AutoParryEnabled and not ManualSpamEnabled then
             local ball = GetBall()
             if ball then
                 local character = LocalPlayer.Character
@@ -166,14 +172,16 @@ task.spawn(function()
 
                     local timeToReach = (speed > 0) and (distance / speed) or 999
 
-                    -- تحويل النسبة من (1-100) إلى توقيت بالثواني (مثلاً 100 تعطي ~0.16 ثانية و1 تعطي ~0.45 ثانية)
-                    local convertedAccuracy = 0.45 - ((ParryAccuracyValue / 100) * 0.29)
+                    -- Auto Spam Logic عند المسافة القريبة
+                    if AutoSpamEnabled and distance <= SpamDistance then
+                        FireParryBypass()
+                        task.wait(1 / SpamCPS)
+                    elseif isTarget and dotProduct > 0 then
+                        local convertedAccuracy = 0.45 - ((ParryAccuracyValue / 10) * 0.29)
+                        local currentPing = GetPing()
+                        local adjustedAccuracy = convertedAccuracy + (currentPing * 0.7)
+                        local safeCooldown = 0.35 + (currentPing * 1.2)
 
-                    local currentPing = GetPing()
-                    local adjustedAccuracy = convertedAccuracy + (currentPing * 0.7)
-                    local safeCooldown = 0.35 + (currentPing * 1.2)
-
-                    if isTarget and dotProduct > 0 then
                         if timeToReach <= adjustedAccuracy then
                             if tick() - lastParryTime >= safeCooldown then
                                 lastParryTime = tick()
@@ -187,21 +195,68 @@ task.spawn(function()
     end
 end)
 
--- UI Controls
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Ping Adaptive)", Default = false })
-Toggle:OnChanged(function(Value)
+-- Manual Spam Loop Logic (Controlled by CPS)
+task.spawn(function()
+    while true do
+        if ManualSpamEnabled then
+            FireParryBypass()
+            task.wait(1 / SpamCPS)
+        else
+            task.wait(0.01)
+        end
+    end
+end)
+
+-- Main Controls
+local ToggleAuto = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Ping Adaptive)", Default = false })
+ToggleAuto:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
 Tabs.Main:AddSlider("ParryAccuracy", {
     Title = "Parry Accuracy",
-    Description = "حدد نسبة الدقة من 1 إلى 100 (100 = صد متأخر ومثالي للغاية)",
-    Default = 80,
+    Description = "درجة الدقة من 1 إلى 10",
+    Default = 8,
     Min = 1,
-    Max = 100,
+    Max = 10,
     Rounding = 0,
     Callback = function(Value)
         ParryAccuracyValue = Value
+    end
+})
+
+-- Spam Mode Controls
+local ToggleAutoSpam = Tabs.Spam:AddToggle("AutoSpam", {Title = "Enable Auto Spam", Default = false })
+ToggleAutoSpam:OnChanged(function(Value)
+    AutoSpamEnabled = Value
+end)
+
+local ToggleManualSpam = Tabs.Spam:AddToggle("ManualSpam", {Title = "Enable Manual Spam", Default = false })
+ToggleManualSpam:OnChanged(function(Value)
+    ManualSpamEnabled = Value
+end)
+
+Tabs.Spam:AddSlider("SpamCPS", {
+    Title = "Spam Speed (CPS)",
+    Description = "حدد عدد الضغطات في الثانية (طبيعي: 200 - أقصى حد: 500)",
+    Default = 200,
+    Min = 50,
+    Max = 500,
+    Rounding = 0,
+    Callback = function(Value)
+        SpamCPS = Value
+    end
+})
+
+Tabs.Spam:AddSlider("SpamDist", {
+    Title = "Auto Spam Distance",
+    Description = "المسافة القريبة للبدء التلقائي في السبام (الموصى بها: 12 - 16)",
+    Default = 14,
+    Min = 5,
+    Max = 25,
+    Rounding = 0,
+    Callback = function(Value)
+        SpamDistance = Value
     end
 })
 
@@ -216,6 +271,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "تم تحديث المقياس ليكون من 1 إلى 100 بنجاح!",
+    Content = "تم ضبط الـ CPS للسبام حتى 500 بنجاح!",
     Duration = 5
 })
