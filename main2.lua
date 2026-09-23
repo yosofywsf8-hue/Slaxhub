@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (High-Speed TriggerBot)
+-- Blade Ball Script - Bypass & Fluent UI (Auto Fast-Ball TriggerBot Edition)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v3.4 (High-Speed TriggerBot)",
+    SubTitle = "v3.6 (Pre-configured Edition)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -27,6 +27,8 @@ local replicated_storage = cloneref(game:GetService('ReplicatedStorage'))
 local workspace = cloneref(game:GetService('Workspace'))
 local Stats = cloneref(game:GetService('Stats'))
 local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
@@ -38,7 +40,7 @@ local SpamDistance = 15
 local SpamCPS = 200
 
 local TriggerBotActive = false
-local TriggerDistance = 35 -- مسافة أوسع لتناسب السرعات العالية جداً
+local TriggerDistance = 35 -- مسافة ثابتة ومثالية ومجهزة للكرات السريعة الخاطفة
 
 -- Token Retrieval Logic
 local _token = nil
@@ -152,11 +154,118 @@ local function GetPing()
     return math.clamp(ping, 0.02, 0.4)
 end
 
--- Fast TriggerBot Dedicated Loop (Zero Latency Execution)
+-- Create Screen GUI for Mobile Touch Buttons
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "SlaxHubTouchUI"
+ScreenGui.Parent = (gethui and gethui()) or CoreGui
+ScreenGui.ResetOnSpawn = false
+
+local function MakeDraggable(gui)
+    local dragging, dragInput, dragStart, startPos
+    gui.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = gui.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    gui.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+-- Manual Spam On-Screen Button
+local SpamBtn = Instance.new("TextButton")
+SpamBtn.Name = "SpamBtn"
+SpamBtn.Size = UDim2.new(0, 75, 0, 75)
+SpamBtn.Position = UDim2.new(0.85, 0, 0.45, 0)
+SpamBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+SpamBtn.TextColor3 = Color3.fromRGB(255, 60, 60)
+SpamBtn.Text = "SPAM\nOFF"
+SpamBtn.TextSize = 14
+SpamBtn.Font = Enum.Font.SourceSansBold
+SpamBtn.Visible = true -- يظهر تلقائياً
+SpamBtn.Parent = ScreenGui
+
+local UICorner1 = Instance.new("UICorner")
+UICorner1.CornerRadius = UDim.new(0, 16)
+UICorner1.Parent = SpamBtn
+
+local UIStroke1 = Instance.new("UIStroke")
+UIStroke1.Color = Color3.fromRGB(255, 60, 60)
+UIStroke1.Thickness = 2
+UIStroke1.Parent = SpamBtn
+
+MakeDraggable(SpamBtn)
+
+SpamBtn.MouseButton1Click:Connect(function()
+    ManualSpamActive = not ManualSpamActive
+    if ManualSpamActive then
+        SpamBtn.Text = "SPAM\nON"
+        SpamBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+        SpamBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    else
+        SpamBtn.Text = "SPAM\nOFF"
+        SpamBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        SpamBtn.TextColor3 = Color3.fromRGB(255, 60, 60)
+    end
+end)
+
+-- TriggerBot On-Screen Button
+local TriggerBtn = Instance.new("TextButton")
+TriggerBtn.Name = "TriggerBtn"
+TriggerBtn.Size = UDim2.new(0, 75, 0, 75)
+TriggerBtn.Position = UDim2.new(0.85, 0, 0.60, 0)
+TriggerBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+TriggerBtn.TextColor3 = Color3.fromRGB(60, 180, 255)
+TriggerBtn.Text = "FAST BALL\nTRIGGER\nOFF"
+TriggerBtn.TextSize = 12
+TriggerBtn.Font = Enum.Font.SourceSansBold
+TriggerBtn.Visible = true -- يظهر تلقائياً
+TriggerBtn.Parent = ScreenGui
+
+local UICorner2 = Instance.new("UICorner")
+UICorner2.CornerRadius = UDim.new(0, 16)
+UICorner2.Parent = TriggerBtn
+
+local UIStroke2 = Instance.new("UIStroke")
+UIStroke2.Color = Color3.fromRGB(60, 180, 255)
+UIStroke2.Thickness = 2
+UIStroke2.Parent = TriggerBtn
+
+MakeDraggable(TriggerBtn)
+
+TriggerBtn.MouseButton1Click:Connect(function()
+    TriggerBotActive = not TriggerBotActive
+    if TriggerBotActive then
+        TriggerBtn.Text = "FAST BALL\nTRIGGER\nON"
+        TriggerBtn.BackgroundColor3 = Color3.fromRGB(30, 140, 220)
+        TriggerBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    else
+        TriggerBtn.Text = "FAST BALL\nTRIGGER\nOFF"
+        TriggerBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        TriggerBtn.TextColor3 = Color3.fromRGB(60, 180, 255)
+    end
+end)
+
+-- TriggerBot Dedicated Loop (Pre-configured Zero-Delay Execution)
 task.spawn(function()
     local lastTriggerTime = 0
 
-    while task.wait(0.001) do -- إستجابة فورية خارقة (1ms)
+    while task.wait(0.001) do
         if TriggerBotActive and not ManualSpamActive then
             local ball = GetBall()
             if ball then
@@ -169,9 +278,8 @@ task.spawn(function()
                     local target = ball:GetAttribute("target")
                     local isTarget = (target == LocalPlayer.Name)
 
-                    -- يرسل الصد فوراً بدون تأخير وبدون حسابات تعقيدية عندما تكون الكرة مستهدفتك وقريبة
                     if isTarget and distance <= TriggerDistance then
-                        if tick() - lastTriggerTime >= 0.15 then
+                        if tick() - lastTriggerTime >= 0.12 then
                             lastTriggerTime = tick()
                             FireParryBypass()
                         end
@@ -182,7 +290,7 @@ task.spawn(function()
     end
 end)
 
--- Main Auto Parry & Standard Loop
+-- Main Auto Parry Loop
 task.spawn(function()
     local lastParryTime = 0
 
@@ -240,7 +348,7 @@ task.spawn(function()
     end
 end)
 
--- Main Controls
+-- UI Controls
 local ToggleAuto = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Standard)", Default = false })
 ToggleAuto:OnChanged(function(Value)
     AutoParryEnabled = Value
@@ -259,20 +367,15 @@ Tabs.Main:AddSlider("ParryAccuracy", {
 })
 
 -- Spam Controls
+local ToggleSpamBtnVisible = Tabs.Spam:AddToggle("ShowSpamBtn", {Title = "Show On-Screen Spam Button", Default = true })
+ToggleSpamBtnVisible:OnChanged(function(Value)
+    SpamBtn.Visible = Value
+end)
+
 local ToggleAutoSpam = Tabs.Spam:AddToggle("AutoSpam", {Title = "Enable Smart Auto Spam", Default = false })
 ToggleAutoSpam:OnChanged(function(Value)
     AutoSpamEnabled = Value
 end)
-
-Tabs.Spam:AddKeybind("ManualSpamKey", {
-    Title = "Manual Spam Keybind",
-    Description = "زر تفعيل السبام اليدوي",
-    Mode = "Hold",
-    Default = "E",
-    Callback = function(Value)
-        ManualSpamActive = Value
-    end
-})
 
 Tabs.Spam:AddSlider("SpamCPS", {
     Title = "Spam Speed (CPS)",
@@ -286,40 +389,16 @@ Tabs.Spam:AddSlider("SpamCPS", {
     end
 })
 
-Tabs.Spam:AddSlider("SpamDist", {
-    Title = "Smart Auto Spam Distance",
-    Description = "المسافة القريبة للسبام التلقائي",
-    Default = 15,
-    Min = 5,
-    Max = 25,
-    Rounding = 0,
-    Callback = function(Value)
-        SpamDistance = Value
-    end
+-- TriggerBot Tab (Simplified Information Only)
+Tabs.Trigger:AddParagraph({
+    Title = "Fast-Ball TriggerBot",
+    Content = "هذه الميزة مجهزة ومخصصة تلقائياً للصد الفوري للكرات السريعة والكرات الخاطفة الخارقة.\n\nاستخدم الزر الأزرق العائم على الشاشة لتفعيلها أو إيقافها فوراً أثناء اللعب."
 })
 
--- TriggerBot (High-Speed Balls) Controls
-Tabs.Trigger:AddKeybind("TriggerBotKey", {
-    Title = "Fast-Ball TriggerBot Keybind",
-    Description = "زر التريجر بوت للضربات السريعة (اضغطه باستمرار في المشابكات السريعة والكرات القوية)",
-    Mode = "Hold",
-    Default = "V",
-    Callback = function(Value)
-        TriggerBotActive = Value
-    end
-})
-
-Tabs.Trigger:AddSlider("TriggerDist", {
-    Title = "Fast-Ball Detection Distance",
-    Description = "المسافة المخصصة لاكتشاف الكرة السريعة (الموصى بها للسرعات العالية: 30 - 45)",
-    Default = 35,
-    Min = 15,
-    Max = 60,
-    Rounding = 0,
-    Callback = function(Value)
-        TriggerDistance = Value
-    end
-})
+local ToggleTriggerBtnVisible = Tabs.Trigger:AddToggle("ShowTriggerBtn", {Title = "Show On-Screen Trigger Button", Default = true })
+ToggleTriggerBtnVisible:OnChanged(function(Value)
+    TriggerBtn.Visible = Value
+end)
 
 -- UI Settings Manager
 InterfaceManager:SetLibrary(Fluent)
@@ -332,6 +411,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "تم تحديث الـ TriggerBot المخصص للضربات السريعة الخارقة بنجاح!",
+    Content = "تم تجهيز Fast-Ball TriggerBot مع أزرار الشاشة التلقائية!",
     Duration = 5
 })
