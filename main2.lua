@@ -1,33 +1,48 @@
-local cloneref = cloneref or function(o) return o end
+-- Blade Ball Script - Bypass & Fluent UI Edition
+-- Slax Hub
+
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "Blade Ball - Slax Hub",
+    SubTitle = "v2.0 (Bypass)",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main Auto", Icon = "swords" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+}
+
+-- Services & References
 local replicated_storage = cloneref(game:GetService('ReplicatedStorage'))
 local workspace = cloneref(game:GetService('Workspace'))
-local players = cloneref(game:GetService('Players'))
-local local_player = players.LocalPlayer
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 
--- ==========================================
--- 1. استخراج التوكن (Token Finder)
--- ==========================================
+local AutoParryEnabled = false
+local ParryDistance = 25
+
+-- Token Retrieval Logic
 local _token = nil
 for _, Function in getgc(true) do
-    if type(Function) ~= 'function' or not debug.info(Function, 's'):find('PRY', 1, true) then
-        continue
-    end
-
-    for _, value in debug.getupvalues(Function) do
-        if type(value) == 'function' then
-            _token = value
-            break
+    if type(Function) == 'function' and debug.info(Function, 's'):find('PRY', 1, true) then
+        for _, value in debug.getupvalues(Function) do
+            if type(value) == 'function' then
+                _token = value
+                break
+            end
         end
-    end
-
-    if _token then
-        break
+        if _token then break end
     end
 end
 
--- ==========================================
--- 2. دالة التشفير (Tokenize)
--- ==========================================
 local function _tokenize(_remote_uid)
     if not _token then return "" end
     local time = tostring(math.floor(workspace:GetServerTimeNow() * 100))
@@ -40,52 +55,37 @@ local function _tokenize(_remote_uid)
             string.byte(key, (index - 1) % #key + 1)
         ))
     end
-
     return table.concat(characters)
 end
 
--- ==========================================
--- 3. التقاط الـ Remotes
--- ==========================================
+-- Hooking Logic for Remote Capture
 local _reverted = {}
-local _original_meta = {}
+local _original = {}
 
 local function _is_valid(args)
-    return #args == 8 
-        and type(args[2]) == "string" 
-        and type(args[3]) == "string" 
-        and type(args[4]) == "number" 
-        and typeof(args[5]) == "CFrame" 
-        and type(args[6]) == "table" 
-        and type(args[7]) == "table" 
-        and type(args[8]) == "boolean"
+    return #args == 8 and type(args[2]) == "string" and type(args[3]) == "string" and type(args[4]) == "number" and typeof(args[5]) == "CFrame" and type(args[6]) == "table" and type(args[7]) == "table" and type(args[8]) == "boolean"
 end
 
 local function _hook(remote)
-    if not _reverted[remote] then
-        local meta = getrawmetatable(remote)
-        if meta and not _original_meta[meta] then
-            _original_meta[meta] = true
-            setreadonly(meta, false)
+    if not _reverted[remote] and not _original[getrawmetatable(remote)] then
+        _original[getrawmetatable(remote)] = true
+        local _meta = getrawmetatable(remote)
+        setreadonly(_meta, false)
 
-            local _old = meta.__index
-            meta.__index = function(self, key)
-                if (key == 'FireServer' and self:IsA('RemoteEvent')) or
-                   (key == 'InvokeServer' and self:IsA('RemoteFunction')) then
-                    return function(_, ...)
-                        local _arguments = {...}
-                        if _is_valid(_arguments) then
-                            if not _reverted[self] then
-                                _reverted[self] = _arguments
-                            end
-                        end
-                        return _old(self, key)(_, unpack(_arguments))
+        local _old = _meta.__index
+        _meta.__index = function(self, key)
+            if (key == 'FireServer' and self:IsA('RemoteEvent')) or (key == 'InvokeServer' and self:IsA('RemoteFunction')) then
+                return function(_, ...)
+                    local _arguments = {...}
+                    if _is_valid(_arguments) and not _reverted[self] then
+                        _reverted[self] = _arguments
                     end
+                    return _old(self, key)(_, unpack(_arguments))
                 end
-                return _old(self, key)
             end
-            setreadonly(meta, true)
+            return _old(self, key)
         end
+        setreadonly(_meta, true)
     end
 end
 
@@ -95,17 +95,15 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
     end
 end
 
--- ==========================================
--- 4. دالة تنفيذ الباري (Trigger Parry)
--- ==========================================
-local function fire_parry()
-    for _remote, _original in pairs(_reverted) do
+-- Fire Parry Remote manually via Bypass
+local function FireParryBypass()
+    for _remote, _origArgs in pairs(_reverted) do
         local _packet = {
-            _original[1],
-            _original[2],
-            _tokenize(_original[2]),
+            _origArgs[1],
+            _origArgs[2],
+            _tokenize(_origArgs[2]),
             0.5,
-            workspace.CurrentCamera and workspace.CurrentCamera.CFrame or CFrame.new(),
+            workspace.CurrentCamera.CFrame,
             {},
             {0, 0},
             false
@@ -119,19 +117,11 @@ local function fire_parry()
     end
 end
 
--- ==========================================
--- 5. منطق الاوتو باري الذكي (Auto Parry Logic)
--- ==========================================
-local AutoParryEnabled = false
-local ParryDistance = 25 -- مسافة التصدي الافتراضية
-
-local function get_ball()
-    local balls_folder = workspace:FindFirstChild("Balls")
-    if balls_folder then
-        for _, ball in pairs(balls_folder:GetChildren()) do
-            if ball:IsA("BasePart") then
-                return ball
-            end
+-- Auto Parry Distance Check Loop
+local function GetBall()
+    for _, obj in pairs(workspace.Balls:GetChildren()) do
+        if obj:IsA("BasePart") then
+            return obj
         end
     end
     return nil
@@ -140,55 +130,34 @@ end
 task.spawn(function()
     while task.wait() do
         if AutoParryEnabled then
-            local character = local_player.Character
-            local hrp = character and character:FindFirstChild("HumanoidRootPart")
-            local ball = get_ball()
-
-            if hrp and ball then
-                local distance = (hrp.Position - ball.Position).Magnitude
-                local velocity = ball.AssemblyLinearVelocity.Magnitude
-                
-                -- حساب مسافة التفاعل بناءً على سرعة الكرة
-                local dynamic_distance = math.clamp(velocity * 0.4, ParryDistance, 100)
-
-                if distance <= dynamic_distance then
-                    fire_parry()
-                    task.wait(0.2) -- وقت انتتظار بسيط لتفادي التكرار المزدوج على نفس الكرة
+            local ball = GetBall()
+            if ball then
+                local character = LocalPlayer.Character
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    local playerPos = character.HumanoidRootPart.Position
+                    local ballPos = ball.Position
+                    local distance = (playerPos - ballPos).Magnitude
+                    
+                    local target = ball:GetAttribute("target")
+                    if target == LocalPlayer.Name or distance <= ParryDistance then
+                        FireParryBypass()
+                        task.wait(0.1)
+                    end
                 end
             end
         end
     end
 end)
 
--- ==========================================
--- 6. واجهة المستخدم (Fluent UI / Slax Hub)
--- ==========================================
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-
-local Window = Fluent:CreateWindow({
-    Title = "Slax Hub",
-    SubTitle = "by yossef",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
-    Acrylic = true,
-    Theme = "Dark"
-})
-
-local Tabs = {
-    Main = Window:AddTab({ Title = "Main", Icon = "rbxassetid://4483345998" })
-}
-
-local Toggle = Tabs.Main:AddToggle("AutoParryToggle", {
-    Title = "Auto Parry",
-    Default = false
-})
-
+-- UI Controls
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Bypassed)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
-local Slider = Tabs.Main:AddSlider("ParryDistanceSlider", {
+Tabs.Main:AddSlider("ParryDist", {
     Title = "Parry Distance",
+    Description = "تحديد مسافة الصد التلقائي",
     Default = 25,
     Min = 10,
     Max = 60,
@@ -198,4 +167,17 @@ local Slider = Tabs.Main:AddSlider("ParryDistanceSlider", {
     end
 })
 
+-- UI Settings Manager
+InterfaceManager:SetLibrary(Fluent)
+SaveManager:SetLibrary(Fluent)
+SaveManager:IgnoreThemeSettings()
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
+
 Window:SelectTab(1)
+
+Fluent:Notify({
+    Title = "Slax Hub Loaded",
+    Content = "تم تشغيل نظام التجاوز (Bypass) والواجهة بنجاح!",
+    Duration = 5
+})
