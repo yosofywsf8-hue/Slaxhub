@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (Anti-Double Parry Edition)
+-- Blade Ball Script - Bypass & Fluent UI (0-100 Accuracy Scale)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v2.6 (Anti-Double Parry)",
+    SubTitle = "v2.8 (100 Accuracy Scale)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -23,11 +23,12 @@ local Tabs = {
 -- Services & References
 local replicated_storage = cloneref(game:GetService('ReplicatedStorage'))
 local workspace = cloneref(game:GetService('Workspace'))
+local Stats = cloneref(game:GetService('Stats'))
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
-local ParryAccuracy = 0.25
+local ParryAccuracyValue = 80 -- القيمة المبدئية من 100
 
 -- Token Retrieval Logic
 local _token = nil
@@ -135,12 +136,17 @@ local function GetBall()
     return nil
 end
 
--- Anti-Double Parry Loop Logic
+-- Get Current Ping in Seconds
+local function GetPing()
+    local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+    return math.clamp(ping, 0.02, 0.4)
+end
+
+-- 100 Accuracy Scale Loop Logic
 task.spawn(function()
     local lastParryTime = 0
-    local isParrying = false
 
-    while task.wait(0.005) do
+    while task.wait(0.003) do
         if AutoParryEnabled then
             local ball = GetBall()
             if ball then
@@ -160,17 +166,17 @@ task.spawn(function()
 
                     local timeToReach = (speed > 0) and (distance / speed) or 999
 
-                    -- إذا تغير الهدف أو ابتعدت الكرة نلغي حالة الصد
-                    if not isTarget or dotProduct <= 0 then
-                        isParrying = false
-                    end
+                    -- تحويل النسبة من (1-100) إلى توقيت بالثواني (مثلاً 100 تعطي ~0.16 ثانية و1 تعطي ~0.45 ثانية)
+                    local convertedAccuracy = 0.45 - ((ParryAccuracyValue / 100) * 0.29)
 
-                    -- حماية من الضرب المزدوج (فقط لو لم ينفذ صداً منذ لحظات)
-                    if isTarget and dotProduct > 0 and not isParrying then
-                        if timeToReach <= ParryAccuracy then
-                            if tick() - lastParryTime >= 0.35 then -- Cooldown أطول يمنع الـ Double Parry
+                    local currentPing = GetPing()
+                    local adjustedAccuracy = convertedAccuracy + (currentPing * 0.7)
+                    local safeCooldown = 0.35 + (currentPing * 1.2)
+
+                    if isTarget and dotProduct > 0 then
+                        if timeToReach <= adjustedAccuracy then
+                            if tick() - lastParryTime >= safeCooldown then
                                 lastParryTime = tick()
-                                isParrying = true
                                 FireParryBypass()
                             end
                         end
@@ -182,20 +188,20 @@ task.spawn(function()
 end)
 
 -- UI Controls
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (No Double Hit)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Ping Adaptive)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
 Tabs.Main:AddSlider("ParryAccuracy", {
-    Title = "Parry Timing Accuracy",
-    Description = "التوقيت بالثواني (الموصى به: 0.22 - 0.26)",
-    Default = 0.25,
-    Min = 0.10,
-    Max = 0.40,
-    Rounding = 2,
+    Title = "Parry Accuracy",
+    Description = "حدد نسبة الدقة من 1 إلى 100 (100 = صد متأخر ومثالي للغاية)",
+    Default = 80,
+    Min = 1,
+    Max = 100,
+    Rounding = 0,
     Callback = function(Value)
-        ParryAccuracy = Value
+        ParryAccuracyValue = Value
     end
 })
 
@@ -210,6 +216,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "تم إضافة نظام منع الصد المزدوج (Anti-Double Parry)!",
+    Content = "تم تحديث المقياس ليكون من 1 إلى 100 بنجاح!",
     Duration = 5
 })
