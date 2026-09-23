@@ -1,7 +1,6 @@
 local cloneref = cloneref or function(o) return o end
 local replicated_storage = cloneref(game:GetService('ReplicatedStorage'))
 local workspace = cloneref(game:GetService('Workspace'))
-local players = cloneref(game:GetService('Players'))
 
 -- ==========================================
 -- 1. استخراج التوكن (Token Finder)
@@ -44,7 +43,7 @@ local function _tokenize(_remote_uid)
 end
 
 -- ==========================================
--- 3. التقاط الـ Remotes وتخزين البيانات
+-- 3. التقاط الـ Remotes
 -- ==========================================
 local _reverted = {}
 local _original_meta = {}
@@ -95,27 +94,30 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
 end
 
 -- ==========================================
--- 4. إرسال الحزم المشفرة تلقائيًا (Loop Sender)
+-- 4. المتغير والإنهاء الذكي للحلقة
 -- ==========================================
+local AutoParryEnabled = false
+
 task.spawn(function()
-    task.wait(5)
     while task.wait() do
-        for _remote, _original in pairs(_reverted) do
-            local _packet = {
-                _original[1],
-                _original[2],
-                _tokenize(_original[2]),
-                0.5,
-                workspace.CurrentCamera and workspace.CurrentCamera.CFrame or CFrame.new(),
-                {},
-                {0, 0},
-                false
-            }
-            
-            if _remote:IsA('RemoteEvent') then
-                _remote:FireServer(unpack(_packet))
-            elseif _remote:IsA('RemoteFunction') then
-                _remote:InvokeServer(unpack(_packet))
+        if AutoParryEnabled then
+            for _remote, _original in pairs(_reverted) do
+                local _packet = {
+                    _original[1],
+                    _original[2],
+                    _tokenize(_original[2]),
+                    0.5,
+                    workspace.CurrentCamera and workspace.CurrentCamera.CFrame or CFrame.new(),
+                    {},
+                    {0, 0},
+                    false
+                }
+                
+                if _remote:IsA('RemoteEvent') then
+                    _remote:FireServer(unpack(_packet))
+                elseif _remote:IsA('RemoteFunction') then
+                    _remote:InvokeServer(unpack(_packet))
+                end
             end
         end
     end
@@ -139,9 +141,14 @@ local Tabs = {
     Main = Window:AddTab({ Title = "Main", Icon = "rbxassetid://4483345998" })
 }
 
-Tabs.Main:AddParagraph({
-    Title = "Status",
-    Content = "Token System & Remote Hooking Active."
+-- خيار التشغيل والإيقاف
+local Toggle = Tabs.Main:AddToggle("AutoParryToggle", {
+    Title = "Auto Parry",
+    Default = false
 })
+
+Toggle:OnChanged(function(Value)
+    AutoParryEnabled = Value
+end)
 
 Window:SelectTab(1)
