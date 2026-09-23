@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI Edition
--- Slax Hub
+-- Blade Ball Script - Bypass & Fluent UI (Trajectory Fixed)
+-- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v2.0 (Bypass)",
+    SubTitle = "v2.2 (Trajectory Fix)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -117,8 +117,14 @@ local function FireParryBypass()
     end
 end
 
--- Auto Parry Distance Check Loop
+-- Ball Retrieval
 local function GetBall()
+    for _, obj in pairs(workspace.Balls:GetChildren()) do
+        if obj:GetAttribute("realBall") == true then
+            return obj
+        end
+    end
+    -- Fallback
     for _, obj in pairs(workspace.Balls:GetChildren()) do
         if obj:IsA("BasePart") then
             return obj
@@ -127,6 +133,7 @@ local function GetBall()
     return nil
 end
 
+-- Advanced Parry Loop with Direction (Dot Product)
 task.spawn(function()
     while task.wait() do
         if AutoParryEnabled then
@@ -136,12 +143,30 @@ task.spawn(function()
                 if character and character:FindFirstChild("HumanoidRootPart") then
                     local playerPos = character.HumanoidRootPart.Position
                     local ballPos = ball.Position
+                    local velocity = ball.AssemblyLinearVelocity
                     local distance = (playerPos - ballPos).Magnitude
                     
-                    local target = ball:GetAttribute("target")
-                    if target == LocalPlayer.Name or distance <= ParryDistance then
-                        FireParryBypass()
-                        task.wait(0.1)
+                    -- حساب اتجاه الكورة الفعلي
+                    local directionToPlayer = (playerPos - ballPos).Unit
+                    local approachSpeed = velocity:Dot(directionToPlayer)
+                    
+                    -- الكورة تقترب منك فقط إذا كان approachSpeed رقم موجب
+                    if approachSpeed > 0 then
+                        local timeToReach = distance / approachSpeed
+                        local target = ball:GetAttribute("target")
+                        local isTarget = (target == LocalPlayer.Name)
+
+                        -- إذا كنت أنت المستهدف + الكورة متجهة لك + الوقت مناسب
+                        if isTarget then
+                            if timeToReach <= 0.35 or distance <= ParryDistance then
+                                FireParryBypass()
+                                task.wait(0.2) -- كول داون عشان ما يعلق (Spam)
+                            end
+                        -- لو ما كنت المستهدف بس الكورة قريبة جداً وبتضربك بالغلط (حماية إضافية)
+                        elseif distance <= 12 and timeToReach <= 0.15 then
+                            FireParryBypass()
+                            task.wait(0.2)
+                        end
                     end
                 end
             end
@@ -150,17 +175,17 @@ task.spawn(function()
 end)
 
 -- UI Controls
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Bypassed)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Smart Direction)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
 Tabs.Main:AddSlider("ParryDist", {
     Title = "Parry Distance",
-    Description = "تحديد مسافة الصد التلقائي",
+    Description = "مسافة الصد (السكربت بيتجاهل الكور اللي ما تستهدفك)",
     Default = 25,
     Min = 10,
-    Max = 60,
+    Max = 50,
     Rounding = 0,
     Callback = function(Value)
         ParryDistance = Value
@@ -178,6 +203,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "تم تشغيل نظام التجاوز (Bypass) والواجهة بنجاح!",
+    Content = "تم تحديث نظام الاتجاهات، السكربت ما راح يصد إلا لو الكورة متجهة لك!",
     Duration = 5
 })
