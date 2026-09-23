@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (Auto Fast-Ball TriggerBot Edition)
+-- Blade Ball Script - Bypass & Fluent UI (Ultimate Auto Parry Edition)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v3.6 (Pre-configured Edition)",
+    SubTitle = "v4.0 (Ultimate Auto Parry)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -31,8 +31,8 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
-local AutoParryEnabled = false
-local ParryAccuracyValue = 8
+local AutoParryEnabled = true
+local ParryAccuracyValue = 9 -- الدقة الافتراضية القصوى الموصى بها
 
 local AutoSpamEnabled = false
 local ManualSpamActive = false
@@ -40,7 +40,7 @@ local SpamDistance = 15
 local SpamCPS = 200
 
 local TriggerBotActive = false
-local TriggerDistance = 35 -- مسافة ثابتة ومثالية ومجهزة للكرات السريعة الخاطفة
+local TriggerDistance = 35
 
 -- Token Retrieval Logic
 local _token = nil
@@ -148,10 +148,10 @@ local function GetBall()
     return nil
 end
 
--- Get Current Ping in Seconds
+-- Get Current Real-time Ping
 local function GetPing()
     local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-    return math.clamp(ping, 0.02, 0.4)
+    return math.clamp(ping, 0.015, 0.35)
 end
 
 -- Create Screen GUI for Mobile Touch Buttons
@@ -197,7 +197,7 @@ SpamBtn.TextColor3 = Color3.fromRGB(255, 60, 60)
 SpamBtn.Text = "SPAM\nOFF"
 SpamBtn.TextSize = 14
 SpamBtn.Font = Enum.Font.SourceSansBold
-SpamBtn.Visible = true -- يظهر تلقائياً
+SpamBtn.Visible = true
 SpamBtn.Parent = ScreenGui
 
 local UICorner1 = Instance.new("UICorner")
@@ -234,7 +234,7 @@ TriggerBtn.TextColor3 = Color3.fromRGB(60, 180, 255)
 TriggerBtn.Text = "FAST BALL\nTRIGGER\nOFF"
 TriggerBtn.TextSize = 12
 TriggerBtn.Font = Enum.Font.SourceSansBold
-TriggerBtn.Visible = true -- يظهر تلقائياً
+TriggerBtn.Visible = true
 TriggerBtn.Parent = ScreenGui
 
 local UICorner2 = Instance.new("UICorner")
@@ -261,7 +261,7 @@ TriggerBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- TriggerBot Dedicated Loop (Pre-configured Zero-Delay Execution)
+-- TriggerBot Dedicated Loop
 task.spawn(function()
     local lastTriggerTime = 0
 
@@ -290,11 +290,13 @@ task.spawn(function()
     end
 end)
 
--- Main Auto Parry Loop
+-- Ultimate Auto Parry Loop (Precision Curve & Latency Adaptation)
 task.spawn(function()
     local lastParryTime = 0
+    local lastBallPos = nil
+    local lastBallTick = tick()
 
-    while task.wait(0.002) do
+    while task.wait(0.0015) do
         if AutoParryEnabled and not ManualSpamActive and not TriggerBotActive then
             local ball = GetBall()
             if ball then
@@ -303,8 +305,20 @@ task.spawn(function()
                     local playerPos = character.HumanoidRootPart.Position
                     local ballPos = ball.Position
                     local distance = (playerPos - ballPos).Magnitude
+                    
                     local velocity = ball.AssemblyLinearVelocity
                     local speed = velocity.Magnitude
+
+                    -- Real Velocity Calculation (حساب السرعة الواقعية للمنحنيات)
+                    local currentTick = tick()
+                    if lastBallPos and (currentTick - lastBallTick) > 0 then
+                        local calculatedVelocity = (ballPos - lastBallPos) / (currentTick - lastBallTick)
+                        if calculatedVelocity.Magnitude > speed then
+                            speed = calculatedVelocity.Magnitude
+                        end
+                    end
+                    lastBallPos = ballPos
+                    lastBallTick = currentTick
 
                     local directionToPlayer = (playerPos - ballPos).Unit
                     local dotProduct = velocity:Dot(directionToPlayer)
@@ -314,17 +328,27 @@ task.spawn(function()
 
                     local timeToReach = (speed > 0) and (distance / speed) or 999
 
+                    -- Smart Auto Spam in Close Combat
                     if AutoSpamEnabled and distance <= SpamDistance and isTarget then
                         FireParryBypass()
                         task.wait(1 / SpamCPS)
-                    elseif isTarget and dotProduct > 0 then
-                        local convertedAccuracy = 0.45 - ((ParryAccuracyValue / 10) * 0.29)
-                        local currentPing = GetPing()
-                        local adjustedAccuracy = convertedAccuracy + (currentPing * 0.7)
-                        local safeCooldown = 0.35 + (currentPing * 1.2)
+                    elseif isTarget then
+                        -- Dynamic Accuracy Based on Speed & Ping
+                        local pingSec = GetPing()
+                        local accuracyRatio = (ParryAccuracyValue / 10)
+                        
+                        -- معادلة حساب التوقيت الخارق الخالية من التأخير
+                        local targetThreshold = (0.55 - (accuracyRatio * 0.32)) + (pingSec * 0.85)
+                        
+                        -- للكرات السريعة جداً يتسع النطاق لضمان الصد الدقيق
+                        if speed > 100 then
+                            targetThreshold = targetThreshold + (speed * 0.0012)
+                        end
 
-                        if timeToReach <= adjustedAccuracy then
-                            if tick() - lastParryTime >= safeCooldown then
+                        local cooldownThreshold = math.clamp(0.28 + (pingSec * 0.8), 0.2, 0.6)
+
+                        if (timeToReach <= targetThreshold or distance <= 12) and (dotProduct > -0.2) then
+                            if tick() - lastParryTime >= cooldownThreshold then
                                 lastParryTime = tick()
                                 FireParryBypass()
                             end
@@ -336,7 +360,7 @@ task.spawn(function()
     end
 end)
 
--- Manual Spam Thread Loop
+-- Manual Spam Loop
 task.spawn(function()
     while true do
         if ManualSpamActive then
@@ -349,15 +373,15 @@ task.spawn(function()
 end)
 
 -- UI Controls
-local ToggleAuto = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Standard)", Default = false })
+local ToggleAuto = Tabs.Main:AddToggle("AutoParry", {Title = "Ultimate Auto Parry", Default = true })
 ToggleAuto:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
 Tabs.Main:AddSlider("ParryAccuracy", {
-    Title = "Parry Accuracy",
-    Description = "درجة الدقة من 1 إلى 10",
-    Default = 8,
+    Title = "Parry Accuracy (الدقة)",
+    Description = "المستوى 9 إلى 10 يعطي أفضل أداء خارق للكرات العادية والسريعة",
+    Default = 9,
     Min = 1,
     Max = 10,
     Rounding = 0,
@@ -389,10 +413,10 @@ Tabs.Spam:AddSlider("SpamCPS", {
     end
 })
 
--- TriggerBot Tab (Simplified Information Only)
+-- TriggerBot Controls
 Tabs.Trigger:AddParagraph({
     Title = "Fast-Ball TriggerBot",
-    Content = "هذه الميزة مجهزة ومخصصة تلقائياً للصد الفوري للكرات السريعة والكرات الخاطفة الخارقة.\n\nاستخدم الزر الأزرق العائم على الشاشة لتفعيلها أو إيقافها فوراً أثناء اللعب."
+    Content = "مجهز تلقائياً بأعلى دقة للكرات السريعة جداً. استخدم الزر الأزرق على الشاشة للتفعيل عند الحاجة."
 })
 
 local ToggleTriggerBtnVisible = Tabs.Trigger:AddToggle("ShowTriggerBtn", {Title = "Show On-Screen Trigger Button", Default = true })
@@ -411,6 +435,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "تم تجهيز Fast-Ball TriggerBot مع أزرار الشاشة التلقائية!",
+    Content = "تم تفعيل الـ Ultimate Auto Parry الخارق والمحسن بالكامل!",
     Duration = 5
 })
