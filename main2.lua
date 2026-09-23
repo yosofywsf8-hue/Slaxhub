@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (Target & Direction Strict Edition)
+-- Blade Ball Script - Bypass & Fluent UI (Accuracy & Timing Edition)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v2.4 (Strict Target)",
+    SubTitle = "v2.5 (Accuracy System)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -27,7 +27,7 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
-local ParryDistance = 20
+local ParryAccuracy = 0.25 -- الوقت بالثواني المتبقي لوصول الكرة (كلما قل الرقم كان الصد أحدث وأدق)
 
 -- Token Retrieval Logic
 local _token = nil
@@ -135,10 +135,10 @@ local function GetBall()
     return nil
 end
 
--- Strictly Verified Loop
+-- Pure Accuracy / Timing Based Parry Loop
 task.spawn(function()
     local lastParryTime = 0
-    while task.wait(0.005) do
+    while task.wait(0.003) do
         if AutoParryEnabled then
             local ball = GetBall()
             if ball then
@@ -150,20 +150,20 @@ task.spawn(function()
                     local velocity = ball.AssemblyLinearVelocity
                     local speed = velocity.Magnitude
 
-                    -- حساب اتجاه الكرة بالنسبة للاعب
+                    -- حساب اتجاه الكرة والسرعة المتجهة نحو اللاعب
                     local directionToPlayer = (playerPos - ballPos).Unit
                     local dotProduct = velocity:Dot(directionToPlayer)
 
                     local target = ball:GetAttribute("target")
                     local isTarget = (target == LocalPlayer.Name)
 
-                    -- حساب وقت الوصول
+                    -- حساب وقت الوصول الدقيق (Time To Reach) بالثواني
                     local timeToReach = (speed > 0) and (distance / speed) or 999
 
-                    -- الشرط الصارم: يجب أن تكون المستهدف + الكرة تتحرك باتجاهك فعلياً + المسافة/الوقت مناسب
-                    if isTarget and dotProduct > 5 then
-                        if distance <= ParryDistance or timeToReach <= 0.28 then
-                            if tick() - lastParryTime >= 0.2 then
+                    -- الصد يعتمد فقط وحصرياً على التوقيت والدقة (Accuracy) والاستهداف الفعلي
+                    if isTarget and dotProduct > 0 then
+                        if timeToReach <= ParryAccuracy then
+                            if tick() - lastParryTime >= 0.18 then
                                 lastParryTime = tick()
                                 FireParryBypass()
                             end
@@ -176,20 +176,20 @@ task.spawn(function()
 end)
 
 -- UI Controls
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Strict Check)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Accuracy Based)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
-Tabs.Main:AddSlider("ParryDist", {
-    Title = "Parry Distance",
-    Description = "حدد نطاق المسافة للصد",
-    Default = 20,
-    Min = 10,
-    Max = 45,
-    Rounding = 0,
+Tabs.Main:AddSlider("ParryAccuracy", {
+    Title = "Parry Timing Accuracy",
+    Description = "الوقت المتبقي للصد بالثواني (0.15 = صد مثالي جداً، 0.30 = صد آمن مبكر)",
+    Default = 0.25,
+    Min = 0.10,
+    Max = 0.40,
+    Rounding = 2,
     Callback = function(Value)
-        ParryDistance = Value
+        ParryAccuracy = Value
     end
 })
 
@@ -204,6 +204,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "تم إزالة شرط القرب المجرد، السكربت يصد فقط عند الاستهداف المباشر!",
+    Content = "تم تحويل النظام للعمل بنظام الدقة والتوقيت (Accuracy Timing)!",
     Duration = 5
 })
