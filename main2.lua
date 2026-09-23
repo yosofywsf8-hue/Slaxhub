@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (Final Fix)
+-- Blade Ball Script - Bypass & Fluent UI (Target & Direction Strict Edition)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v2.3 (Final Fixed)",
+    SubTitle = "v2.4 (Strict Target)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -95,7 +95,7 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
     end
 end
 
--- Fire Parry Remote (Only Called When Ball is Close & Targeted)
+-- Fire Parry Remote
 local function FireParryBypass()
     for _remote, _origArgs in pairs(_reverted) do
         local _packet = {
@@ -135,10 +135,10 @@ local function GetBall()
     return nil
 end
 
--- Optimized Loop (Fixed Triggering Issue)
+-- Strictly Verified Loop
 task.spawn(function()
     local lastParryTime = 0
-    while task.wait(0.01) do
+    while task.wait(0.005) do
         if AutoParryEnabled then
             local ball = GetBall()
             if ball then
@@ -150,7 +150,7 @@ task.spawn(function()
                     local velocity = ball.AssemblyLinearVelocity
                     local speed = velocity.Magnitude
 
-                    -- التأكد أن الكرة تتجه نحو اللاعب
+                    -- حساب اتجاه الكرة بالنسبة للاعب
                     local directionToPlayer = (playerPos - ballPos).Unit
                     local dotProduct = velocity:Dot(directionToPlayer)
 
@@ -160,10 +160,10 @@ task.spawn(function()
                     -- حساب وقت الوصول
                     local timeToReach = (speed > 0) and (distance / speed) or 999
 
-                    -- يضرب فقط إذا كانت الكرة قادمة نحوه أو مستهدفته وفي المسافة المناسبة
-                    if (isTarget or dotProduct > 0) then
-                        if distance <= ParryDistance or timeToReach <= 0.25 then
-                            if tick() - lastParryTime >= 0.25 then -- تأخير لمنع الضرب المتكرر المزعج
+                    -- الشرط الصارم: يجب أن تكون المستهدف + الكرة تتحرك باتجاهك فعلياً + المسافة/الوقت مناسب
+                    if isTarget and dotProduct > 5 then
+                        if distance <= ParryDistance or timeToReach <= 0.28 then
+                            if tick() - lastParryTime >= 0.2 then
                                 lastParryTime = tick()
                                 FireParryBypass()
                             end
@@ -176,14 +176,14 @@ task.spawn(function()
 end)
 
 -- UI Controls
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Fixed)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Strict Check)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
 Tabs.Main:AddSlider("ParryDist", {
     Title = "Parry Distance",
-    Description = "المسافة الموصى بها للتدريب واللعب: 18 - 22",
+    Description = "حدد نطاق المسافة للصد",
     Default = 20,
     Min = 10,
     Max = 45,
@@ -204,6 +204,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "تم إصلاح الصد المستمر والتمويه بنجاح!",
+    Content = "تم إزالة شرط القرب المجرد، السكربت يصد فقط عند الاستهداف المباشر!",
     Duration = 5
 })
