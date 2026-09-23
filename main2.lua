@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (Trajectory Fixed)
+-- Blade Ball Script - Bypass & Fluent UI (Final Fix)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v2.2 (Trajectory Fix)",
+    SubTitle = "v2.3 (Final Fixed)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -27,7 +27,7 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
-local ParryDistance = 25
+local ParryDistance = 20
 
 -- Token Retrieval Logic
 local _token = nil
@@ -95,7 +95,7 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
     end
 end
 
--- Fire Parry Remote manually via Bypass
+-- Fire Parry Remote (Only Called When Ball is Close & Targeted)
 local function FireParryBypass()
     for _remote, _origArgs in pairs(_reverted) do
         local _packet = {
@@ -117,25 +117,28 @@ local function FireParryBypass()
     end
 end
 
--- Ball Retrieval
+-- Find Ball
 local function GetBall()
-    for _, obj in pairs(workspace.Balls:GetChildren()) do
-        if obj:GetAttribute("realBall") == true then
-            return obj
+    local ballsFolder = workspace:FindFirstChild("Balls")
+    if ballsFolder then
+        for _, obj in pairs(ballsFolder:GetChildren()) do
+            if obj:IsA("BasePart") and obj:GetAttribute("realBall") == true then
+                return obj
+            end
         end
-    end
-    -- Fallback
-    for _, obj in pairs(workspace.Balls:GetChildren()) do
-        if obj:IsA("BasePart") then
-            return obj
+        for _, obj in pairs(ballsFolder:GetChildren()) do
+            if obj:IsA("BasePart") then
+                return obj
+            end
         end
     end
     return nil
 end
 
--- Advanced Parry Loop with Direction (Dot Product)
+-- Optimized Loop (Fixed Triggering Issue)
 task.spawn(function()
-    while task.wait() do
+    local lastParryTime = 0
+    while task.wait(0.01) do
         if AutoParryEnabled then
             local ball = GetBall()
             if ball then
@@ -143,29 +146,27 @@ task.spawn(function()
                 if character and character:FindFirstChild("HumanoidRootPart") then
                     local playerPos = character.HumanoidRootPart.Position
                     local ballPos = ball.Position
-                    local velocity = ball.AssemblyLinearVelocity
                     local distance = (playerPos - ballPos).Magnitude
-                    
-                    -- حساب اتجاه الكورة الفعلي
-                    local directionToPlayer = (playerPos - ballPos).Unit
-                    local approachSpeed = velocity:Dot(directionToPlayer)
-                    
-                    -- الكورة تقترب منك فقط إذا كان approachSpeed رقم موجب
-                    if approachSpeed > 0 then
-                        local timeToReach = distance / approachSpeed
-                        local target = ball:GetAttribute("target")
-                        local isTarget = (target == LocalPlayer.Name)
+                    local velocity = ball.AssemblyLinearVelocity
+                    local speed = velocity.Magnitude
 
-                        -- إذا كنت أنت المستهدف + الكورة متجهة لك + الوقت مناسب
-                        if isTarget then
-                            if timeToReach <= 0.35 or distance <= ParryDistance then
+                    -- التأكد أن الكرة تتجه نحو اللاعب
+                    local directionToPlayer = (playerPos - ballPos).Unit
+                    local dotProduct = velocity:Dot(directionToPlayer)
+
+                    local target = ball:GetAttribute("target")
+                    local isTarget = (target == LocalPlayer.Name)
+
+                    -- حساب وقت الوصول
+                    local timeToReach = (speed > 0) and (distance / speed) or 999
+
+                    -- يضرب فقط إذا كانت الكرة قادمة نحوه أو مستهدفته وفي المسافة المناسبة
+                    if (isTarget or dotProduct > 0) then
+                        if distance <= ParryDistance or timeToReach <= 0.25 then
+                            if tick() - lastParryTime >= 0.25 then -- تأخير لمنع الضرب المتكرر المزعج
+                                lastParryTime = tick()
                                 FireParryBypass()
-                                task.wait(0.2) -- كول داون عشان ما يعلق (Spam)
                             end
-                        -- لو ما كنت المستهدف بس الكورة قريبة جداً وبتضربك بالغلط (حماية إضافية)
-                        elseif distance <= 12 and timeToReach <= 0.15 then
-                            FireParryBypass()
-                            task.wait(0.2)
                         end
                     end
                 end
@@ -175,17 +176,17 @@ task.spawn(function()
 end)
 
 -- UI Controls
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Smart Direction)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Fixed)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
 Tabs.Main:AddSlider("ParryDist", {
     Title = "Parry Distance",
-    Description = "مسافة الصد (السكربت بيتجاهل الكور اللي ما تستهدفك)",
-    Default = 25,
+    Description = "المسافة الموصى بها للتدريب واللعب: 18 - 22",
+    Default = 20,
     Min = 10,
-    Max = 50,
+    Max = 45,
     Rounding = 0,
     Callback = function(Value)
         ParryDistance = Value
@@ -203,6 +204,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded",
-    Content = "تم تحديث نظام الاتجاهات، السكربت ما راح يصد إلا لو الكورة متجهة لك!",
+    Content = "تم إصلاح الصد المستمر والتمويه بنجاح!",
     Duration = 5
 })
