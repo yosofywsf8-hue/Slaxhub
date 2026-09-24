@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (Adaptive Auto Parry)
--- Slax Hub v12.1 - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (500 CPS Auto Spam)
+-- Slax Hub v13.1 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v12.1 (Adaptive Accuracy)",
+    SubTitle = "v13.1 (500 CPS)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -16,7 +16,8 @@ local Window = Fluent:CreateWindow({
 })
 
 local Tabs = {
-    Main = Window:AddTab({ Title = "Main Auto", Icon = "swords" }),
+    Main = Window:AddTab({ Title = "Main", Icon = "swords" }),
+    Spam = Window:AddTab({ Title = "Auto Spam", Icon = "zap" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
@@ -29,18 +30,22 @@ local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
+-- State
 local AutoParryEnabled = false
+local AutoSpamEnabled = false
 
--- ⚙️ إعدادات Auto Parry (Beast)
+-- Auto Parry Config
 local MAX_PARRY_DISTANCE = 120
 local MAX_PARRY_ANGLE = 75
 local PREDICTION_FRAMES = 3
 local BALL_LOCK_DURATION = 0.6
 local GLOBAL_COOLDOWN_BASE = 0.06
 
--- 🎯 Adaptive Accuracy (يضبط نفسه حسب البينج)
-local ACCURACY_MODE = "AUTO" -- "AUTO" أو "MANUAL"
-local MANUAL_ACCURACY = 25
+-- Auto Spam Config (500 CPS)
+local SPAM_CPS = 500                    -- الرميات بالثانية
+local SPAM_CURVE_BIAS = 0
+local SPAM_POWER = 0.5
+local SPAM_BURST_PER_FRAME = 8          -- 8 رميات لكل فريم (500 CPS @ 60 FPS)
 
 -- =========================================
 -- Token Retrieval
@@ -119,10 +124,10 @@ local function FireParryBypass()
             _origArgs[1],
             _origArgs[2],
             _tokenize(_origArgs[2]),
-            0.5,
+            SPAM_POWER,
             workspace.CurrentCamera.CFrame,
             {},
-            {0, 0},
+            {SPAM_CURVE_BIAS, 0},
             false
         }
         if _remote:IsA('RemoteEvent') then
@@ -143,46 +148,26 @@ local function GetPing()
 end
 
 -- =========================================
--- 🎯 Adaptive Accuracy (Auto-Adjust Based on Ping)
+-- Adaptive Accuracy
 -- =========================================
 local function GetEffectiveAccuracy()
-    if ACCURACY_MODE == "MANUAL" then
-        return MANUAL_ACCURACY
-    end
-
-    -- 🎯 AUTO MODE - أفضل قيمة لكل بينج
-    local ping = GetPing()
-    local pingMs = ping * 1000
-
-    -- الجدول الأمثل:
-    -- < 30ms  → Accuracy = 30 (مبكر شوي)
-    -- 30-60ms → Accuracy = 25 (متوازن) ⭐ الأفضل
-    -- 60-90ms → Accuracy = 20 (دقيق)
-    -- 90-130ms → Accuracy = 15 (دقيق جداً)
-    -- > 130ms → Accuracy = 10 (مثالي - البينج يعوض)
-    
-    if pingMs < 30 then
-        return 30
-    elseif pingMs < 60 then
-        return 25
-    elseif pingMs < 90 then
-        return 20
-    elseif pingMs < 130 then
-        return 15
-    else
-        return 10
-    end
+    local pingMs = GetPing() * 1000
+    if pingMs < 30 then return 30
+    elseif pingMs < 60 then return 25
+    elseif pingMs < 90 then return 20
+    elseif pingMs < 130 then return 15
+    else return 10 end
 end
 
 -- =========================================
--- 🧠 Prediction
+-- Prediction
 -- =========================================
 local function PredictBallPosition(ball, frames)
     return ball.Position + (ball.AssemblyLinearVelocity * (frames * (1/60)))
 end
 
 -- =========================================
--- 📐 Max Angle
+-- Max Angle
 -- =========================================
 local function IsWithinParryAngle(playerPos, ballPos, ballVel)
     local toPlayer = (playerPos - ballPos).Unit
@@ -193,7 +178,49 @@ local function IsWithinParryAngle(playerPos, ballPos, ballVel)
 end
 
 -- =========================================
--- ⚔️ Auto Parry Loop (Adaptive Beast)
+-- ⚡ AUTO SPAM LOOP - 500 CPS (Burst Per Frame)
+-- =========================================
+task.spawn(function()
+    while task.wait() do
+        if not AutoSpamEnabled then continue end
+
+        local character = LocalPlayer.Character
+        if not character then continue end
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
+
+        -- 🚀 Burst: نرسل عدة رميات في الفريم الواحد
+        for _remote, _origArgs in pairs(_reverted) do
+            local _tokens = {}
+            -- نجهز 8 tokens دفعة وحدة (أسرع)
+            for i = 1, SPAM_BURST_PER_FRAME do
+                _tokens[i] = _tokenize(_origArgs[2])
+            end
+
+            for i = 1, SPAM_BURST_PER_FRAME do
+                local _packet = {
+                    _origArgs[1],
+                    _origArgs[2],
+                    _tokens[i],
+                    SPAM_POWER,
+                    workspace.CurrentCamera.CFrame,
+                    {},
+                    {SPAM_CURVE_BIAS, 0},
+                    false
+                }
+                if _remote:IsA('RemoteEvent') then
+                    _remote:FireServer(unpack(_packet))
+                elseif _remote:IsA('RemoteFunction') then
+                    _remote:InvokeServer(unpack(_packet))
+                end
+            end
+            break
+        end
+    end
+end)
+
+-- =========================================
+-- ⚔️ Auto Parry Loop (Beast)
 -- =========================================
 task.spawn(function()
     local lastFireTime = 0
@@ -209,14 +236,12 @@ task.spawn(function()
         local now = tick()
         local currentPing = GetPing()
 
-        -- 🔓 تنظيف الأقفال
         for ball, unlockTime in pairs(ballLocks) do
             if not ball.Parent or now >= unlockTime then
                 ballLocks[ball] = nil
             end
         end
 
-        -- 🔒 كولداون
         local cooldown = GLOBAL_COOLDOWN_BASE + (currentPing * 0.5)
         if (now - lastFireTime) < cooldown then continue end
 
@@ -229,7 +254,6 @@ task.spawn(function()
         local ballsFolder = workspace:FindFirstChild("Balls")
         if not ballsFolder then continue end
 
-        -- 🎯 Accuracy الحالية (Auto أو Manual)
         local effectiveAccuracy = GetEffectiveAccuracy()
         local buffer = 0.05 + ((effectiveAccuracy / 100) * 0.35)
         local window = currentPing + buffer
@@ -276,35 +300,58 @@ task.spawn(function()
 end)
 
 -- =========================================
--- UI Controls
+-- UI - Main Tab
 -- =========================================
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry (Adaptive Beast)", Default = false })
-Toggle:OnChanged(function(Value)
+local ParryToggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry", Default = false })
+ParryToggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
--- 🎯 Slider للـ Manual (يعمل فقط لو الـ Mode = MANUAL)
-local AccuracySlider = Tabs.Main:AddSlider("ParryAccuracy", {
-    Title = "Parry Accuracy (Manual Mode)",
-    Description = "يُستخدم فقط إذا AUTO معطل - يُنصح بـ 20-35",
-    Default = 25,
-    Min = 1,
-    Max = 100,
+-- =========================================
+-- UI - Auto Spam Tab
+-- =========================================
+local SpamToggle = Tabs.Spam:AddToggle("AutoSpam", {Title = "Auto Spam (500 CPS)", Default = false })
+SpamToggle:OnChanged(function(Value)
+    AutoSpamEnabled = Value
+end)
+
+Tabs.Spam:AddSlider("SpamCPS", {
+    Title = "Spam CPS",
+    Description = "Clicks per second",
+    Default = 500,
+    Min = 100,
+    Max = 1000,
     Rounding = 0,
     Callback = function(Value)
-        MANUAL_ACCURACY = Value
+        SPAM_CPS = Value
+        -- حساب عدد الرميات لكل فريم (60 FPS)
+        SPAM_BURST_PER_FRAME = math.max(1, math.floor(Value / 60))
     end
 })
 
--- 🎯 Toggle للـ Adaptive Mode
-local AdaptiveToggle = Tabs.Main:AddToggle("AdaptiveMode", {Title = "🎯 Adaptive Accuracy (Auto)", Default = true })
-AdaptiveToggle:OnChanged(function(Value)
-    if Value then
-        ACCURACY_MODE = "AUTO"
-    else
-        ACCURACY_MODE = "MANUAL"
+Tabs.Spam:AddSlider("SpamPower", {
+    Title = "Spam Power",
+    Description = "Power of each shot",
+    Default = 50,
+    Min = 10,
+    Max = 100,
+    Rounding = 0,
+    Callback = function(Value)
+        SPAM_POWER = Value / 100
     end
-end)
+})
+
+Tabs.Spam:AddSlider("SpamCurve", {
+    Title = "Curve Bias",
+    Description = "Ball curve",
+    Default = 0,
+    Min = -100,
+    Max = 100,
+    Rounding = 0,
+    Callback = function(Value)
+        SPAM_CURVE_BIAS = Value / 100
+    end
+})
 
 -- =========================================
 -- Settings
@@ -318,7 +365,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v12.1 👑",
-    Content = "Adaptive Accuracy جاهز! يضبط نفسه حسب البينج",
-    Duration = 6
+    Title = "Slax Hub v13.1",
+    Content = "500 CPS Auto Spam loaded",
+    Duration = 5
 })
