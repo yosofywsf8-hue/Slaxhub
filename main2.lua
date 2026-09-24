@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (Strong Auto Parry & Manual Spam)
+-- Blade Ball Script - Bypass & Fluent UI (Single Fire Auto Parry)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v3.1 (Strong Auto Parry)",
+    SubTitle = "v3.2 (Single Fire Fix)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -31,7 +31,7 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
-local ParryAccuracyValue = 90 -- القيمة الافتراضية المحسّنة
+local ParryAccuracyValue = 90
 
 -- Token Retrieval Logic
 local _token = nil
@@ -121,24 +121,6 @@ local function FireParryBypass()
     end
 end
 
--- Find Ball
-local function GetBall()
-    local ballsFolder = workspace:FindFirstChild("Balls")
-    if ballsFolder then
-        for _, obj in pairs(ballsFolder:GetChildren()) do
-            if obj:IsA("BasePart") and obj:GetAttribute("realBall") == true then
-                return obj
-            end
-        end
-        for _, obj in pairs(ballsFolder:GetChildren()) do
-            if obj:IsA("BasePart") then
-                return obj
-            end
-        end
-    end
-    return nil
-end
-
 -- Get Current Ping in Seconds
 local function GetPing()
     local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
@@ -146,11 +128,11 @@ local function GetPing()
 end
 
 -- =========================================
--- STRONG Auto Parry Loop (Heartbeat + Burst)
+-- Auto Parry Loop (Single Fire - No Double Parry)
 -- =========================================
 task.spawn(function()
     local lastParryTime = 0
-    local parryBurst = 0
+    local lastParriedBall = nil
 
     while task.wait() do
         if AutoParryEnabled then
@@ -164,17 +146,17 @@ task.spawn(function()
             if not ballsFolder then continue end
 
             local currentPing = GetPing()
-            -- معامل التحويل: 1 = صد مبكر جداً | 100 = صد متأخر مثالي
             local convertedAccuracy = 0.55 - ((ParryAccuracyValue / 100) * 0.45)
-            -- تعويض البينج بشكل أقوى
             local adjustedAccuracy = convertedAccuracy + (currentPing * 0.85)
-            -- كولداون قصير جداً للسماح بعدة محاولات صد
-            local safeCooldown = 0.08 + (currentPing * 0.4)
+            local safeCooldown = 0.15 + (currentPing * 0.4)
+
+            -- نجمع أفضل كرة (الأقرب والأسرع نحوي) بدل ما نصد لكل كرة
+            local bestBall = nil
+            local bestTime = math.huge
 
             for _, ball in ipairs(ballsFolder:GetChildren()) do
                 if not ball:IsA("BasePart") then continue end
 
-                -- نتجاهل الكرات الوهمية إن وُجدت خاصية realBall
                 local realAttr = ball:GetAttribute("realBall")
                 if realAttr == false then continue end
 
@@ -185,44 +167,44 @@ task.spawn(function()
 
                 local directionToPlayer = (playerPos - ballPos).Unit
                 local dotProduct = velocity:Dot(directionToPlayer)
-
                 local distance = (playerPos - ballPos).Magnitude
-                -- نتحقق أيضاً من الكرات القريبة جداً
-                local isComingToMe = dotProduct > 0 or distance < 12
 
-                -- نتحقق من خاصية target إن وُجدت
+                local isComingToMe = dotProduct > 0 or distance < 12
                 local targetAttr = ball:GetAttribute("target")
                 local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
 
                 if isComingToMe and isTarget then
                     local timeToReach = distance / speed
-
-                    -- نطاق صد واسع: من -0.08 إلى adjustedAccuracy
                     if timeToReach <= adjustedAccuracy and timeToReach >= -0.08 then
-                        if tick() - lastParryTime >= safeCooldown then
-                            lastParryTime = tick()
-                            parryBurst = parryBurst + 1
-
-                            -- Burst: 3 محاولات صد متتالية لضمان الإمساك بالنافذة
-                            task.spawn(function()
-                                FireParryBypass()
-                                task.wait(0.01)
-                                FireParryBypass()
-                                task.wait(0.01)
-                                FireParryBypass()
-                            end)
+                        if timeToReach < bestTime then
+                            bestTime = timeToReach
+                            bestBall = ball
                         end
                     end
                 end
             end
+
+            -- نصد مرة واحدة فقط للكرة الأفضل
+            if bestBall and bestBall ~= lastParriedBall then
+                if tick() - lastParryTime >= safeCooldown then
+                    lastParryTime = tick()
+                    lastParriedBall = bestBall
+                    FireParryBypass()
+                end
+            end
+
+            -- نصفر lastParriedBall لما الكرة تختفي
+            if bestBall == nil then
+                lastParriedBall = nil
+            end
         else
-            parryBurst = 0
+            lastParriedBall = nil
         end
     end
 end)
 
 -- UI Controls
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Strong)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Single Fire)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
@@ -294,7 +276,7 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- تنفيذ الـ Manual Spam عند الضغط على الزر أو عند الضغط على حرف E
+-- تنفيذ الـ Manual Spam
 local function TriggerSpam()
     task.spawn(function()
         for i = 1, 5 do
@@ -325,6 +307,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded ✅",
-    Content = "Auto Parry المحسّن جاهز! يُنصح بـ Accuracy = 90-100",
+    Content = "Auto Parry (Single Fire) جاهز! لا مزيد من الصد المزدوج",
     Duration = 5
 })
