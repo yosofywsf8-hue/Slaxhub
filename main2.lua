@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (Per-Ball Lock Fix)
+-- Blade Ball Script - Bypass & Fluent UI (Reversed Accuracy)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v3.5 (Per-Ball Lock - Clean)",
+    SubTitle = "v3.7 (Reversed Accuracy)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -30,7 +30,7 @@ local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
-local ParryAccuracyValue = 90
+local ParryAccuracyValue = 20 -- افتراضي: صد متأخر (Perfect)
 
 -- Token Retrieval Logic
 local _token = nil
@@ -138,7 +138,7 @@ local function GetPing()
 end
 
 -- =========================================
--- Auto Parry Loop (Per-Ball Lock - No Double Parry)
+-- Auto Parry Loop (Reversed Accuracy)
 -- =========================================
 task.spawn(function()
     local lastParryTime = 0
@@ -156,7 +156,8 @@ task.spawn(function()
             if not ballsFolder then continue end
 
             local currentPing = GetPing()
-            local convertedAccuracy = 0.55 - ((ParryAccuracyValue / 100) * 0.45)
+            -- ✅ معكوس: 100 = صد مبكر (نافذة واسعة) | 1 = صد متأخر (نافذة ضيقة/مثالية)
+            local convertedAccuracy = 0.10 + ((ParryAccuracyValue / 100) * 0.45)
             local adjustedAccuracy = convertedAccuracy + (currentPing * 0.85)
             local safeCooldown = 0.20 + (currentPing * 0.5)
 
@@ -176,23 +177,24 @@ task.spawn(function()
                 local directionToPlayer = (playerPos - ballPos).Unit
                 local dotProduct = velocity:Dot(directionToPlayer)
                 local distance = (playerPos - ballPos).Magnitude
-                local isComingToMe = dotProduct > 0 or distance < 12
 
                 local targetAttr = ball:GetAttribute("target")
                 local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
 
-                -- إذا الكرة كانت مقفولة واتجاهها انعكس = نجح الصد → افتح القفل
+                -- الشرط: الكرة لازم تكون جاية نحوي بوضوح
+                local isComingToMe = dotProduct > 0.3 and distance < 60
+
+                -- فك القفل: فقط لما الكرة تبتعد بوضوح أو مر 2 ثانية
                 if parriedBalls[ball] then
-                    if dotProduct < 0 then
-                        parriedBalls[ball] = nil
-                    elseif tick() - parriedBalls[ball] > 2 then
+                    if dotProduct < -0.3 or tick() - parriedBalls[ball] > 2 then
                         parriedBalls[ball] = nil
                     end
                 end
 
                 if isComingToMe and isTarget and not parriedBalls[ball] then
                     local timeToReach = distance / speed
-                    if timeToReach <= adjustedAccuracy and timeToReach >= -0.08 then
+                    -- نافذة موجبة فقط (منع الصد المزدوج)
+                    if timeToReach <= adjustedAccuracy and timeToReach > 0 then
                         if timeToReach < bestTime then
                             bestTime = timeToReach
                             bestBall = ball
@@ -201,7 +203,6 @@ task.spawn(function()
                 end
             end
 
-            -- نصد مرة واحدة ونقفل الكرة
             if bestBall then
                 if tick() - lastParryTime >= safeCooldown then
                     lastParryTime = tick()
@@ -216,15 +217,15 @@ task.spawn(function()
 end)
 
 -- UI Controls
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Per-Ball Lock)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
 Tabs.Main:AddSlider("ParryAccuracy", {
     Title = "Parry Accuracy",
-    Description = "1 = صد مبكر | 100 = صد متأخر مثالي (Perfect) - يُنصح بـ 90-100",
-    Default = 90,
+    Description = "100 = صد مبكر | 1 = صد متأخر مثالي (Perfect) - يُنصح بـ 5-20",
+    Default = 20,
     Min = 1,
     Max = 100,
     Rounding = 0,
@@ -244,6 +245,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded ✅",
-    Content = "Auto Parry جاهز! بدون Spam",
+    Content = "تم عكس الـ Accuracy! 100 = مبكر | 1 = متأخر مثالي",
     Duration = 5
 })
