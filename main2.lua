@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (500 CPS Auto Spam)
--- Slax Hub v13.1 - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (Auto-Off on Distance)
+-- Slax Hub v13.6 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v13.1 (500 CPS)",
+    SubTitle = "v13.6 (Auto-Off on Distance)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -33,6 +33,8 @@ local LocalPlayer = Players.LocalPlayer
 -- State
 local AutoParryEnabled = false
 local AutoSpamEnabled = false
+local BallIncoming = false
+local ParryAccuracyValue = 50
 
 -- Auto Parry Config
 local MAX_PARRY_DISTANCE = 120
@@ -41,11 +43,20 @@ local PREDICTION_FRAMES = 3
 local BALL_LOCK_DURATION = 0.6
 local GLOBAL_COOLDOWN_BASE = 0.06
 
--- Auto Spam Config (500 CPS)
-local SPAM_CPS = 500                    -- الرميات بالثانية
+-- Auto Spam Config
+local SPAM_CPS = 350
 local SPAM_CURVE_BIAS = 0
 local SPAM_POWER = 0.5
-local SPAM_BURST_PER_FRAME = 8          -- 8 رميات لكل فريم (500 CPS @ 60 FPS)
+local SPAM_BURST_PER_FRAME = 5
+
+-- Proximity Config
+local PROXIMITY_ENABLED = true
+local PROXIMITY_RANGE = 30
+local PROXIMITY_CHECK_PLAYERS = true
+local PROXIMITY_CHECK_BALL = false
+local AUTO_OFF_ON_DISTANCE = true    -- ✅ إطفاء تلقائي لما نبعد
+local FAR_CHECK_DELAY = 3.0          -- ثواني بعيد قبل ما يطفى
+local farTimer = 0                   -- timer للعد
 
 -- =========================================
 -- Token Retrieval
@@ -148,15 +159,40 @@ local function GetPing()
 end
 
 -- =========================================
--- Adaptive Accuracy
+-- Proximity
 -- =========================================
-local function GetEffectiveAccuracy()
-    local pingMs = GetPing() * 1000
-    if pingMs < 30 then return 30
-    elseif pingMs < 60 then return 25
-    elseif pingMs < 90 then return 20
-    elseif pingMs < 130 then return 15
-    else return 10 end
+local function IsPlayerNearby(playerPos, range)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local char = player.Character
+        if not char then continue end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
+        if (hrp.Position - playerPos).Magnitude <= range then
+            return true
+        end
+    end
+    return false
+end
+
+local function IsBallNearby(playerPos, range)
+    local ballsFolder = workspace:FindFirstChild("Balls")
+    if not ballsFolder then return false end
+    for _, ball in ipairs(ballsFolder:GetChildren()) do
+        if not ball:IsA("BasePart") then continue end
+        if ball:GetAttribute("realBall") == false then continue end
+        if (ball.Position - playerPos).Magnitude <= range then
+            return true
+        end
+    end
+    return false
+end
+
+local function ShouldSpam(playerPos)
+    if not PROXIMITY_ENABLED then return true end
+    local nearPlayer = PROXIMITY_CHECK_PLAYERS and IsPlayerNearby(playerPos, PROXIMITY_RANGE)
+    local nearBall = PROXIMITY_CHECK_BALL and IsBallNearby(playerPos, PROXIMITY_RANGE)
+    return nearPlayer or nearBall
 end
 
 -- =========================================
@@ -178,21 +214,108 @@ local function IsWithinParryAngle(playerPos, ballPos, ballVel)
 end
 
 -- =========================================
--- ⚡ AUTO SPAM LOOP - 500 CPS (Burst Per Frame)
+-- 🔍 BALL TRACKER
 -- =========================================
 task.spawn(function()
-    while task.wait() do
-        if not AutoSpamEnabled then continue end
+    while task.wait(0.02) do
+        if not AutoParryEnabled then
+            BallIncoming = false
+            continue
+        end
+
+        local character = LocalPlayer.Character
+        if not character then BallIncoming = false continue end
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if not hrp then BallIncoming = false continue end
+
+        local playerPos = hrp.Position
+        local ballsFolder = workspace:FindFirstChild("Balls")
+        if not ballsFolder then BallIncoming = false continue end
+
+        local detectionWindow = 0.5 + ((ParryAccuracyValue / 100) * 0.4)
+
+        BallIncoming = false
+        for _, ball in ipairs(ballsFolder:GetChildren()) do
+            if not ball:IsA("BasePart") then continue end
+            if ball:GetAttribute("realBall") == false then continue end
+
+            local ballPos = ball.Position
+            local velocity = ball.AssemblyLinearVelocity
+            local speed = velocity.Magnitude
+            if speed < 3 then continue end
+
+            local toPlayer = (playerPos - ballPos).Unit
+            local dot = velocity.Unit:Dot(toPlayer)
+            if dot <= 0 then continue end
+
+            local distance = (playerPos - ballPos).Magnitude
+            local timeToReach = distance / speed
+
+            if timeToReach <= detectionWindow then
+                BallIncoming = true
+                break
+            end
+        end
+    end
+end)
+
+-- =========================================
+-- ⚡ AUTO-OFF WATCHER (يطفئ لما نبعد)
+-- =========================================
+task.spawn(function()
+    while task.wait(0.2) do
+        if not AutoSpamEnabled then
+            farTimer = 0
+            continue
+        end
+        if not AUTO_OFF_ON_DISTANCE then continue end
+        if not PROXIMITY_ENABLED then continue end
 
         local character = LocalPlayer.Character
         if not character then continue end
         local hrp = character:FindFirstChild("HumanoidRootPart")
         if not hrp then continue end
 
-        -- 🚀 Burst: نرسل عدة رميات في الفريم الواحد
+        if ShouldSpam(hrp.Position) then
+            -- قريب من لاعب → نصفر الـ timer
+            farTimer = 0
+        else
+            -- بعيد → نزيد الـ timer
+            farTimer = farTimer + 0.2
+            if farTimer >= FAR_CHECK_DELAY then
+                -- ⚡ بعيد لمدة كافية → نطفي Auto Spam
+                AutoSpamEnabled = false
+                farTimer = 0
+                pcall(function()
+                    if SpamToggle then SpamToggle:SetValue(false) end
+                end)
+                Fluent:Notify({
+                    Title = "Auto Spam",
+                    Content = "Turned off - No players nearby",
+                    Duration = 3
+                })
+            end
+        end
+    end
+end)
+
+-- =========================================
+-- ⚡ AUTO SPAM LOOP
+-- =========================================
+task.spawn(function()
+    while task.wait() do
+        if not AutoSpamEnabled then continue end
+        if BallIncoming then continue end
+
+        local character = LocalPlayer.Character
+        if not character then continue end
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
+
+        if not ShouldSpam(hrp.Position) then continue end
+
         for _remote, _origArgs in pairs(_reverted) do
             local _tokens = {}
-            -- نجهز 8 tokens دفعة وحدة (أسرع)
             for i = 1, SPAM_BURST_PER_FRAME do
                 _tokens[i] = _tokenize(_origArgs[2])
             end
@@ -220,7 +343,7 @@ task.spawn(function()
 end)
 
 -- =========================================
--- ⚔️ Auto Parry Loop (Beast)
+-- ⚔️ Auto Parry Loop
 -- =========================================
 task.spawn(function()
     local lastFireTime = 0
@@ -254,8 +377,7 @@ task.spawn(function()
         local ballsFolder = workspace:FindFirstChild("Balls")
         if not ballsFolder then continue end
 
-        local effectiveAccuracy = GetEffectiveAccuracy()
-        local buffer = 0.05 + ((effectiveAccuracy / 100) * 0.35)
+        local buffer = 0.05 + ((ParryAccuracyValue / 100) * 0.35)
         local window = currentPing + buffer
 
         local bestBall = nil
@@ -307,24 +429,81 @@ ParryToggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
+Tabs.Main:AddSlider("ParryAccuracy", {
+    Title = "Parry Accuracy",
+    Description = "100 = Early | 1 = Perfect",
+    Default = 50,
+    Min = 1,
+    Max = 100,
+    Rounding = 0,
+    Callback = function(Value)
+        ParryAccuracyValue = Value
+    end
+})
+
 -- =========================================
 -- UI - Auto Spam Tab
 -- =========================================
-local SpamToggle = Tabs.Spam:AddToggle("AutoSpam", {Title = "Auto Spam (500 CPS)", Default = false })
+local SpamToggle = Tabs.Spam:AddToggle("AutoSpam", {Title = "Auto Spam", Default = false })
 SpamToggle:OnChanged(function(Value)
     AutoSpamEnabled = Value
+    farTimer = 0
+end)
+
+local ProximityToggle = Tabs.Spam:AddToggle("ProximityMode", {Title = "Proximity Trigger", Default = true })
+ProximityToggle:OnChanged(function(Value)
+    PROXIMITY_ENABLED = Value
+end)
+
+local AutoOffToggle = Tabs.Spam:AddToggle("AutoOffOnDistance", {Title = "Auto-Off When Far From Players", Default = true })
+AutoOffToggle:OnChanged(function(Value)
+    AUTO_OFF_ON_DISTANCE = Value
+    farTimer = 0
+end)
+
+Tabs.Spam:AddSlider("FarCheckDelay", {
+    Title = "Auto-Off Delay (seconds)",
+    Description = "Time away before turning off",
+    Default = 3,
+    Min = 1,
+    Max = 15,
+    Rounding = 0,
+    Callback = function(Value)
+        FAR_CHECK_DELAY = Value
+    end
+})
+
+Tabs.Spam:AddSlider("ProximityRange", {
+    Title = "Proximity Range (studs)",
+    Description = "Distance to trigger",
+    Default = 30,
+    Min = 5,
+    Max = 100,
+    Rounding = 0,
+    Callback = function(Value)
+        PROXIMITY_RANGE = Value
+    end
+})
+
+local CheckPlayersToggle = Tabs.Spam:AddToggle("CheckPlayers", {Title = "Detect Nearby Players", Default = true })
+CheckPlayersToggle:OnChanged(function(Value)
+    PROXIMITY_CHECK_PLAYERS = Value
+end)
+
+local CheckBallToggle = Tabs.Spam:AddToggle("CheckBall", {Title = "Detect Nearby Ball", Default = false })
+CheckBallToggle:OnChanged(function(Value)
+    PROXIMITY_CHECK_BALL = Value
 end)
 
 Tabs.Spam:AddSlider("SpamCPS", {
     Title = "Spam CPS",
-    Description = "Clicks per second",
-    Default = 500,
-    Min = 100,
-    Max = 1000,
+    Description = "200-500 CPS",
+    Default = 350,
+    Min = 200,
+    Max = 500,
     Rounding = 0,
     Callback = function(Value)
         SPAM_CPS = Value
-        -- حساب عدد الرميات لكل فريم (60 FPS)
         SPAM_BURST_PER_FRAME = math.max(1, math.floor(Value / 60))
     end
 })
@@ -365,7 +544,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v13.1",
-    Content = "500 CPS Auto Spam loaded",
+    Title = "Slax Hub v13.6",
+    Content = "Auto-Off on Distance loaded",
     Duration = 5
 })
