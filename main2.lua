@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v3.4 (Per-Ball Lock Fix)",
+    SubTitle = "v3.5 (Per-Ball Lock - Clean)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -233,79 +233,6 @@ Tabs.Main:AddSlider("ParryAccuracy", {
     end
 })
 
--- =========================================
--- Manual Spam UI Button
--- =========================================
-local SpamGui = Instance.new("ScreenGui")
-SpamGui.Name = "SlaxSpamGui"
-SpamGui.Parent = CoreGui
-SpamGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-local SpamBtn = Instance.new("TextButton")
-SpamBtn.Name = "ManualSpamBtn"
-SpamBtn.Parent = SpamGui
-SpamBtn.BackgroundColor3 = Color3.fromRGB(85, 95, 220)
-SpamBtn.BorderSizePixel = 0
-SpamBtn.Position = UDim2.new(0.82, 0, 0.45, 0)
-SpamBtn.Size = UDim2.new(0, 110, 0, 45)
-SpamBtn.Font = Enum.Font.GothamBold
-SpamBtn.Text = "Spam"
-SpamBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpamBtn.TextSize = 18
-SpamBtn.AutoButtonColor = true
-
-local UIStroke = Instance.new("UIStroke")
-UIStroke.Parent = SpamBtn
-UIStroke.Color = Color3.fromRGB(255, 255, 255)
-UIStroke.Thickness = 1.5
-UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-local dragging, dragInput, dragStart, startPos
-SpamBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = SpamBtn.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-SpamBtn.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        SpamBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
-local function TriggerSpam()
-    task.spawn(function()
-        for i = 1, 5 do
-            FireParryBypass()
-            task.wait(0.015)
-        end
-    end)
-end
-
-SpamBtn.MouseButton1Click:Connect(function()
-    TriggerSpam()
-end)
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.KeyCode == Enum.KeyCode.E then
-        TriggerSpam()
-    end
-end)
-
 -- UI Settings Manager
 InterfaceManager:SetLibrary(Fluent)
 SaveManager:SetLibrary(Fluent)
@@ -317,6 +244,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded ✅",
-    Content = "Per-Ball Lock جاهز! ما راح يصد مرتين لنفس الكرة",
+    Content = "Auto Parry جاهز! بدون Spam",
     Duration = 5
 })
