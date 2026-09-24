@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (Beast + No Spam)
--- Slax Hub v9.1 - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (Beast + Auto-Unlock)
+-- Slax Hub v9.2 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v9.1 (Beast Mode)",
+    SubTitle = "v9.2 (Auto-Unlock)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -102,13 +102,15 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
 end
 
 -- =========================================
--- Fire Parry
+-- Fire Parry (Safe - Single Remote)
 -- =========================================
 local _parryRemote = nil
 local _parryArgs = nil
 
 local function FireParryBypass()
-    if not _parryRemote then
+    if not _parryRemote or not _parryRemote.Parent then
+        _parryRemote = nil
+        _parryArgs = nil
         for _remote, _origArgs in pairs(_reverted) do
             _parryRemote = _remote
             _parryArgs = _origArgs
@@ -184,11 +186,11 @@ task.spawn(function()
 end)
 
 -- =========================================
--- ⚔️ Auto Parry Loop (BEAST + No Spam)
+-- ⚔️ Auto Parry Loop (Beast + Auto-Unlock)
 -- =========================================
 task.spawn(function()
     local lastParryTime = 0
-    local parriedBalls = {}
+    local parriedBalls = {} -- {[ball] = parryTime}
 
     while task.wait() do
         if not AutoParryEnabled then
@@ -199,8 +201,6 @@ task.spawn(function()
 
         local now = tick()
         local currentPing = GetPing()
-
-        -- ✅ كولداون قصير جداً (يمنع spam بدون تعطيل)
         local cooldown = currentPing + 0.05
         if (now - lastParryTime) < cooldown then continue end
 
@@ -217,9 +217,9 @@ task.spawn(function()
         local buffer = 0.05 + ((ParryAccuracyValue / 100) * 0.35)
         local triggerTime = currentPing + buffer
 
-        -- 🧹 تنظيف الكرات المحذوفة
-        for ball in pairs(parriedBalls) do
-            if not ball.Parent then
+        -- 🧹 تنظيف + فتح القفل تلقائياً بعد ثانية
+        for ball, t in pairs(parriedBalls) do
+            if not ball.Parent or (now - t) > 1.0 then
                 parriedBalls[ball] = nil
             end
         end
@@ -230,8 +230,6 @@ task.spawn(function()
         for _, ball in ipairs(ballsFolder:GetChildren()) do
             if not ball:IsA("BasePart") then continue end
             if ball:GetAttribute("realBall") == false then continue end
-
-            -- 🔒 تجاهل الكرات المصدودة
             if parriedBalls[ball] then continue end
 
             local ballPos = ball.Position
@@ -241,13 +239,6 @@ task.spawn(function()
 
             local toPlayer = (playerPos - ballPos).Unit
             local dot = velocity.Unit:Dot(toPlayer)
-
-            -- 🔄 فتح القفل لو الكرة ابتعدت (يسمح بصدها لو رجعت)
-            if dot < -0.2 then
-                parriedBalls[ball] = nil
-                continue
-            end
-
             if dot <= 0 then continue end
 
             local targetAttr = ball:GetAttribute("target")
@@ -270,8 +261,8 @@ task.spawn(function()
 
         if bestBall then
             lastParryTime = now
-            parriedBalls[bestBall] = true
-            FireParryBypass()
+            parriedBalls[bestBall] = now  -- ⏱️ قفل مؤقت
+            pcall(FireParryBypass)
         end
     end
 end)
@@ -422,7 +413,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v9.1 🔥",
-    Content = "Auto Parry Beast Mode + No Spam + زر Triggerbot جاهزين",
+    Title = "Slax Hub v9.2 🔥",
+    Content = "Auto Parry Beast Mode + Auto-Unlock + Triggerbot جاهزين",
     Duration = 6
 })
