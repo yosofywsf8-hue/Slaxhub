@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (Instant Proximity)
--- Slax Hub v14.1 - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (Hardcoded Auto Spam)
+-- Slax Hub v14.2 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v14.1 (Instant Proximity)",
+    SubTitle = "v14.2 (Hardcoded)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -17,7 +17,6 @@ local Window = Fluent:CreateWindow({
 
 local Tabs = {
     Main = Window:AddTab({ Title = "Main", Icon = "swords" }),
-    Spam = Window:AddTab({ Title = "Auto Spam", Icon = "zap" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
@@ -34,25 +33,29 @@ local LocalPlayer = Players.LocalPlayer
 local AutoParryEnabled = false
 local AutoSpamEnabled = false
 local BallIncoming = false
-local PlayerNearby = false          -- ✅ كاش سريع
+local PlayerNearby = false
 local ParryAccuracyValue = 50
 
--- Auto Parry Config
+-- =========================================
+-- ⚙️ HARDCODED CONFIGURATIONS
+-- =========================================
+
+-- Auto Parry
 local MAX_PARRY_DISTANCE = 120
 local MAX_PARRY_ANGLE = 80
 local PREDICTION_FRAMES = 5
 local BALL_LOCK_DURATION = 0.55
 local GLOBAL_COOLDOWN_BASE = 0.06
 
--- Auto Spam Config
-local SPAM_CPS = 350
-local SPAM_CURVE_BIAS = 0
-local SPAM_POWER = 0.5
-local SPAM_BURST_PER_FRAME = 5
+-- Auto Spam (Hardcoded)
+local SPAM_CPS = 350               -- 350 CPS
+local SPAM_CURVE_BIAS = 0          -- No curve
+local SPAM_POWER = 0.5             -- 50% power
+local SPAM_BURST_PER_FRAME = 5     -- 5 shots per frame
 
--- Proximity Config
-local PROXIMITY_ENABLED = true
-local PROXIMITY_RANGE = 40          -- ✅ زدت النطاق
+-- Proximity (Hardcoded)
+local PROXIMITY_ENABLED = true     -- Always ON
+local PROXIMITY_RANGE = 40         -- 40 studs
 local PROXIMITY_CHECK_PLAYERS = true
 local PROXIMITY_CHECK_BALL = false
 
@@ -157,17 +160,12 @@ local function GetPing()
 end
 
 -- =========================================
--- ⚡ FAST PROXIMITY CHECKER (كل 0.05s)
+-- ⚡ FAST PROXIMITY CHECKER
 -- =========================================
 task.spawn(function()
     while task.wait(0.05) do
         if not AutoSpamEnabled then
             PlayerNearby = false
-            continue
-        end
-
-        if not PROXIMITY_ENABLED then
-            PlayerNearby = true
             continue
         end
 
@@ -185,7 +183,6 @@ task.spawn(function()
         local playerPos = hrp.Position
         local found = false
 
-        -- 🎯 فحص سريع للاعبين
         if PROXIMITY_CHECK_PLAYERS then
             for _, player in ipairs(Players:GetPlayers()) do
                 if player == LocalPlayer then continue end
@@ -200,7 +197,6 @@ task.spawn(function()
             end
         end
 
-        -- 🎯 فحص سريع للكرة
         if not found and PROXIMITY_CHECK_BALL then
             local ballsFolder = workspace:FindFirstChild("Balls")
             if ballsFolder then
@@ -307,13 +303,13 @@ task.spawn(function()
 end)
 
 -- =========================================
--- ⚡ AUTO SPAM LOOP (Instant Fire)
+-- ⚡ AUTO SPAM LOOP
 -- =========================================
 task.spawn(function()
     while task.wait() do
         if not AutoSpamEnabled then continue end
         if BallIncoming then continue end
-        if not PlayerNearby then continue end    -- ✅ يستخدم الكاش
+        if not PlayerNearby then continue end
 
         local character = LocalPlayer.Character
         if not character then continue end
@@ -429,9 +425,9 @@ task.spawn(function()
 end)
 
 -- =========================================
--- UI - Main Tab
+-- UI - Main Tab (Only 3 Controls)
 -- =========================================
-local ParryToggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry", Default = false })
+local ParryToggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry", Default = false })
 ParryToggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
@@ -448,77 +444,10 @@ Tabs.Main:AddSlider("ParryAccuracy", {
     end
 })
 
--- =========================================
--- UI - Auto Spam Tab
--- =========================================
-local SpamToggle = Tabs.Spam:AddToggle("AutoSpam", {Title = "Auto Spam", Default = false })
+local SpamToggle = Tabs.Main:AddToggle("AutoSpam", {Title = "⚡ Auto Spam (Proximity)", Default = false })
 SpamToggle:OnChanged(function(Value)
     AutoSpamEnabled = Value
 end)
-
-local ProximityToggle = Tabs.Spam:AddToggle("ProximityMode", {Title = "🎯 Proximity Gate (Only Near Players)", Default = true })
-ProximityToggle:OnChanged(function(Value)
-    PROXIMITY_ENABLED = Value
-end)
-
-Tabs.Spam:AddSlider("ProximityRange", {
-    Title = "Proximity Range (studs)",
-    Description = "Start spamming within this distance",
-    Default = 40,
-    Min = 5,
-    Max = 100,
-    Rounding = 0,
-    Callback = function(Value)
-        PROXIMITY_RANGE = Value
-    end
-})
-
-local CheckPlayersToggle = Tabs.Spam:AddToggle("CheckPlayers", {Title = "Detect Nearby Players", Default = true })
-CheckPlayersToggle:OnChanged(function(Value)
-    PROXIMITY_CHECK_PLAYERS = Value
-end)
-
-local CheckBallToggle = Tabs.Spam:AddToggle("CheckBall", {Title = "Detect Nearby Ball", Default = false })
-CheckBallToggle:OnChanged(function(Value)
-    PROXIMITY_CHECK_BALL = Value
-end)
-
-Tabs.Spam:AddSlider("SpamCPS", {
-    Title = "Spam CPS",
-    Description = "200-500 CPS",
-    Default = 350,
-    Min = 200,
-    Max = 500,
-    Rounding = 0,
-    Callback = function(Value)
-        SPAM_CPS = Value
-        SPAM_BURST_PER_FRAME = math.max(1, math.floor(Value / 60))
-    end
-})
-
-Tabs.Spam:AddSlider("SpamPower", {
-    Title = "Spam Power",
-    Description = "Power of each shot",
-    Default = 50,
-    Min = 10,
-    Max = 100,
-    Rounding = 0,
-    Callback = function(Value)
-        SPAM_POWER = Value / 100
-    end
-})
-
-Tabs.Spam:AddSlider("SpamCurve", {
-    Title = "Curve Bias",
-    Description = "Ball curve",
-    Default = 0,
-    Min = -100,
-    Max = 100,
-    Rounding = 0,
-    Callback = function(Value)
-        SPAM_CURVE_BIAS = Value / 100
-    end
-})
 
 -- =========================================
 -- Settings
@@ -532,7 +461,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v14.1",
-    Content = "Instant Proximity + Better Parry loaded",
+    Title = "Slax Hub v14.2",
+    Content = "Auto Parry + Auto Spam (Hardcoded) loaded",
     Duration = 5
 })
