@@ -1,4 +1,4 @@
--- Blade Ball Script - Slax Hub v20.5 (Sudden Threat Detection)
+-- Blade Ball Script - Slax Hub v21.1 (Close Range Fix)
 -- Developed by yossef
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -40,6 +40,7 @@ local LocalPlayer = Players.LocalPlayer
 local AutoParryEnabled = false
 local AutoSpamEnabled = false
 local ManualSpamEnabled = false
+local AutoSlashEnabled = false
 local ParryAccuracyValue = 50
 local AutoAccuracyEnabled = true
 local AutoSpamCPS = 350
@@ -47,10 +48,16 @@ local AutoSpamCPS = 350
 -- ⚙️ Config
 local GLOBAL_LOCK = 0.18
 local ULTRA_FAST_LOCK = 0.06
+local CLOSE_RANGE_LOCK = 0.04      -- ⚡ Close Range Lock جديد
 local BALL_LOCK_DURATION = 0.5
 local MAX_PARRY_DISTANCE = 200
 local MAX_PARRY_ANGLE = 90
 local SPAM_PROXIMITY_RANGE = 60
+
+-- 🎯 CLOSE RANGE FIX
+local CLOSE_RANGE_DISTANCE = 50    -- 🎯 مسافة "قريبة"
+local VERY_CLOSE_DISTANCE = 25     -- 🎯 مسافة "قريبة جداً"
+local POINT_BLANK_DISTANCE = 12    -- 🎯 مسافة "ملاصقة"
 
 -- 🛡️ DANGER ZONE
 local DANGER_ZONE_RANGE = 40
@@ -61,11 +68,16 @@ local ULTRA_FAST_SPEED = 180
 local FAST_SPEED = 100
 local MANUAL_SPAM_BURST = 10
 
--- 🚨 SUDDEN THREAT CONFIG
-local SUDDEN_BALL_TTL = 0.15          -- الوقت المسموح للكرة "الجديدة"
-local SUDDEN_MIN_DISTANCE = 40        -- حد أدنى للمسافة لتصنيف "مفاجئة"
-local SUDDEN_TRACK_INTERVAL = 0.02    -- كل 20ms نتتبع الكرات
-local knownBalls = {}                 -- {[ball] = firstSeenTime}
+-- 🚨 SUDDEN THREAT
+local SUDDEN_BALL_TTL = 0.15
+local SUDDEN_TRACK_INTERVAL = 0.02
+local knownBalls = {}
+
+-- ⚔️ SLASHES OF FURY
+local SLASH_DISTANCE = 35
+local SLASH_SPEED_THRESHOLD = 80
+local SLASH_COOLDOWN = 1.5
+local lastSlashTime = 0
 
 -- =========================================
 -- Token
@@ -135,8 +147,12 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
     end
 end
 
+-- =========================================
+-- Remotes
+-- =========================================
 local _parryRemote = nil
 local _parryArgs = nil
+local _abilityRemote = nil
 
 local function GetParryRemote()
     if not _parryRemote or not _parryRemote.Parent then
@@ -149,6 +165,25 @@ local function GetParryRemote()
         end
     end
     return _parryRemote, _parryArgs
+end
+
+local function GetAbilityRemote()
+    if not _abilityRemote or not _abilityRemote.Parent then
+        _abilityRemote = nil
+        local remotesFolder = replicated_storage:FindFirstChild("Remotes")
+        if remotesFolder then
+            _abilityRemote = remotesFolder:FindFirstChild("AbilityButtonPress")
+        end
+        if not _abilityRemote then
+            for _, remote in pairs(replicated_storage:GetDescendants()) do
+                if remote:IsA('RemoteEvent') and remote.Name:lower():find("ability") then
+                    _abilityRemote = remote
+                    break
+                end
+            end
+        end
+    end
+    return _abilityRemote
 end
 
 local function FireParry()
@@ -172,13 +207,23 @@ local function FireParry()
     end
 end
 
+local function FireAbility()
+    local remote = GetAbilityRemote()
+    if not remote then return end
+    if remote:IsA('RemoteEvent') then
+        remote:FireServer()
+    elseif remote:IsA('RemoteFunction') then
+        remote:InvokeServer()
+    end
+end
+
 local function GetPing()
     local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
     return math.clamp(ping, 0.02, 0.4)
 end
 
 -- =========================================
--- Danger Zone Detection
+-- Danger Zone
 -- =========================================
 local DangerLevel = 0
 local DangerMessage = "SAFE"
@@ -278,7 +323,7 @@ task.spawn(function()
 end)
 
 -- =========================================
--- 🚨 SUDDEN THREAT TRACKER
+-- Sudden Threat Tracker
 -- =========================================
 task.spawn(function()
     while task.wait(SUDDEN_TRACK_INTERVAL) do
@@ -301,12 +346,10 @@ task.spawn(function()
             currentBalls[ball] = true
 
             if not knownBalls[ball] then
-                -- 🚨 كرة جديدة ظهرت!
                 knownBalls[ball] = now
             end
         end
 
-        -- تنظيف الكرات المختفية
         for ball in pairs(knownBalls) do
             if not currentBalls[ball] then
                 knownBalls[ball] = nil
@@ -320,7 +363,7 @@ end)
 -- =========================================
 local AutoAccuracyDebug = { Value = 50, Reason = "Starting" }
 
-local function GetAutoAccuracy(ballSpeed, curveActive, isClose, dangerLevel)
+local function GetAutoAccuracy(ballSpeed, curveActive, isClose, dangerLevel, distance)
     local pingMs = GetPing() * 1000
     local base = 50
 
@@ -343,11 +386,20 @@ local function GetAutoAccuracy(ballSpeed, curveActive, isClose, dangerLevel)
     if dangerLevel == 2 then base = base + 30
     elseif dangerLevel == 1 then base = base + 15 end
 
+    -- 🎯 CLOSE RANGE BONUS (جديد)
+    if distance < POINT_BLANK_DISTANCE then
+        base = base + 25   -- ملاصقة
+    elseif distance < VERY_CLOSE_DISTANCE then
+        base = base + 18   -- قريبة جداً
+    elseif distance < CLOSE_RANGE_DISTANCE then
+        base = base + 10   -- قريبة
+    end
+
     return math.clamp(math.floor(base), 1, 100)
 end
 
 -- =========================================
--- ⚡⚡🚨 Auto Parry - ULTRA FAST + SUDDEN THREAT
+-- ⚔️⚡🎯 Auto Parry + Close Range Fix
 -- =========================================
 local lastParryTime = 0
 local ballLocks = {}
@@ -370,6 +422,43 @@ task.spawn(function()
 end)
 
 RunService.Heartbeat:Connect(function()
+    -- ⚔️ AUTO SLASHES OF FURY
+    if AutoSlashEnabled then
+        local now = tick()
+        if (now - lastSlashTime) >= SLASH_COOLDOWN then
+            local character = LocalPlayer.Character
+            if character then
+                local hrp = character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local playerPos = hrp.Position
+                    local ballsFolder = workspace:FindFirstChild("Balls")
+                    if ballsFolder then
+                        for _, ball in ipairs(ballsFolder:GetChildren()) do
+                            if not ball:IsA("BasePart") then continue end
+                            if ball:GetAttribute("realBall") == false then continue end
+
+                            local ballPos = ball.Position
+                            local velocity = ball.AssemblyLinearVelocity
+                            local speed = velocity.Magnitude
+                            if speed < SLASH_SPEED_THRESHOLD then continue end
+
+                            local distance = (playerPos - ballPos).Magnitude
+                            if distance > SLASH_DISTANCE then continue end
+
+                            local toPlayer = (playerPos - ballPos).Unit
+                            local dot = velocity.Unit:Dot(toPlayer)
+                            if dot <= 0.3 then continue end
+
+                            lastSlashTime = now
+                            FireAbility()
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     if not AutoParryEnabled then
         ballLocks = {}
         ballNameLocks = {}
@@ -391,15 +480,59 @@ RunService.Heartbeat:Connect(function()
     local balls = ballsFolder:GetChildren()
 
     -- =========================================
-    -- 🚨🚨 PHASE 0: SUDDEN THREAT SCAN (أعلى أولوية)
+    -- 🎯🎯 PHASE -1: POINT BLANK (أعلى أولوية مطلقة!)
     -- =========================================
-    -- نفحص الكرات "الجديدة" فوراً بدون أي lock
+    -- أي كرة ملاصقة (12 studs) → صد فوري بدون أي lock
     for i = 1, #balls do
         local ball = balls[i]
         if not ball:IsA("BasePart") then continue end
         if ball:GetAttribute("realBall") == false then continue end
 
-        -- 🚨 هل الكرة جديدة (ظهرت خلال 150ms)؟
+        local ballPos = ball.Position
+        local velocity = ball.AssemblyLinearVelocity
+        local speed = velocity.Magnitude
+        if speed < 3 then continue end
+
+        local toPlayer = (playerPos - ballPos).Unit
+        local dot = velocity.Unit:Dot(toPlayer)
+        if dot <= 0 then continue end
+
+        local distance = (playerPos - ballPos).Magnitude
+
+        -- 🎯 POINT BLANK: كرة ملاصقة → صد فوراً!
+        if distance <= POINT_BLANK_DISTANCE and dot > 0.2 then
+            lastParryTime = now
+            ballLocks[ball] = now + BALL_LOCK_DURATION
+            ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
+            FireParry()
+            return
+        end
+
+        -- 🎯 VERY CLOSE: كرة قريبة جداً → صد فوراً!
+        if distance <= VERY_CLOSE_DISTANCE and dot > 0.3 then
+            lastParryTime = now
+            ballLocks[ball] = now + BALL_LOCK_DURATION
+            ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
+            FireParry()
+            return
+        end
+
+        -- 🎯 CLOSE: كرة قريبة + جاية → صد فوراً!
+        if distance <= CLOSE_RANGE_DISTANCE and dot > 0.4 and speed > 40 then
+            lastParryTime = now
+            ballLocks[ball] = now + BALL_LOCK_DURATION
+            ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
+            FireParry()
+            return
+        end
+    end
+
+    -- 🚨 PHASE 0: SUDDEN THREAT
+    for i = 1, #balls do
+        local ball = balls[i]
+        if not ball:IsA("BasePart") then continue end
+        if ball:GetAttribute("realBall") == false then continue end
+
         local firstSeen = knownBalls[ball]
         if not firstSeen then continue end
         local ballAge = now - firstSeen
@@ -416,19 +549,16 @@ RunService.Heartbeat:Connect(function()
 
         local distance = (playerPos - ballPos).Magnitude
 
-        -- 🚨🚨 كرة جديدة + جاية + قريبة → صد فوراً!
         if distance < 80 and dot > 0.3 then
             lastParryTime = now
             ballLocks[ball] = now + BALL_LOCK_DURATION
             ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
             FireParry()
-            return  -- 🚀 اصد واخرج فوراً!
+            return
         end
     end
 
-    -- =========================================
-    -- ⚡⚡ PHASE 1: ULTRA FAST SCAN
-    -- =========================================
+    -- ⚡⚡ PHASE 1: ULTRA FAST
     for i = 1, #balls do
         local ball = balls[i]
         if not ball:IsA("BasePart") then continue end
@@ -447,7 +577,6 @@ RunService.Heartbeat:Connect(function()
 
         local distance = (playerPos - ballPos).Magnitude
 
-        -- ⚡ Ultra Fast Ball
         if speed >= ULTRA_FAST_SPEED and distance < 120 and dot > 0.3 then
             lastParryTime = now
             ballLocks[ball] = now + BALL_LOCK_DURATION
@@ -456,7 +585,6 @@ RunService.Heartbeat:Connect(function()
             return
         end
 
-        -- 🚀 Fast Ball
         if speed >= FAST_SPEED and distance < 70 and dot > 0.3 then
             lastParryTime = now
             ballLocks[ball] = now + BALL_LOCK_DURATION
@@ -466,9 +594,7 @@ RunService.Heartbeat:Connect(function()
         end
     end
 
-    -- =========================================
-    -- ⚙️ PHASE 2: NORMAL SCAN (مع lock)
-    -- =========================================
+    -- ⚙️ PHASE 2: NORMAL SCAN
     local currentLock = GLOBAL_LOCK
     if DangerLevel == 2 then
         currentLock = ULTRA_FAST_LOCK
@@ -509,8 +635,10 @@ RunService.Heartbeat:Connect(function()
 
         local _, curveActive = TrackBall(ball)
 
+        -- 🎯 Prediction ذكي حسب السرعة والمسافة
         local frames = 1
-        if speed < 40 then frames = 4
+        if distance < 30 then frames = 0       -- قريب: بدون prediction
+        elseif speed < 40 then frames = 4
         elseif speed < 80 then frames = 3
         elseif speed < 130 then frames = 2
         else frames = 0 end
@@ -531,10 +659,10 @@ RunService.Heartbeat:Connect(function()
     if bestBall then
         local usedAccuracy
         if AutoAccuracyEnabled then
-            usedAccuracy = GetAutoAccuracy(bestSpeed, bestCurve, DangerLevel >= 1, DangerLevel)
+            usedAccuracy = GetAutoAccuracy(bestSpeed, bestCurve, DangerLevel >= 1, DangerLevel, bestDistance)
             AutoAccuracyDebug.Value = usedAccuracy
-            AutoAccuracyDebug.Reason = string.format("P:%d S:%d D:%s",
-                math.floor(ping * 1000), math.floor(bestSpeed), DangerMessage)
+            AutoAccuracyDebug.Reason = string.format("P:%d S:%d D:%d",
+                math.floor(ping * 1000), math.floor(bestSpeed), math.floor(bestDistance))
         else
             usedAccuracy = ParryAccuracyValue
         end
@@ -548,9 +676,19 @@ RunService.Heartbeat:Connect(function()
             timeWindow = timeWindow + 0.25
         end
 
+        -- 🎯 Emergency Range يزيد حسب القرب
         local emergencyRange = 20
         if DangerLevel == 2 then emergencyRange = 40
         elseif DangerLevel == 1 then emergencyRange = 30 end
+
+        -- 🎯 Close Range Bonus
+        if bestDistance < POINT_BLANK_DISTANCE then
+            emergencyRange = 50  -- أولوية قصوى
+        elseif bestDistance < VERY_CLOSE_DISTANCE then
+            emergencyRange = 40
+        elseif bestDistance < CLOSE_RANGE_DISTANCE then
+            emergencyRange = 30
+        end
 
         if (bestTime <= timeWindow and bestTime >= -0.1) or bestDistance <= emergencyRange then
             lastParryTime = now
@@ -626,41 +764,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- =========================================
--- ULTRA MANUAL SPAM
--- =========================================
-local lastManualSpamTime = 0
-
-RunService.Heartbeat:Connect(function()
-    if not ManualSpamEnabled then return end
-
-    local now = tick()
-    if (now - lastManualSpamTime) < 0.005 then return end
-    lastManualSpamTime = now
-
-    local remote, args = GetParryRemote()
-    if not remote or not args then return end
-
-    for _ = 1, MANUAL_SPAM_BURST do
-        local packet = {
-            args[1],
-            args[2],
-            _tokenize(args[2]),
-            0.5,
-            workspace.CurrentCamera.CFrame,
-            {},
-            {0, 0},
-            false
-        }
-        if remote:IsA('RemoteEvent') then
-            remote:FireServer(unpack(packet))
-        elseif remote:IsA('RemoteFunction') then
-            remote:InvokeServer(unpack(packet))
-        end
-    end
-end)
-
--- =========================================
--- Floating Manual Spam Button
+-- Manual Spam + Floating Button
 -- =========================================
 local function GetGuiParent()
     local ok, hui = pcall(gethui)
@@ -877,6 +981,40 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 
 -- =========================================
+-- Manual Spam Loop
+-- =========================================
+local lastManualSpamTime = 0
+
+RunService.Heartbeat:Connect(function()
+    if not ManualSpamEnabled then return end
+
+    local now = tick()
+    if (now - lastManualSpamTime) < 0.005 then return end
+    lastManualSpamTime = now
+
+    local remote, args = GetParryRemote()
+    if not remote or not args then return end
+
+    for _ = 1, MANUAL_SPAM_BURST do
+        local packet = {
+            args[1],
+            args[2],
+            _tokenize(args[2]),
+            0.5,
+            workspace.CurrentCamera.CFrame,
+            {},
+            {0, 0},
+            false
+        }
+        if remote:IsA('RemoteEvent') then
+            remote:FireServer(unpack(packet))
+        elseif remote:IsA('RemoteFunction') then
+            remote:InvokeServer(unpack(packet))
+        end
+    end
+end)
+
+-- =========================================
 -- Danger Zone Indicator
 -- =========================================
 local DangerGui = Instance.new("ScreenGui")
@@ -1011,8 +1149,8 @@ end)
 -- UI Controls
 -- =========================================
 MainTab:Toggle({
-    Title = "Auto Parry (Sudden Threat)",
-    Desc = "Handles sudden fast balls instantly",
+    Title = "Auto Parry (Close Range Fix)",
+    Desc = "Strong at close & far range",
     Value = false,
     Callback = function(Value)
         AutoParryEnabled = Value
@@ -1044,6 +1182,16 @@ MainTab:Slider({
     },
     Callback = function(Value)
         ParryAccuracyValue = Value
+    end
+})
+
+MainTab:Toggle({
+    Title = "⚔️ Auto Slashes of Fury",
+    Desc = "Auto-activates ability when ball is near",
+    Value = false,
+    Callback = function(Value)
+        AutoSlashEnabled = Value
+        lastSlashTime = 0
     end
 })
 
@@ -1080,7 +1228,7 @@ SettingsTab:Button({
 })
 
 WindUI:Notify({
-    Title = "Slax Hub v20.5 🚨",
-    Content = "Sudden Threat Detection - Instant parry for surprise balls!",
+    Title = "Slax Hub v21.1 🎯",
+    Content = "Close Range Fix - Now strong at any distance!",
     Duration = 6
 })
