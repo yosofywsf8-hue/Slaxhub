@@ -1,24 +1,31 @@
--- Blade Ball Script - Slax Hub v16.1 (RAW + Anti Curve)
+-- Blade Ball Script - Slax Hub v18.0 (WindUI)
 -- Developed by yossef
 
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
-local Window = Fluent:CreateWindow({
+local Window = WindUI:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v16.1 (Anti Curve)",
-    TabWidth = 160,
+    Icon = "swords",
+    Author = "yossef",
+    Folder = "SlaxHub",
     Size = UDim2.fromOffset(580, 460),
-    Acrylic = true,
+    Transparent = true,
     Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
+    SideBarWidth = 180,
+    HasOutline = true,
 })
 
-local Tabs = {
-    Main = Window:AddTab({ Title = "Main", Icon = "swords" }),
-    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
-}
+Window:EditOpenButton({
+    Title = "Open Slax Hub",
+    Icon = "sword",
+    CornerRadius = UDim.new(0, 16),
+    StrokeThickness = 2,
+    Color = ColorSequence.new(Color3.fromRGB(80, 120, 255), Color3.fromRGB(160, 80, 255)),
+    OnlyMobile = false,
+})
+
+local MainTab = Window:Tab({ Title = "Main", Icon = "sword" })
+local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
 
 local replicated_storage = cloneref(game:GetService('ReplicatedStorage'))
 local workspace = cloneref(game:GetService('Workspace'))
@@ -129,51 +136,42 @@ local function GetPing()
 end
 
 -- =========================================
--- 🌀 ANTI-CURVE SYSTEM
+-- 🌀 Anti Curve
 -- =========================================
--- نتتبع كل كرة: هل غيرت اتجاهها؟
--- =========================================
-local ballTracking = {} -- {[ball] = {lastVel, curveScore, curveActive}}
+local ballTracking = {}
 
 local function TrackBall(ball)
     local vel = ball.AssemblyLinearVelocity
     local speed = vel.Magnitude
-    if speed < 3 then return 0 end
+    if speed < 3 then return 0, false end
 
     local data = ballTracking[ball]
     if not data then
         ballTracking[ball] = {
             lastVel = vel,
-            lastSpeed = speed,
             curveScore = 0,
             curveActive = false
         }
-        return 0
+        return 0, false
     end
 
-    -- حساب الزاوية بين الاتجاه الحالي والسابق
     local prevDir = data.lastVel.Unit
     local currDir = vel.Unit
     local dot = prevDir:Dot(currDir)
     local angleChange = math.deg(math.acos(math.clamp(dot, -1, 1)))
 
-    -- لو تغير الاتجاه بشكل كبير → الكرة تنحني
-    -- العتبة: 5 درجات+ في الفريم = curve
     if angleChange > 3 then
         data.curveScore = data.curveScore + angleChange * 0.1
     else
-        data.curveScore = data.curveScore * 0.95  -- decay
+        data.curveScore = data.curveScore * 0.95
     end
 
-    -- curveActive لو الـ curveScore > 1.5
     data.curveActive = data.curveScore > 1.5
     data.lastVel = vel
-    data.lastSpeed = speed
 
     return data.curveScore, data.curveActive
 end
 
--- تنظيف الكرات القديمة
 task.spawn(function()
     while task.wait(1) do
         for ball in pairs(ballTracking) do
@@ -185,7 +183,7 @@ task.spawn(function()
 end)
 
 -- =========================================
--- ⚔️ Auto Parry (RAW + Anti Curve)
+-- ⚔️ Auto Parry
 -- =========================================
 task.spawn(function()
     while task.wait(0.01) do
@@ -211,7 +209,6 @@ task.spawn(function()
             local speed = velocity.Magnitude
             if speed < 3 then continue end
 
-            -- 🌀 تتبع الانحناء
             local curveScore, curveActive = TrackBall(ball)
 
             local toPlayer = (playerPos - ballPos).Unit
@@ -221,16 +218,11 @@ task.spawn(function()
             local distance = (playerPos - ballPos).Magnitude
             local timeToReach = distance / speed
 
-            -- 🌀 تعويض الانحناء: نصد أبكر لو الكرة منحنية
             local curveBonus = 0
             if curveActive then
-                -- كل ما زاد الانحناء → نصد أبكر
                 curveBonus = math.min(0.2, curveScore * 0.05)
             end
 
-            -- 🎯 الشرطان:
-            -- 1. الوقت المتبقي ≤ ping + 0.35 + curveBonus
-            -- 2. OR المسافة ≤ 25 stud
             local timeWindow = ping + 0.35 + curveBonus
 
             if (timeToReach <= timeWindow) or (distance <= 25) then
@@ -299,31 +291,38 @@ task.spawn(function()
 end)
 
 -- =========================================
--- UI
+-- UI Controls
 -- =========================================
-local ParryToggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry", Default = false })
-ParryToggle:OnChanged(function(Value)
-    AutoParryEnabled = Value
-    if not Value then
-        ballTracking = {}
+MainTab:Toggle({
+    Title = "⚔️ Auto Parry",
+    Desc = "Auto parry with anti-curve",
+    Value = false,
+    Callback = function(Value)
+        AutoParryEnabled = Value
+        if not Value then
+            ballTracking = {}
+        end
     end
-end)
+})
 
-local SpamToggle = Tabs.Main:AddToggle("AutoSpam", {Title = "⚡ Auto Spam (Near Players)", Default = false })
-SpamToggle:OnChanged(function(Value)
-    AutoSpamEnabled = Value
-end)
+MainTab:Toggle({
+    Title = "⚡ Auto Spam",
+    Desc = "Spams when near players (50 studs)",
+    Value = false,
+    Callback = function(Value)
+        AutoSpamEnabled = Value
+    end
+})
 
-InterfaceManager:SetLibrary(Fluent)
-SaveManager:SetLibrary(Fluent)
-SaveManager:IgnoreThemeSettings()
-InterfaceManager:BuildInterfaceSection(Tabs.Settings)
-SaveManager:BuildConfigSection(Tabs.Settings)
+SettingsTab:Button({
+    Title = "Destroy UI",
+    Callback = function()
+        Window:Destroy()
+    end
+})
 
-Window:SelectTab(1)
-
-Fluent:Notify({
-    Title = "Slax Hub v16.1",
-    Content = "Anti-Curve Detection loaded",
+WindUI:Notify({
+    Title = "Slax Hub v18.0",
+    Content = "WindUI loaded successfully",
     Duration = 5
 })
