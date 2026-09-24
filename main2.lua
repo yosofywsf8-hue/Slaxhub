@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (Mobile Triggerbot)
--- Slax Hub v6.5 - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (BEAST MODE)
+-- Slax Hub v8.0 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v6.5 (Mobile)",
+    SubTitle = "v8.0 (BEAST MODE)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -31,16 +31,9 @@ local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
 local ParryAccuracyValue = 20
-local MaxParryAngle = 45
-local PredictionFrames = 3
-local PanicModeEnabled = true
-local PanicSpeedThreshold = 120
-local PanicDistanceThreshold = 35
 
+-- 🎯 Triggerbot
 local TriggerbotEnabled = false
-local TriggerDistance = 12
-local TriggerSpeed = 5
-local TriggerCooldown = 0.15
 
 -- =========================================
 -- Token Retrieval
@@ -152,37 +145,14 @@ local function GetPing()
 end
 
 -- =========================================
--- Prediction
--- =========================================
-local function PredictBallPosition(ball, frames)
-    return ball.Position + (ball.AssemblyLinearVelocity * (frames * (1/60)))
-end
-
--- =========================================
--- Max Angle
--- =========================================
-local function IsWithinParryAngle(playerPos, ballPos, ballVel)
-    local toPlayer = (playerPos - ballPos).Unit
-    local velDir = ballVel.Unit
-    local dot = velDir:Dot(toPlayer)
-    local angle = math.deg(math.acos(math.clamp(dot, -1, 1)))
-    return angle <= MaxParryAngle
-end
-
--- =========================================
--- 🎯 TRIGGERBOT LOOP
+-- 🎯 TRIGGERBOT LOOP (MAX POWER)
 -- =========================================
 task.spawn(function()
     local lastTriggerTime = 0
-
     while task.wait() do
-        if not TriggerbotEnabled then
-            lastTriggerTime = 0
-            continue
-        end
-
+        if not TriggerbotEnabled then lastTriggerTime = 0 continue end
         local now = tick()
-        if (now - lastTriggerTime) < TriggerCooldown then continue end
+        if (now - lastTriggerTime) < 0.08 then continue end
 
         local character = LocalPlayer.Character
         if not character then continue end
@@ -195,20 +165,18 @@ task.spawn(function()
 
         for _, ball in ipairs(ballsFolder:GetChildren()) do
             if not ball:IsA("BasePart") then continue end
-            local realAttr = ball:GetAttribute("realBall")
-            if realAttr == false then continue end
+            if ball:GetAttribute("realBall") == false then continue end
 
             local ballPos = ball.Position
             local velocity = ball.AssemblyLinearVelocity
             local speed = velocity.Magnitude
-            if speed < TriggerSpeed then continue end
+            if speed < 3 then continue end
 
             local toPlayer = (playerPos - ballPos).Unit
             local dot = velocity.Unit:Dot(toPlayer)
-            if dot <= 0.3 then continue end
+            if dot <= 0.2 then continue end
 
-            local distance = (playerPos - ballPos).Magnitude
-            if distance > TriggerDistance then continue end
+            if (playerPos - ballPos).Magnitude > 18 then continue end
 
             lastTriggerTime = now
             FireParryBypass()
@@ -218,27 +186,27 @@ task.spawn(function()
 end)
 
 -- =========================================
--- ⚡ Auto Parry Loop
+-- ⚔️ Auto Parry Loop (BEAST MODE)
 -- =========================================
 task.spawn(function()
     local lastParryTime = 0
     local globalLockUntil = 0
-    local panicLockUntil = 0
-    local trackedBalls = {}
+    local parriedBalls = {} -- {[ball] = time}
+    local returnedBalls = {} -- لتتبع الكرات المرجعة
 
     while task.wait() do
         if not AutoParryEnabled then
-            trackedBalls = {}
+            parriedBalls = {}
+            returnedBalls = {}
             globalLockUntil = 0
-            panicLockUntil = 0
             continue
         end
 
         local now = tick()
         local currentPing = GetPing()
 
-        local globalLocked = now < globalLockUntil
-        local panicLocked = now < panicLockUntil
+        -- ⛔ قفل عالمي قصير جداً (0.08s فقط = أقصى عدوانية)
+        if now < globalLockUntil then continue end
 
         local character = LocalPlayer.Character
         if not character then continue end
@@ -249,116 +217,75 @@ task.spawn(function()
         local ballsFolder = workspace:FindFirstChild("Balls")
         if not ballsFolder then continue end
 
-        local convertedAccuracy = 0.10 + ((ParryAccuracyValue / 100) * 0.45)
-        local adjustedAccuracy = convertedAccuracy + (currentPing * 0.85)
-        local globalLockDuration = 0.35 + (currentPing * 0.6)
-        local panicLockDuration = 0.10 + (currentPing * 0.3)
-
-        local panicSpeed = PanicSpeedThreshold
-        local panicDist = PanicDistanceThreshold
-
-        for ball, info in pairs(trackedBalls) do
-            if not ball.Parent or (now - info.time) > 4 then
-                trackedBalls[ball] = nil
-            end
-        end
-
-        -- PHASE 1: PANIC SCAN
-        local panicBall = nil
-        local panicTime = math.huge
-
-        if PanicModeEnabled and not panicLocked then
-            for _, ball in ipairs(ballsFolder:GetChildren()) do
-                if not ball:IsA("BasePart") then continue end
-                local realAttr = ball:GetAttribute("realBall")
-                if realAttr == false then continue end
-
-                local ballPos = ball.Position
-                local velocity = ball.AssemblyLinearVelocity
-                local speed = velocity.Magnitude
-                if speed < panicSpeed then continue end
-
-                local toPlayer = (playerPos - ballPos).Unit
-                local dot = velocity.Unit:Dot(toPlayer)
-                if dot < 0.5 then continue end
-
-                local distance = (playerPos - ballPos).Magnitude
-                if distance > panicDist then continue end
-
-                local timeToReach = distance / speed
-                if timeToReach < 0.25 and timeToReach > 0 then
-                    if timeToReach < panicTime then
-                        panicTime = timeToReach
-                        panicBall = ball
-                    end
-                end
-            end
-        end
-
-        if panicBall then
-            panicLockUntil = now + panicLockDuration
-            globalLockUntil = now + globalLockDuration
-            trackedBalls[panicBall] = { time = now, movedAway = false, returnFrames = 0 }
-            FireParryBypass()
-            continue
-        end
-
-        -- PHASE 2: NORMAL PARRY
-        if globalLocked then continue end
+        -- ✅ نافذة صد واسعة جداً (Aggressive)
+        -- معكوس: 100 = مبكر جداً | 1 = متأخر مثالي
+        local convertedAccuracy = 0.08 + ((ParryAccuracyValue / 100) * 0.42)
+        local adjustedAccuracy = convertedAccuracy + (currentPing * 0.9)
+        -- ✅ كولداون عالمي قصير جداً
+        local globalLockDuration = 0.08 + (currentPing * 0.2)
 
         local bestBall = nil
         local bestTime = math.huge
 
+        -- تنظيف
+        for ball, t in pairs(parriedBalls) do
+            if not ball.Parent or (now - t) > 2.5 then
+                parriedBalls[ball] = nil
+            end
+        end
+
         for _, ball in ipairs(ballsFolder:GetChildren()) do
             if not ball:IsA("BasePart") then continue end
-            local realAttr = ball:GetAttribute("realBall")
-            if realAttr == false then continue end
+            if ball:GetAttribute("realBall") == false then continue end
 
             local ballPos = ball.Position
             local velocity = ball.AssemblyLinearVelocity
             local speed = velocity.Magnitude
-            if speed < 5 then continue end
+            if speed < 3 then continue end
 
             local toPlayer = (playerPos - ballPos).Unit
             local dot = velocity.Unit:Dot(toPlayer)
             local distance = (playerPos - ballPos).Magnitude
 
-            local info = trackedBalls[ball]
-            if info then
-                if not info.movedAway then
-                    if dot < -0.4 then
-                        info.movedAway = true
-                        info.awayTime = now
+            -- 🔄 فحص الكرة المصدودة
+            if parriedBalls[ball] then
+                -- هل الكرة رجعت؟ (اتجاه انعكس + قريبة)
+                local returned = false
+                if dot > 0.5 and speed > 15 then
+                    returnedBalls[ball] = (returnedBalls[ball] or 0) + 1
+                    if returnedBalls[ball] >= 2 then
+                        returned = true
                     end
-                    continue
+                else
+                    returnedBalls[ball] = 0
                 end
 
-                if dot > 0.7 and speed > 10 then
-                    info.returnFrames = info.returnFrames + 1
-                    if info.returnFrames < 4 then continue end
-                    if (now - info.time) < 0.30 then continue end
-                    trackedBalls[ball] = nil
-                else
-                    info.returnFrames = 0
+                if not returned then
                     continue
+                else
+                    -- الكرة رجعت → نصدها
+                    parriedBalls[ball] = nil
+                    returnedBalls[ball] = nil
                 end
             end
 
+            -- ✅ شرط القدوم: dot > 0 (متساهل جداً - أي كرة جاية)
+            if dot <= 0 then continue end
+            -- ✅ لا يوجد حد للمسافة (نصد أي كرة جاية)
+
+            -- ✅ تحقق من target (متساهل)
             local targetAttr = ball:GetAttribute("target")
             local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
             if not isTarget then continue end
 
-            if not IsWithinParryAngle(playerPos, ballPos, velocity) then continue end
-
-            local predictedPos = PredictBallPosition(ball, PredictionFrames)
+            -- ✅ لا زاوية (نصد من أي زاوية)
+            -- ✅ تنبؤ بسيط (فرمتين)
+            local predictedPos = ballPos + (velocity * (2/60))
             local predictedDistance = (playerPos - predictedPos).Magnitude
-
-            if predictedDistance >= 60 then continue end
-            if dot <= 0.3 then continue end
-
             local timeToReach = predictedDistance / speed
 
-            if timeToReach <= adjustedAccuracy and timeToReach > 0 then
+            -- ✅ نافذة واسعة جداً
+            if timeToReach <= adjustedAccuracy and timeToReach > -0.05 then
                 if timeToReach < bestTime then
                     bestTime = timeToReach
                     bestBall = ball
@@ -366,17 +293,19 @@ task.spawn(function()
             end
         end
 
+        -- 🚀 صد فوري
         if bestBall then
             globalLockUntil = now + globalLockDuration
             lastParryTime = now
-            trackedBalls[bestBall] = { time = now, movedAway = false, returnFrames = 0 }
+            parriedBalls[bestBall] = now
+            returnedBalls[bestBall] = 0
             FireParryBypass()
         end
     end
 end)
 
 -- =========================================
--- 📱 Floating Triggerbot Button (Mobile-Guaranteed)
+-- 📱 Floating Triggerbot Button
 -- =========================================
 local function GetGuiParent()
     local ok, hui = pcall(gethui)
@@ -420,7 +349,6 @@ TriggerStroke.Parent = TriggerBtn
 TriggerStroke.Color = Color3.fromRGB(255, 255, 255)
 TriggerStroke.Thickness = 2
 
--- دالة تحديث الشكل
 local function UpdateBtnVisual()
     if TriggerbotEnabled then
         TriggerBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 100)
@@ -433,9 +361,6 @@ local function UpdateBtnVisual()
     end
 end
 
--- =========================================
--- 📱 السحب (Drag)
--- =========================================
 local dragging = false
 local dragStart = nil
 local startPos = nil
@@ -469,9 +394,6 @@ TriggerBtn.InputChanged:Connect(function(input)
     end
 end)
 
--- =========================================
--- 🎯 التفعيل عند اللمس
--- =========================================
 local lastToggle = 0
 
 TriggerBtn.Activated:Connect(function()
@@ -491,14 +413,14 @@ end)
 -- =========================================
 -- UI Controls
 -- =========================================
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (God-Tier)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry (BEAST MODE)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
 Tabs.Main:AddSlider("ParryAccuracy", {
     Title = "Parry Accuracy",
-    Description = "100 = صد مبكر | 1 = صد متأخر مثالي - يُنصح بـ 15-25",
+    Description = "100 = صد مبكر جداً | 1 = صد مثالي - يُنصح بـ 15-25",
     Default = 20,
     Min = 1,
     Max = 100,
@@ -508,103 +430,11 @@ Tabs.Main:AddSlider("ParryAccuracy", {
     end
 })
 
-Tabs.Main:AddSlider("MaxParryAngle", {
-    Title = "Max Parry Angle (°)",
-    Description = "أقصى زاوية للصد - يُنصح بـ 40-60",
-    Default = 45,
-    Min = 10,
-    Max = 90,
-    Rounding = 0,
-    Callback = function(Value)
-        MaxParryAngle = Value
-    end
-})
-
-Tabs.Main:AddSlider("PredictionFrames", {
-    Title = "Prediction Frames",
-    Description = "عدد إطارات التنبؤ - يُنصح بـ 2-4",
-    Default = 3,
-    Min = 0,
-    Max = 6,
-    Rounding = 0,
-    Callback = function(Value)
-        PredictionFrames = Value
-    end
-})
-
-local PanicToggle = Tabs.Main:AddToggle("PanicMode", {Title = "Panic Mode (كرات سريعة)", Default = true })
-PanicToggle:OnChanged(function(Value)
-    PanicModeEnabled = Value
-end)
-
-Tabs.Main:AddSlider("PanicSpeed", {
-    Title = "Panic Speed Threshold",
-    Description = "الحد الأدنى لسرعة الكرة لتفعيل Panic - يُنصح بـ 100-150",
-    Default = 120,
-    Min = 50,
-    Max = 300,
-    Rounding = 0,
-    Callback = function(Value)
-        PanicSpeedThreshold = Value
-    end
-})
-
-Tabs.Main:AddSlider("PanicDistance", {
-    Title = "Panic Distance Threshold",
-    Description = "أقصى مسافة لتفعيل Panic - يُنصح بـ 30-40",
-    Default = 35,
-    Min = 15,
-    Max = 60,
-    Rounding = 0,
-    Callback = function(Value)
-        PanicDistanceThreshold = Value
-    end
-})
-
--- =========================================
--- 🎯 TRIGGERBOT UI
--- =========================================
-local TriggerToggle = Tabs.Main:AddToggle("Triggerbot", {Title = "🎯 Triggerbot (يصد لحظة اللمس)", Default = false })
+local TriggerToggle = Tabs.Main:AddToggle("Triggerbot", {Title = "🎯 Triggerbot (MAX POWER)", Default = false })
 TriggerToggle:OnChanged(function(Value)
     TriggerbotEnabled = Value
     UpdateBtnVisual()
 end)
-
-Tabs.Main:AddSlider("TriggerDistance", {
-    Title = "Trigger Distance (studs)",
-    Description = "المسافة لتفعيل الـ Triggerbot - يُنصح بـ 10-15",
-    Default = 12,
-    Min = 5,
-    Max = 25,
-    Rounding = 0,
-    Callback = function(Value)
-        TriggerDistance = Value
-    end
-})
-
-Tabs.Main:AddSlider("TriggerSpeed", {
-    Title = "Trigger Min Speed",
-    Description = "أدنى سرعة للكرة لتفعيل Trigger - يُنصح بـ 5-15",
-    Default = 5,
-    Min = 1,
-    Max = 30,
-    Rounding = 0,
-    Callback = function(Value)
-        TriggerSpeed = Value
-    end
-})
-
-Tabs.Main:AddSlider("TriggerCooldown", {
-    Title = "Trigger Cooldown (ms)",
-    Description = "الفاصل بين كل trigger - يُنصح بـ 100-200",
-    Default = 150,
-    Min = 50,
-    Max = 500,
-    Rounding = 0,
-    Callback = function(Value)
-        TriggerCooldown = Value / 1000
-    end
-})
 
 -- =========================================
 -- Settings
@@ -618,7 +448,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v6.5 📱",
-    Content = "الزر العائم جاهز للجوال! المس الزر مرة واحدة",
+    Title = "Slax Hub v8.0 🔥",
+    Content = "BEAST MODE جاهز! Auto Parry بأقصى قوة ممكنة",
     Duration = 6
 })
