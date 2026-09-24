@@ -1,550 +1,565 @@
--- Blade Ball Script - Bypass & NovaUI Integration
--- Slax Hub - Developed by yossef
-
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local Players = game:GetService("Players")
-local CoreGui = game:GetService("CoreGui")
-local replicated_storage = cloneref(game:GetService('ReplicatedStorage'))
-local workspace = cloneref(game:GetService('Workspace'))
-local Stats = cloneref(game:GetService('Stats'))
-
-local LocalPlayer = Players.LocalPlayer
-
--- =========================================
--- NovaUI Library Definition
--- =========================================
-local Theme = {
-	Background = Color3.fromRGB(18, 18, 24),
-	Sidebar = Color3.fromRGB(24, 24, 32),
-	Element = Color3.fromRGB(32, 32, 42),
-	Hover = Color3.fromRGB(40, 40, 52),
-	Accent = Color3.fromRGB(99, 102, 241),
-	Text = Color3.fromRGB(240, 240, 245),
-	SubText = Color3.fromRGB(140, 140, 158),
-	Stroke = Color3.fromRGB(48, 48, 62),
-}
-
-local Library = {}
-
-local function tween(obj, props, t)
-	TweenService:Create(obj, TweenInfo.new(t or 0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), props):Play()
-end
-
-local function new(class, props, children)
-	local o = Instance.new(class)
-	for k, v in pairs(props or {}) do o[k] = v end
-	for _, c in ipairs(children or {}) do c.Parent = o end
-	return o
-end
-
-local function corner(r) return new("UICorner", { CornerRadius = UDim.new(0, r or 8) }) end
-local function stroke(c, t) return new("UIStroke", { Color = c or Theme.Stroke, Thickness = t or 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }) end
-local function padding(p) return new("UIPadding", { PaddingTop = UDim.new(0, p), PaddingBottom = UDim.new(0, p), PaddingLeft = UDim.new(0, p), PaddingRight = UDim.new(0, p) }) end
-
-local function makeDraggable(frame, handle)
-	local dragging, dragStart, startPos
-	handle.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging, dragStart, startPos = true, input.Position, frame.Position
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then dragging = false end
-			end)
-		end
-	end)
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			local d = input.Position - dragStart
-			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-		end
-	end)
-end
-
-local function label(parent, text, size, color, font, align)
-	return new("TextLabel", {
-		Parent = parent, BackgroundTransparency = 1, Text = text, TextSize = size or 14,
-		TextColor3 = color or Theme.Text, Font = font or Enum.Font.GothamMedium,
-		TextXAlignment = align or Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 1, 0),
-	})
-end
-
-function Library:CreateWindow(config)
-	config = config or {}
-	local Window = {}
-	local toggleKey = config.ToggleKey or Enum.KeyCode.LeftControl
-
-	local gui = new("ScreenGui", {
-		Name = "NovaUI_SlaxHub", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-		Parent = CoreGui,
-	})
-
-	local main = new("Frame", {
-		Parent = gui, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(0, 0), BackgroundColor3 = Theme.Background, ClipsDescendants = true,
-	}, { corner(12), stroke() })
-	tween(main, { Size = config.Size or UDim2.fromOffset(580, 420) }, 0.45)
-
-	local top = new("Frame", { Parent = main, Size = UDim2.new(1, 0, 0, 44), BackgroundTransparency = 1 })
-	local title = label(top, config.Title or "Nova UI", 16, Theme.Text, Enum.Font.GothamBold)
-	title.Position = UDim2.fromOffset(16, 0)
-	title.Size = UDim2.new(1, -60, 1, 0)
-	local closeBtn = new("TextButton", {
-		Parent = top, Text = "–", TextSize = 20, Font = Enum.Font.GothamBold, TextColor3 = Theme.SubText,
-		BackgroundTransparency = 1, Size = UDim2.fromOffset(44, 44), Position = UDim2.new(1, -44, 0, 0),
-	})
-	new("Frame", { Parent = top, Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, -1), BackgroundColor3 = Theme.Stroke, BorderSizePixel = 0 })
-	makeDraggable(main, top)
-
-	local sidebar = new("ScrollingFrame", {
-		Parent = main, Position = UDim2.fromOffset(0, 44), Size = UDim2.new(0, 150, 1, -44),
-		BackgroundColor3 = Theme.Sidebar, BorderSizePixel = 0, ScrollBarThickness = 0,
-		AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
-	}, { padding(10), new("UIListLayout", { Padding = UDim.new(0, 6) }) })
-
-	local pages = new("Folder", { Parent = main })
-	local function pageArea() return UDim2.new(1, -150, 1, -44) end
-
-	local visible = true
-	local function setVisible(v)
-		visible = v
-		main.Visible = v
+	if not values then
+		return nil, `{name} value is invalid: {values_error}`
 	end
-	closeBtn.MouseButton1Click:Connect(function() setVisible(false) end)
-	UserInputService.InputBegan:Connect(function(input, processed)
-		if not processed and input.KeyCode == toggleKey then setVisible(not visible) end
+
+	local category_name = _tostring(definition.category or queued.category or 'Luas')
+	local tab_title = _tostring(definition.tab or queued.tab or entry.name)
+
+	local category = library:_find_category(category_name) or runtime:create_category(category_name)
+	local tab = library:_find_tab(tab_title, category._name) or category:create_tab(tab_title)
+
+	local group_title = _tostring(definition.group or queued.group or definition.section or queued.section or 'Main')
+	local group_side = normalize_name(definition.side or queued.side)
+	group_side = (group_side == 'right') and 'right' or 'left'
+
+	local group = library:_find_group(tab, group_title, group_side) or tab:create_group(group_title, group_side)
+
+	local flag = control_flag(entry, definition, index)
+	values.flag = flag
+	values.title = name
+
+	return {
+		_group = group,
+		_method = method,
+		_flag = flag,
+		_title = name,
+		_values = values,
+	}
+end)
+
+local register_lua_environment = LPH_ENCFUNC(function(entry, sandbox, bridge)
+	sandbox.register = function(definition)
+		if _type(definition) ~= 'table' then
+			error('register requires a table definition', 2)
+		end
+
+		_insert(entry.queued, {
+			definition = protect_lua_value(definition),
+			category = sandbox.lua_category,
+			tab = sandbox.lua_tab,
+			group = sandbox.lua_group or sandbox.lua_section,
+			side = sandbox.lua_side,
+		})
+	end
+
+	sandbox.add = sandbox.register
+
+	bridge.register = sandbox.register
+	bridge.add = sandbox.register
+end, '03bd60e589693d30b9f98cde0ac9bc772ccde9534705153de1bf27f8b58c0db4', lua_register_decryption_key)
+
+local create_lua_environment = LPH_ENCFUNC(function(manager, entry, chunk)
+	local sandbox = {}
+	local bridge = {}
+
+	sandbox.lua_name = entry.name
+	sandbox.lua_file = entry.file
+	sandbox.lua_category = 'Luas'
+	sandbox.lua_tab = entry.name
+	sandbox.lua_group = 'Main'
+	sandbox.lua_section = 'Main'
+	sandbox.lua_side = 'left'
+
+	bridge.name = entry.name
+	bridge.file = entry.file
+	bridge.flags = read_only(library._flags)
+	bridge.config = read_only(library._config)
+
+	register_lua_environment(entry, sandbox, bridge)
+
+	local base_env = getfenv(chunk)
+	local env = setmetatable({
+		lua_name = entry.name,
+		lua_file = entry.file,
+		register = sandbox.register,
+		add = sandbox.register,
+		angeli = protect_lua_value(bridge),
+		Angeli = protect_lua_value(bridge),
+	}, {
+		__index = base_env,
+		__newindex = base_env,
+	})
+
+	setfenv(chunk, env)
+end, 'aa1143ae1640d00049535f95a227d34d986d65cb6c300e7e11d97cfb990fd492', lua_sandbox_decryption_key)
+
+local execute_lua_entry = LPH_ENCFUNC(function(manager, entry)
+	entry.queued = {}
+
+	local chunk, compile_error = compile_lua_source(entry.source, `=[Angeli] {entry.file}`)
+
+	if not chunk then
+		return false, `compile error in {entry.file}: {compile_error}`
+	end
+
+	create_lua_environment(manager, entry, chunk)
+
+	local run_success, run_error = _pcall(chunk)
+
+	if not run_success then
+		return false, `runtime error in {entry.file}: {_tostring(run_error)}`
+	end
+
+	local runtime = manager._runtime
+	local registered = {}
+
+	for index, queued in entry.queued do
+		local validated, validation_error = validate_lua_definition(runtime, entry, queued, index)
+
+		if not validated then
+			return false, validation_error
+		end
+
+		_insert(registered, validated)
+	end
+
+	entry.registered = registered
+
+	for _, item in registered do
+		item._group[item._method](item._group, item._flag, item._values)
+	end
+
+	entry.loaded = true
+	manager._loaded_names[normalize_name(entry.name)] = true
+
+	return true
+end, 'e83f53ad24607d2fd2350345fd2d8265c695310635c212e78fb389573ebf33a0', lua_loader_decryption_key)
+
+function library._init_lua_manager(self: _runtime, container_frame: Frame)
+	if self._lua_manager then
+		return self._lua_manager
+	end
+
+	local store = read_lua_store()
+	local manager = {
+		_runtime = self,
+		_entries = {},
+		_by_name = {},
+		_by_file = {},
+		_loaded_names = {},
+		_auto_load_files = {},
+		_selected = store.selected,
+		_rebuilding_options = false,
+		_migrated = store.migrated,
+	}
+
+	for _, file_name in store.loaded do
+		manager._auto_load_files[normalize_name(file_name)] = true
+	end
+
+	self._lua_manager = manager
+
+	local group_manager = {
+		_frame = container_frame,
+		_order = 0,
+	}
+
+	local function next_row_order()
+		group_manager._order += 1
+
+		return group_manager._order
+	end
+
+	local list_dropdown = nil
+	local source_textbox = nil
+
+	local update_action_buttons = LPH_NO_VIRTUALIZE(function() end)
+
+	local selected_entry = LPH_NO_VIRTUALIZE(function()
+		if not manager._selected then
+			return nil
+		end
+
+		return manager._by_name[normalize_name(manager._selected)]
 	end)
 
-	local notifHolder = new("Frame", {
-		Parent = gui, AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -16, 1, -16),
-		Size = UDim2.fromOffset(280, 400), BackgroundTransparency = 1,
-	}, { new("UIListLayout", { Padding = UDim.new(0, 8), VerticalAlignment = Enum.VerticalAlignment.Bottom, HorizontalAlignment = Enum.HorizontalAlignment.Right }) })
+	local refresh_source_view = LPH_JIT(function()
+		if not source_textbox then
+			return
+		end
 
-	function Window:Notify(opts)
-		local card = new("Frame", {
-			Parent = notifHolder, Size = UDim2.fromOffset(280, 60), BackgroundColor3 = Theme.Element,
-			BackgroundTransparency = 1,
-		}, { corner(10), stroke(Theme.Accent) })
-		local t = label(card, opts.Title or "Notice", 14, Theme.Text, Enum.Font.GothamBold)
-		t.Position = UDim2.fromOffset(12, 8); t.Size = UDim2.new(1, -24, 0, 18)
-		local c = label(card, opts.Content or "", 12, Theme.SubText, Enum.Font.Gotham)
-		c.Position = UDim2.fromOffset(12, 30); c.Size = UDim2.new(1, -24, 0, 22)
-		tween(card, { BackgroundTransparency = 0 })
-		task.delay(opts.Duration or 4, function()
-			tween(card, { BackgroundTransparency = 1 }, 0.3)
-			task.wait(0.3)
-			card:Destroy()
+		local entry = selected_entry()
+
+		if entry then
+			source_textbox:set_value(entry.source)
+		else
+			source_textbox:set_value('')
+		end
+
+		update_action_buttons()
+	end)
+
+	local update_dropdown_options = LPH_JIT(function()
+		if not list_dropdown or manager._rebuilding_options then
+			return
+		end
+
+		manager._rebuilding_options = true
+
+		local names = {}
+
+		for _, entry in manager._entries do
+			_insert(names, entry.name)
+		end
+
+		if #names == 0 then
+			names = { LUA_EMPTY_TEXT }
+			manager._selected = nil
+		elseif not manager._selected or not manager._by_name[normalize_name(manager._selected)] then
+			manager._selected = names[1]
+		end
+
+		list_dropdown:set_options(names, manager._selected)
+		manager._rebuilding_options = false
+
+		refresh_source_view()
+	end)
+
+	local register_entry = LPH_NO_VIRTUALIZE(function(entry)
+		_insert(manager._entries, entry)
+
+		manager._by_name[normalize_name(entry.name)] = entry
+		manager._by_file[normalize_name(entry.file)] = entry
+	end)
+
+	local function add_script(name, file_name, source, auto_save)
+		if not valid_lua_file_name(file_name) then
+			return nil, 'file name is invalid'
+		end
+
+		local source_content = normalize_import_source(source)
+
+		if not source_content then
+			return nil, 'Lua source code cannot be empty'
+		end
+
+		local declared_name = source_lua_name(source_content) or trim_lua_name(name)
+
+		if declared_name == '' then
+			declared_name = 'Lua'
+		end
+
+		local unique_name = unique_lua_name(manager, declared_name)
+		local unique_file = valid_lua_file_name(file_name) and file_name or unique_lua_file(manager, unique_name)
+
+		local write_success, write_error = _pcall(writefile, lua_source_path(unique_file), source_content)
+
+		if not write_success then
+			return nil, `could not write Lua file: {_tostring(write_error)}`
+		end
+
+		local entry = {
+			name = unique_name,
+			file = unique_file,
+			source = source_content,
+			loaded = false,
+			queued = {},
+			registered = {},
+		}
+
+		register_entry(entry)
+
+		manager._selected = unique_name
+
+		if auto_save then
+			save_lua_store(manager)
+		end
+
+		update_dropdown_options()
+
+		return entry
+	end
+
+	for _, stored in store.entries do
+		local entry_file = stored.file
+		local source = stored.source
+
+		if not source and valid_lua_file_name(entry_file) and isfile(lua_source_path(entry_file)) then
+			local read_success, content = _pcall(readfile, lua_source_path(entry_file))
+
+			if read_success then
+				source = content
+			end
+		end
+
+		if _type(source) == 'string' and source ~= '' then
+			local source_content = normalize_import_source(source)
+
+			if source_content then
+				local name = unique_lua_name(manager, stored.name or source_lua_name(source_content) or 'Lua')
+				local file_name = valid_lua_file_name(entry_file) and entry_file or unique_lua_file(manager, name)
+
+				if file_name ~= entry_file or not isfile(lua_source_path(file_name)) then
+					_pcall(writefile, lua_source_path(file_name), source_content)
+				end
+
+				register_entry({
+					name = name,
+					file = file_name,
+					source = source_content,
+					loaded = false,
+					queued = {},
+					registered = {},
+				})
+			end
+		end
+	end
+
+	if manager._migrated then
+		save_lua_store(manager)
+	end
+
+	local function execute_entry(entry)
+		if not entry then
+			return false, 'select a script to execute'
+		end
+
+		if entry.loaded then
+			return false, `{entry.name} is already loaded`
+		end
+
+		local success, message = execute_lua_entry(manager, entry)
+
+		if success then
+			lua_notice(`executed {entry.name}`)
+		else
+			lua_warning(message or `failed to execute {entry.name}`)
+		end
+
+		return success, message
+	end
+
+	list_dropdown = group_manager:create_dropdown({
+		title = 'Select Lua',
+		options = {},
+		hide_selected_option = false,
+		callback = function(value)
+			if manager._rebuilding_options then
+				return
+			end
+
+			if value == LUA_EMPTY_TEXT then
+				manager._selected = nil
+			else
+				manager._selected = value
+			end
+
+			save_lua_store(manager)
+			refresh_source_view()
+		end,
+	})
+
+	local action_row = create_new('Frame', {
+		BackgroundTransparency = 1,
+		LayoutOrder = next_row_order(),
+		Size = _new_udim2(1, 0, 0, 26),
+		Parent = container_frame,
+	})
+
+	create_vertical_list(action_row)
+
+	local function create_action_button(title, width, callback)
+		local button = create_new('TextButton', {
+			BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+			Size = _new_udim2(0, width, 1, 0),
+			FontFace = Font.new(
+				'rbxasset://fonts/families/GothamSSm.json',
+				Enum.FontWeight.SemiBold,
+				Enum.FontStyle.Normal
+			),
+			Text = title,
+			TextColor3 = Color3.fromRGB(180, 180, 180),
+			TextSize = self._label_text_size,
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			Parent = action_row,
+		})
+
+		create_round(button, 6)
+
+		button.MouseButton1Click:Connect(function()
+			button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+
+			_create_tween(tween_service, button, _new_tween_info(0.2), {
+				BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+			}):Play()
+
+			callback()
 		end)
+
+		return button
 	end
 
-	local tabs, current = {}, nil
+	local execute_button = create_action_button('Load', 78, function()
+		execute_entry(selected_entry())
+	end)
 
-	function Window:AddTab(name)
-		local Tab = {}
+	local auto_button = create_action_button('Auto Load: Off', 116, function()
+		local entry = selected_entry()
 
-		local btn = new("TextButton", {
-			Parent = sidebar, Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Theme.Hover, BackgroundTransparency = 1,
-			Text = "   " .. name, TextSize = 14, Font = Enum.Font.GothamMedium, TextColor3 = Theme.SubText,
-			TextXAlignment = Enum.TextXAlignment.Left, AutoButtonColor = false,
-		}, { corner(8) })
-		local bar = new("Frame", {
-			Parent = btn, Size = UDim2.fromOffset(3, 0), Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5),
-			BackgroundColor3 = Theme.Accent, BorderSizePixel = 0,
-		}, { corner(2) })
+		if not entry then
+			return
+		end
 
-		local page = new("ScrollingFrame", {
-			Parent = pages, Position = UDim2.fromOffset(150, 44), Size = pageArea(), BackgroundTransparency = 1,
-			BorderSizePixel = 0, ScrollBarThickness = 3, ScrollBarImageColor3 = Theme.Accent,
-			AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), Visible = false,
-		}, { padding(12), new("UIListLayout", { Padding = UDim.new(0, 8) }) })
+		local key = normalize_name(entry.file)
+		local enabled = not manager._auto_load_files[key]
 
-		local function select()
-			for _, t in ipairs(tabs) do
-				t.page.Visible = false
-				tween(t.btn, { BackgroundTransparency = 1, TextColor3 = Theme.SubText })
-				tween(t.bar, { Size = UDim2.fromOffset(3, 0) })
+		if enabled then
+			manager._auto_load_files[key] = true
+		else
+			manager._auto_load_files[key] = nil
+		end
+
+		save_lua_store(manager)
+		update_action_buttons()
+	end)
+
+	local delete_button = create_action_button('Delete', 70, function()
+		local entry = selected_entry()
+
+		if not entry then
+			return
+		end
+
+		local normalized_name = normalize_name(entry.name)
+		local normalized_file = normalize_name(entry.file)
+
+		manager._by_name[normalized_name] = nil
+		manager._by_file[normalized_file] = nil
+		manager._auto_load_files[normalized_file] = nil
+
+		for index, candidate in manager._entries do
+			if candidate == entry then
+				table.remove(manager._entries, index)
+
+				break
 			end
-			page.Visible = true
-			tween(btn, { BackgroundTransparency = 0, TextColor3 = Theme.Text })
-			tween(bar, { Size = UDim2.fromOffset(3, 18) })
-			current = Tab
-		end
-		btn.MouseButton1Click:Connect(select)
-		table.insert(tabs, { btn = btn, bar = bar, page = page })
-		if #tabs == 1 then select() end
-
-		local function row(height)
-			return new("Frame", { Parent = page, Size = UDim2.new(1, 0, 0, height or 42), BackgroundColor3 = Theme.Element }, { corner(8), stroke() })
 		end
 
-		function Tab:AddLabel(text)
-			local r = row(34)
-			local l = label(r, text, 13, Theme.SubText, Enum.Font.Gotham)
-			l.Position = UDim2.fromOffset(14, 0); l.Size = UDim2.new(1, -28, 1, 0)
+		_pcall(delfile, lua_source_path(entry.file))
+
+		manager._selected = nil
+		save_lua_store(manager)
+		update_dropdown_options()
+	end)
+
+	local create_button = create_action_button('Create', 68, function()
+		local raw_source = source_textbox and source_textbox:get_value() or ''
+		local source_content = normalize_import_source(raw_source)
+
+		if not source_content then
+			lua_warning('paste Lua code into the editor before creating')
+
+			return
 		end
 
-		function Tab:AddButton(opts)
-			local r = row()
-			local b = new("TextButton", {
-				Parent = r, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
-			})
-			local l = label(r, opts.Title or "Button", 14)
-			l.Position = UDim2.fromOffset(14, 0); l.Size = UDim2.new(1, -28, 1, 0)
-			b.MouseEnter:Connect(function() tween(r, { BackgroundColor3 = Theme.Hover }) end)
-			b.MouseLeave:Connect(function() tween(r, { BackgroundColor3 = Theme.Element }) end)
-			b.MouseButton1Click:Connect(function()
-				tween(r, { BackgroundColor3 = Theme.Accent }, 0.08)
-				task.delay(0.1, function() tween(r, { BackgroundColor3 = Theme.Hover }) end)
-				if opts.Callback then task.spawn(opts.Callback) end
-			end)
+		local declared_name = source_lua_name(source_content) or 'Custom Lua'
+		local new_file = lua_file_name(declared_name)
+		local created_entry, create_error = add_script(declared_name, new_file, source_content, true)
+
+		if created_entry then
+			lua_notice(`created {created_entry.name}`)
+		else
+			lua_warning(create_error or 'failed to create Lua')
+		end
+	end)
+
+	local row_layout = create_new('UIListLayout', {
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Left,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = _new_udim(0, 6),
+		Parent = action_row,
+	})
+
+	local function refit_action_row()
+		local total_width = container_frame.AbsoluteSize.X
+
+		if total_width <= 0 then
+			return
 		end
 
-		function Tab:AddToggle(opts)
-			local Toggle = { Value = opts.Default or false }
-			local r = row()
-			local l = label(r, opts.Title or "Toggle", 14)
-			l.Position = UDim2.fromOffset(14, 0); l.Size = UDim2.new(1, -80, 1, 0)
-			local pill = new("Frame", {
-				Parent = r, Size = UDim2.fromOffset(42, 22), Position = UDim2.new(1, -56, 0.5, -11), BackgroundColor3 = Theme.Stroke,
-			}, { corner(11) })
-			local knob = new("Frame", {
-				Parent = pill, Size = UDim2.fromOffset(16, 16), Position = UDim2.fromOffset(3, 3), BackgroundColor3 = Theme.Text,
-			}, { corner(8) })
-			local hit = new("TextButton", { Parent = r, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "" })
+		local gap = 6
+		local available = total_width - (gap * 3)
 
-			local function setVal(v)
-				Toggle.Value = v
-				tween(pill, { BackgroundColor3 = v and Theme.Accent or Theme.Stroke })
-				tween(knob, { Position = v and UDim2.fromOffset(23, 3) or UDim2.fromOffset(3, 3) })
-				if opts.Callback then task.spawn(opts.Callback, v) end
-			end
-
-			hit.MouseButton1Click:Connect(function() setVal(not Toggle.Value) end)
-			if Toggle.Value then setVal(true) end
-			return Toggle
-		end
-
-		function Tab:AddSlider(opts)
-			local min, max, step = opts.Min or 0, opts.Max or 100, opts.Step or 1
-			local Slider = { Value = opts.Default or min }
-			local r = row(58)
-			local l = label(r, opts.Title or "Slider", 14)
-			l.Position = UDim2.fromOffset(14, 6); l.Size = UDim2.new(1, -80, 0, 22)
-			local val = label(r, "", 13, Theme.SubText, Enum.Font.GothamMedium, Enum.TextXAlignment.Right)
-			val.Position = UDim2.new(1, -64, 0, 6); val.Size = UDim2.fromOffset(50, 22)
-			local track = new("Frame", {
-				Parent = r, Size = UDim2.new(1, -28, 0, 6), Position = UDim2.new(0, 14, 1, -18), BackgroundColor3 = Theme.Stroke,
-			}, { corner(3) })
-			local fill = new("Frame", { Parent = track, Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Theme.Accent }, { corner(3) })
-
-			function Slider:Set(v)
-				v = math.clamp(math.floor(v / step + 0.5) * step, min, max)
-				Slider.Value = v
-				val.Text = tostring(v)
-				tween(fill, { Size = UDim2.new((v - min) / (max - min), 0, 1, 0) }, 0.08)
-				if opts.Callback then task.spawn(opts.Callback, v) end
-			end
-
-			local dragging = false
-			local function fromInput(input)
-				local rel = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-				Slider:Set(min + (max - min) * rel)
-			end
-			track.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-					dragging = true
-					fromInput(input)
-				end
-			end)
-			UserInputService.InputEnded:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
-			end)
-			UserInputService.InputChanged:Connect(function(input)
-				if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-					fromInput(input)
-				end
-			end)
-			Slider:Set(Slider.Value)
-			return Slider
-		end
-
-		return Tab
+		execute_button.Size = _new_udim2(0, _floor(available * 0.22), 1, 0)
+		auto_button.Size = _new_udim2(0, _floor(available * 0.38), 1, 0)
+		delete_button.Size = _new_udim2(0, _floor(available * 0.20), 1, 0)
+		create_button.Size = _new_udim2(0, total_width - execute_button.AbsoluteSize.X - auto_button.AbsoluteSize.X - delete_button.AbsoluteSize.X - (gap * 3), 1, 0)
 	end
 
-	return Window
+	container_frame:GetPropertyChangedSignal('AbsoluteSize'):Connect(refit_action_row)
+	refit_action_row()
+
+	update_action_buttons = LPH_NO_VIRTUALIZE(function()
+		local entry = selected_entry()
+
+		if not entry then
+			auto_button.Text = 'Auto Load: Off'
+
+			return
+		end
+
+		local auto_enabled = manager._auto_load_files[normalize_name(entry.file)] == true
+		auto_button.Text = auto_enabled and 'Auto Load: On' or 'Auto Load: Off'
+	end)
+
+	source_textbox = group_manager:create_textbox(nil, {
+		title = 'Lua Editor',
+		height = 110,
+		placeholder = '-- write or paste custom Lua scripts here\n-- local lua_name = "script_name"',
+		multi_line = true,
+		compact = false,
+		callback = function(raw_source)
+			local entry = selected_entry()
+
+			if not entry then
+				return
+			end
+
+			local source_content = normalize_import_source(raw_source)
+
+			if not source_content then
+				return
+			end
+
+			entry.source = source_content
+			_pcall(writefile, lua_source_path(entry.file), source_content)
+		end,
+	})
+
+	update_dropdown_options()
+
+	for _, entry in manager._entries do
+		if manager._auto_load_files[normalize_name(entry.file)] then
+			execute_entry(entry)
+		end
+	end
+
+	return manager
 end
 
--- =========================================
--- Script Logic & Remote Bypass
--- =========================================
-local AutoParryEnabled = false
-local ManualSpamUiEnabled = false
-local ParryAccuracyValue = 80
-
-local _token = nil
-for _, Function in getgc(true) do
-    if type(Function) == 'function' and debug.info(Function, 's'):find('PRY', 1, true) then
-        for _, value in debug.getupvalues(Function) do
-            if type(value) == 'function' then
-                _token = value
-                break
-            end
-        end
-        if _token then break end
-    end
+function library.create_lua_manager(self: _runtime, container_frame: Frame)
+	return self:_init_lua_manager(container_frame)
 end
 
-local function _tokenize(_remote_uid)
-    if not _token then return "" end
-    local time = tostring(math.floor(workspace:GetServerTimeNow() * 100))
-    local key = _token(_remote_uid, 'TIME')
-    local characters = table.create(#time)
+function library.build_lua_tab(self: _runtime, tab_title: string?, category_name: string?)
+	if self._manager_loaded then
+		return self._lua_manager
+	end
 
-    for index = 1, #time do
-        characters[index] = string.char(bit32.bxor(
-            (string.byte(time, index) + index) % 256,
-            string.byte(key, (index - 1) % #key + 1)
-        ))
-    end
-    return table.concat(characters)
+	tab_title = tab_title or 'Luas'
+	category_name = category_name or 'Luas'
+
+	local category = self:create_category(category_name)
+	local tab = category:create_tab(tab_title, 'rbxassetid://10709818996')
+	local group = tab:create_group('Manager', 'left')
+
+	self._manager_loaded = true
+
+	return self:_init_lua_manager(group._frame)
 end
 
-local _reverted = {}
-local _original = {}
+library.new = library._new
 
-local function _is_valid(args)
-    return #args == 8 and type(args[2]) == "string" and type(args[3]) == "string" and type(args[4]) == "number" and typeof(args[5]) == "CFrame" and type(args[6]) == "table" and type(args[7]) == "table" and type(args[8]) == "boolean"
-end
-
-local function _hook(remote)
-    if not _reverted[remote] and not _original[getrawmetatable(remote)] then
-        _original[getrawmetatable(remote)] = true
-        local _meta = getrawmetatable(remote)
-        setreadonly(_meta, false)
-
-        local _old = _meta.__index
-        _meta.__index = function(self, key)
-            if (key == 'FireServer' and self:IsA('RemoteEvent')) or (key == 'InvokeServer' and self:IsA('RemoteFunction')) then
-                return function(_, ...)
-                    local _arguments = {...}
-                    if _is_valid(_arguments) and not _reverted[self] then
-                        _reverted[self] = _arguments
-                    end
-                    return _old(self, key)(_, unpack(_arguments))
-                end
-            end
-            return _old(self, key)
-        end
-        setreadonly(_meta, true)
-    end
-end
-
-for _, _remote in pairs(replicated_storage:GetDescendants()) do
-    if _remote:IsA('RemoteEvent') or _remote:IsA('RemoteFunction') then
-        _hook(_remote)
-    end
-end
-
-local function FireParryBypass()
-    for _remote, _origArgs in pairs(_reverted) do
-        local _packet = {
-            _origArgs[1],
-            _origArgs[2],
-            _tokenize(_origArgs[2]),
-            0.5,
-            workspace.CurrentCamera.CFrame,
-            {},
-            {0, 0},
-            false
-        }
-        
-        if _remote:IsA('RemoteEvent') then
-            _remote:FireServer(unpack(_packet))
-        elseif _remote:IsA('RemoteFunction') then
-            _remote:InvokeServer(unpack(_packet))
-        end
-    end
-end
-
-local function GetBall()
-    local ballsFolder = workspace:FindFirstChild("Balls")
-    if ballsFolder then
-        for _, obj in pairs(ballsFolder:GetChildren()) do
-            if obj:IsA("BasePart") and obj:GetAttribute("realBall") == true then
-                return obj
-            end
-        end
-        for _, obj in pairs(ballsFolder:GetChildren()) do
-            if obj:IsA("BasePart") then
-                return obj
-            end
-        end
-    end
-    return nil
-end
-
-local function GetPing()
-    local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-    return math.clamp(ping, 0.02, 0.4)
-end
-
--- Double Parry Loop
-task.spawn(function()
-    local lastParryTime = 0
-
-    while task.wait(0.001) do
-        if AutoParryEnabled then
-            local ball = GetBall()
-            if ball then
-                local character = LocalPlayer.Character
-                if character and character:FindFirstChild("HumanoidRootPart") then
-                    local playerPos = character.HumanoidRootPart.Position
-                    local ballPos = ball.Position
-                    local distance = (playerPos - ballPos).Magnitude
-                    local velocity = ball.AssemblyLinearVelocity
-                    local speed = velocity.Magnitude
-
-                    local directionToPlayer = (playerPos - ballPos).Unit
-                    local dotProduct = velocity:Dot(directionToPlayer)
-
-                    local target = ball:GetAttribute("target")
-                    local isTarget = (target == LocalPlayer.Name)
-
-                    local timeToReach = (speed > 0) and (distance / speed) or 999
-
-                    local convertedAccuracy = 0.12 + ((ParryAccuracyValue / 100) * 0.30)
-                    local currentPing = GetPing()
-                    local adjustedAccuracy = convertedAccuracy + (currentPing * 0.6)
-                    local doubleCooldown = (speed > 80) and 0.05 or 0.15
-
-                    if isTarget and dotProduct > 0 then
-                        if timeToReach <= adjustedAccuracy then
-                            if tick() - lastParryTime >= doubleCooldown then
-                                lastParryTime = tick()
-                                FireParryBypass()
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- =========================================
--- Manual Spam UI Button Creation
--- =========================================
-local SpamGui = Instance.new("ScreenGui")
-SpamGui.Name = "SlaxSpamGui"
-SpamGui.Parent = CoreGui
-SpamGui.Enabled = false
-SpamGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-local SpamBtn = Instance.new("TextButton")
-SpamBtn.Name = "ManualSpamBtn"
-SpamBtn.Parent = SpamGui
-SpamBtn.BackgroundColor3 = Color3.fromRGB(85, 95, 220)
-SpamBtn.BorderSizePixel = 0
-SpamBtn.Position = UDim2.new(0.82, 0, 0.45, 0)
-SpamBtn.Size = UDim2.new(0, 110, 0, 45)
-SpamBtn.Font = Enum.Font.GothamBold
-SpamBtn.Text = "Spam"
-SpamBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpamBtn.TextSize = 18
-SpamBtn.AutoButtonColor = true
-
-local UIStroke = Instance.new("UIStroke")
-UIStroke.Parent = SpamBtn
-UIStroke.Color = Color3.fromRGB(255, 255, 255)
-UIStroke.Thickness = 1.5
-UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-local dragging, dragInput, dragStart, startPos
-SpamBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = SpamBtn.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-SpamBtn.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        SpamBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
-local function TriggerSpam()
-    task.spawn(function()
-        for i = 1, 6 do
-            FireParryBypass()
-            task.wait(0.008)
-        end
-    end)
-end
-
-SpamBtn.MouseButton1Click:Connect(function()
-    TriggerSpam()
-end)
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.KeyCode == Enum.KeyCode.E and ManualSpamUiEnabled then
-        TriggerSpam()
-    end
-end)
-
--- =========================================
--- Initializing NovaUI Window & Tabs
--- =========================================
-local Window = Library:CreateWindow({ Title = "Blade Ball  •  Slax Hub", ToggleKey = Enum.KeyCode.LeftControl })
-
-local MainTab = Window:AddTab("Main Auto")
-MainTab:AddLabel("الإعدادات الرئيسية للصد التلقائي")
-
-MainTab:AddToggle({
-    Title = "Auto Parry (Double Adaptive)",
-    Default = false,
-    Callback = function(v)
-        AutoParryEnabled = v
-    end
-})
-
-MainTab:AddToggle({
-    Title = "Manual Spam Button",
-    Default = false,
-    Callback = function(v)
-        ManualSpamUiEnabled = v
-        SpamGui.Enabled = v
-    end
-})
-
-MainTab:AddSlider({
-    Title = "Parry Accuracy (100 = Early)",
-    Min = 1,
-    Max = 100,
-    Default = 80,
-    Step = 1,
-    Callback = function(v)
-        ParryAccuracyValue = v
-    end
-})
-
-local SettingsTab = Window:AddTab("Settings")
-SettingsTab:AddLabel("إخفاء / إظهار الواجهة: LeftControl")
-
-Window:Notify({
-    Title = "Slax Hub Loaded",
-    Content = "تمت إضافة NovaUI بنجاح مع كافة المميزات!",
-    Duration = 5
-})
+return library
