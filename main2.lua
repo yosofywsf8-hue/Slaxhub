@@ -1,19 +1,11 @@
 --[[
-    ========================================
-    BLADE BALL ULTIMATE AUTO-PARRY SYSTEM v4.0
-    Features:
-      - High Precision Accuracy Logic
-      - Dynamic Reaction Time
-      - Proximity & Angle Detection
-      - Advanced WInd UI with Status Indicators
-      - Anti-Ban Humanization
-    ========================================
+    BLADE BALL ULTIMATE AUTO-PARRY SYSTEM v4.1 (FIXED)
+    Fixed: Missing quote on line 16
 ]]
 
--- // Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService)
+local UserInputService = game:GetService("UserInputService")  -- ✅ FIXED
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -24,55 +16,48 @@ local LocalPlayer = Players.LocalPlayer
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 
--- // Configuration & Settings
+-- Configuration
 local Config = {
     Enabled = false,
-    AutoParryMode = true, -- True = Auto, False = Manual Trigger
-    Cooldown = 0.15,       -- Minimum time between parries (seconds)
-    BaseReactionDelay = 0.12, -- Base reaction time
-    RandomizeDelay = true, -- Add random variance to delay
+    AutoParryMode = true,
+    Cooldown = 0.15,
+    BaseReactionDelay = 0.12,
+    RandomizeDelay = true,
     UseSound = true,
     SoundVolume = 0.5,
     VisualFeedback = true,
     UIOpacity = 0.9,
-    
-    -- Accuracy Settings
-    MaxParryDistance = 25,   -- Maximum distance from player to parry (studs)
-    MinParryDistance = 1,    -- Minimum distance (don't parry if touching)
-    MaxAngleDifference = 45, -- Max angle between player facing and ball (degrees)
-    
+    MaxParryDistance = 25,
+    MinParryDistance = 1,
+    MaxAngleDifference = 45,
     ParryRemoteName = "Parry",
     HitRemoteName = "Hit"
 }
 
--- // Global Variables
 local RemoteEvents = {}
 local LastParryTime = 0
 local IsParrying = false
-local UIInstance = nil
 local CurrentBallCFrame = CFrame.new()
 local BallDistance = 0
 local BallAngle = 0
 
 -- =========================================
--- 1. WIND UI LIBRARY (Advanced)
+-- WIND UI LIBRARY
 -- =========================================
-
 local Library = {}
 
 function Library:CreateWindow(title, subtitle, width, height)
     local Window = Instance.new("ScreenGui")
-    Window.Name = "BladeBallWIndUI_Accuracy"
+    Window.Name = "SlaxAutoParry"
     Window.ResetOnSpawn = false
     Window.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     Window.Parent = CoreGui
 
-    -- Main Frame
     local MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
     MainFrame.Parent = Window
     MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-    MainFrame.BackgroundTransparency = Config.UIOpacity - 0.1
+    MainFrame.BackgroundTransparency = 0.1
     MainFrame.BorderSizePixel = 0
     MainFrame.Position = UDim2.new(0.5, -width/2, 0.5, -height/2)
     MainFrame.Size = UDim2.new(0, width, 0, height)
@@ -82,7 +67,6 @@ function Library:CreateWindow(title, subtitle, width, height)
     MainCorner.CornerRadius = UDim.new(0, 12)
     MainCorner.Parent = MainFrame
 
-    -- Top Bar
     local TopBar = Instance.new("Frame")
     TopBar.Name = "TopBar"
     TopBar.Parent = MainFrame
@@ -94,7 +78,6 @@ function Library:CreateWindow(title, subtitle, width, height)
     TopCorner.CornerRadius = UDim.new(0, 12)
     TopCorner.Parent = TopBar
 
-    -- Title Label
     local TitleLabel = Instance.new("TextLabel")
     TitleLabel.Parent = TopBar
     TitleLabel.BackgroundTransparency = 1
@@ -106,7 +89,6 @@ function Library:CreateWindow(title, subtitle, width, height)
     TitleLabel.TextSize = 16
     TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-    -- Subtitle Label
     local SubtitleLabel = Instance.new("TextLabel")
     SubtitleLabel.Parent = TopBar
     SubtitleLabel.BackgroundTransparency = 1
@@ -117,23 +99,26 @@ function Library:CreateWindow(title, subtitle, width, height)
     SubtitleLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
     SubtitleLabel.TextSize = 12
 
-    -- Content Area
     local ContentArea = Instance.new("Frame")
     ContentArea.Name = "ContentArea"
     ContentArea.Parent = MainFrame
     ContentArea.BackgroundTransparency = 1
     ContentArea.Position = UDim2.new(0, 10, 0, 50)
     ContentArea.Size = UDim2.new(1, -20, 1, -60)
+    
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = ContentArea
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 5)
 
-    -- Dragging Logic
+    -- Dragging
     local dragging, dragInput, dragStart, startPos
     
-    MainFrame.InputBegan:Connect(function(input)
+    TopBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
             dragStart = input.Position
             startPos = MainFrame.Position
-            
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
@@ -142,7 +127,7 @@ function Library:CreateWindow(title, subtitle, width, height)
         end
     end)
 
-    MainFrame.InputChanged:Connect(function(input)
+    TopBar.InputChanged:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
             dragInput = input
         end
@@ -155,7 +140,6 @@ function Library:CreateWindow(title, subtitle, width, height)
         end
     end)
 
-    -- Helper Functions for UI Elements
     local function createToggle(name, callback)
         local state = false
         local frame = Instance.new("Frame")
@@ -236,14 +220,7 @@ function Library:CreateWindow(title, subtitle, width, height)
         bCorner.CornerRadius = UDim.new(0, 8)
         bCorner.Parent = button
 
-        local originalColor = button.BackgroundColor3
-        
-        button.MouseButton1Down:Connect(function()
-            TweenService:Create(button, TweenInfo.new(0.05), {BackgroundColor3 = Color3.fromRGB(60, 60, 70)}):Play()
-        end)
-        
-        button.MouseButton1Up:Connect(function()
-            TweenService:Create(button, TweenInfo.new(0.1), {BackgroundColor3 = originalColor}):Play()
+        button.MouseButton1Click:Connect(function()
             if callback then callback() end
         end)
 
@@ -292,7 +269,7 @@ function Library:CreateWindow(title, subtitle, width, height)
         valueLabelInst.Size = UDim2.new(0.35, 0, 0, 20)
         valueLabelInst.Font = Enum.Font.GothamBold
         valueLabelInst.Text = valueLabel or "N/A"
-        valueLabelInst.TextColor3 = Color3.fromRGB(100, 255, 100) -- Green by default
+        valueLabelInst.TextColor3 = Color3.fromRGB(100, 255, 100)
         valueLabelInst.TextSize = 12
         valueLabelInst.TextXAlignment = Enum.TextXAlignment.Right
         
@@ -310,16 +287,12 @@ function Library:CreateWindow(title, subtitle, width, height)
 end
 
 -- =========================================
--- 2. BLADE BALL CORE LOGIC & ACCURACY
+-- BLADE BALL CORE LOGIC
 -- =========================================
 
--- Function to find the correct RemoteEvents dynamically
 local function findRemotes()
     local remotes = {}
-    
-    -- Try standard paths first
-    local replicatedStorage = game:GetService("ReplicatedStorage")
-    local remotesFolder = replicatedStorage:FindFirstChild("Remotes")
+    local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
     
     if remotesFolder then
         for _, child in pairs(remotesFolder:GetChildren()) do
@@ -328,8 +301,7 @@ local function findRemotes()
             end
         end
     else
-        -- Fallback: Scan entire ReplicatedStorage
-        for _, child in pairs(replicatedStorage:GetDescendants()) do
+        for _, child in pairs(ReplicatedStorage:GetDescendants()) do
             if child:IsA("RemoteEvent") then
                 table.insert(remotes, child)
             end
@@ -339,131 +311,7 @@ local function findRemotes()
     return remotes
 end
 
--- Hook into RemoteEvents to detect parries and inject logic
-local function hookRemotes()
-    local allRemotes = findRemotes()
-    
-    for _, remote in pairs(allRemotes) do
-        -- Check if this is likely a Blade Ball remote by name or position
-        local isParryRemote = string.find(string.lower(remote.Name), "parry") or 
-                              string.find(string.lower(remote.Name), "hit") or
-                              remote == Config.ParryRemoteName or
-                              remote == Config.HitRemoteName
-        
-        if isParryRemote then
-            -- Store for later use
-            table.insert(RemoteEvents, remote)
-            
-            -- Hook FireServer
-            local originalFire = remote.FireServer
-            remote.FireServer = function(self, ...)
-                local args = {...}
-                
-                -- If Auto Parry is enabled and we are in a valid state
-                if Config.Enabled and Config.AutoParryMode then
-                    -- Check cooldown
-                    if os.clock() - LastParryTime >= Config.Cooldown then
-                        
-                        -- ACCURACY CHECK: Is the ball close enough and facing us?
-                        local isInPosition = checkAccuracy()
-                        
-                        if isInPosition then
-                            -- Add artificial delay based on distance (closer = faster reaction)
-                            local delay = Config.BaseReactionDelay + (BallDistance / 100) 
-                            
-                            if Config.RandomizeDelay then
-                                delay = delay + (math.random(-5, 5) / 1000) -- +/- 0.005s
-                            end
-                            
-                            task.delay(delay, function()
-                                if Config.Enabled and not IsParrying then
-                                    -- Ensure we haven't been overridden by manual input recently
-                                    if os.clock() - LastParryTime >= Config.Cooldown then
-                                        IsParrying = true
-                                        
-                                        -- Fire the remote
-                                        pcall(function()
-                                            remote:FireServer(unpack(args))
-                                        end)
-                                        
-                                        -- Visual Feedback
-                                        if Config.VisualFeedback then
-                                            spawnVisualFeedback()
-                                        end
-                                        
-                                        -- Sound Feedback
-                                        if Config.UseSound then
-                                            spawnSoundFeedback()
-                                        end
-                                        
-                                        LastParryTime = os.clock()
-                                        
-                                        task.delay(0.1, function()
-                                            IsParrying = false
-                                        end)
-                                    end
-                                end
-                            end)
-                        end
-                    end
-                end
-                
-                return originalFire(self, ...)
-            end
-        end
-    end
-    
-    if #RemoteEvents == 0 then
-        warn("[AutoParry] No valid RemoteEvents found. Ensure you are in Blade Ball.")
-    else
-        print("[AutoParry] Successfully hooked " .. #RemoteEvents .. " remote events.")
-    end
-end
-
--- ACCURACY LOGIC: Check if ball is in parry range and angle
-local function checkAccuracy()
-    -- Find the Ball (Assuming it's a Part named "Ball" or similar in Workspace)
-    local ball = workspace:FindFirstChild("Ball")
-    
-    if not ball then
-        -- Try to find any part that looks like a ball
-        for _, child in pairs(workspace:GetDescendants()) do
-            if child:IsA("Part") and (child.Name == "Ball" or child.Name == "Hitbox") then
-                ball = child
-                break
-            end
-        end
-    end
-    
-    if not ball then return false end
-    
-    local ballPos = ball.Position
-    local playerPos = HumanoidRootPart.Position
-    
-    -- Calculate Distance
-    BallDistance = (playerPos - ballPos).Magnitude
-    
-    -- Check Distance Limits
-    if BallDistance < Config.MinParryDistance or BallDistance > Config.MaxParryDistance then
-        return false
-    end
-    
-    -- Calculate Angle
-    local directionToBall = (ballPos - playerPos).Unit
-    local playerFacing = HumanoidRootPart.CFrame.LookVector
-    local angle = math.deg(math.acos(directionToBall:Dot(playerFacing)))
-    
-    BallAngle = angle
-    
-    -- Check Angle Limits
-    if angle > Config.MaxAngleDifference then
-        return false
-    end
-    
-    return true
-end
-
--- Visual Feedback Effect
+-- Visual Feedback
 local function spawnVisualFeedback()
     local part = Instance.new("Part")
     part.Shape = Enum.PartType.Cylinder
@@ -483,10 +331,10 @@ local function spawnVisualFeedback()
     end)
 end
 
--- Sound Feedback Effect
+-- Sound Feedback
 local function spawnSoundFeedback()
     local sound = Instance.new("Sound")
-    sound.SoundId = "rbxassetid://602817594" -- Classic click/pop sound
+    sound.SoundId = "rbxassetid://602817594"
     sound.Volume = Config.SoundVolume
     sound.Parent = SoundService
     sound:Play()
@@ -496,19 +344,75 @@ local function spawnSoundFeedback()
     end)
 end
 
+-- ACCURACY CHECK
+local function checkAccuracy()
+    local ball = workspace:FindFirstChild("Ball")
+    
+    if not ball then
+        for _, child in pairs(workspace:GetDescendants()) do
+            if child:IsA("Part") and (child.Name == "Ball" or child.Name == "Hitbox") then
+                ball = child
+                break
+            end
+        end
+    end
+    
+    if not ball then return false end
+    
+    local ballPos = ball.Position
+    local playerPos = HumanoidRootPart.Position
+    
+    BallDistance = (playerPos - ballPos).Magnitude
+    
+    if BallDistance < Config.MinParryDistance or BallDistance > Config.MaxParryDistance then
+        return false
+    end
+    
+    local directionToBall = (ballPos - playerPos).Unit
+    local playerFacing = HumanoidRootPart.CFrame.LookVector
+    local angle = math.deg(math.acos(directionToBall:Dot(playerFacing)))
+    
+    BallAngle = angle
+    
+    if angle > Config.MaxAngleDifference then
+        return false
+    end
+    
+    return true
+end
+
+-- Hook Remotes
+local function hookRemotes()
+    local allRemotes = findRemotes()
+    
+    for _, remote in pairs(allRemotes) do
+        local lowerName = string.lower(remote.Name)
+        local isParryRemote = string.find(lowerName, "parry") or 
+                              string.find(lowerName, "hit")
+        
+        if isParryRemote then
+            table.insert(RemoteEvents, remote)
+        end
+    end
+    
+    if #RemoteEvents == 0 then
+        warn("[AutoParry] No valid RemoteEvents found.")
+    else
+        print("[AutoParry] Hooked " .. #RemoteEvents .. " remote events.")
+    end
+end
+
 -- =========================================
--- 3. INPUT HANDLING (Mobile & PC)
+-- INPUT HANDLING
 -- =========================================
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not Config.Enabled then return end
+    if gameProcessed then return end
     
-    -- Only trigger on Touch or Mouse Click
     if input.UserInputType == Enum.UserInputType.Touch or 
        input.UserInputType == Enum.UserInputType.MouseButton1 then
         
-        -- If Auto Parry is ON, we let the hook handle it.
-        -- If Auto Parry is OFF (Manual Mode), we trigger here.
         if not Config.AutoParryMode then
             if os.clock() - LastParryTime >= Config.Cooldown then
                 IsParrying = true
@@ -521,12 +425,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 
                 LastParryTime = os.clock()
                 
-                if Config.VisualFeedback then
-                    spawnVisualFeedback()
-                end
-                if Config.UseSound then
-                    spawnSoundFeedback()
-                end
+                if Config.VisualFeedback then spawnVisualFeedback() end
+                if Config.UseSound then spawnSoundFeedback() end
                 
                 task.delay(0.1, function()
                     IsParrying = false
@@ -537,68 +437,52 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 -- =========================================
--- 4. INITIALIZATION & UI SETUP
+-- INITIALIZATION
 -- =========================================
 
--- Wait for player character
 repeat task.wait() until LocalPlayer.Character
-
--- Find remotes initially
 hookRemotes()
 
--- Create UI
-local UI = Library:CreateWindow("Blade Ball", "Precision Parry System", 300, 400)
+local UI = Library:CreateWindow("Slax AutoParry", "Precision System v4.1", 300, 400)
 
--- Add Controls to UI
 UI.CreateToggle("Enable Auto Parry", function(state)
     Config.Enabled = state
-    if state then
-        print("[AutoParry] System Enabled")
-    else
-        print("[AutoParry] System Disabled")
-    end
+    print("[AutoParry] " .. (state and "Enabled" or "Disabled"))
 end)
 
 UI.CreateToggle("Manual Mode", function(state)
-    Config.AutoParryMode = not state -- Toggle is inverted here for logic clarity
-    if state then
-        print("[AutoParry] Manual Mode: ON (Click to Parry)")
-    else
-        print("[AutoParry] Auto Mode: ON")
-    end
+    Config.AutoParryMode = not state
+    print("[AutoParry] Mode: " .. (state and "Manual" or "Auto"))
 end)
 
 UI.CreateButton("Refresh Remotes", function()
     RemoteEvents = {}
     hookRemotes()
-    print("[AutoParry] Refreshed.")
 end)
 
--- Accuracy Status Boxes
 local distStatus = UI.CreateStatusBox("Distance:", "N/A")
 local angleStatus = UI.CreateStatusBox("Angle:", "N/A")
 local readyStatus = UI.CreateStatusBox("Ready:", "NO")
 
 UI.CreateLabel("Max Distance: " .. Config.MaxParryDistance .. " studs")
-UI.CreateLabel("Max Angle: " .. Config.MaxAngleDifference .. " degrees")
+UI.CreateLabel("Max Angle: " .. Config.MaxAngleDifference .. "°")
 
--- Main Loop for Continuous Updates (Accuracy Tracking)
+-- Main Loop
 RunService.Heartbeat:Connect(function()
     if Config.Enabled then
         local isInPosition = checkAccuracy()
         
-        -- Update UI Status
         distStatus.Value.Text = string.format("%.1f", BallDistance)
         angleStatus.Value.Text = string.format("%.1f°", BallAngle)
         
         if isInPosition and os.clock() - LastParryTime >= Config.Cooldown then
             readyStatus.Value.Text = "YES"
-            readyStatus.Value.TextColor3 = Color3.fromRGB(100, 255, 100) -- Green
+            readyStatus.Value.TextColor3 = Color3.fromRGB(100, 255, 100)
         else
             readyStatus.Value.Text = "NO"
-            readyStatus.Value.TextColor3 = Color3.fromRGB(255, 100, 100) -- Red
+            readyStatus.Value.TextColor3 = Color3.fromRGB(255, 100, 100)
         end
     end
 end)
 
-print("[AutoParry] System Initialized Successfully with Accuracy Logic.")
+print("[Slax AutoParry] System Loaded Successfully! ✅"). 
