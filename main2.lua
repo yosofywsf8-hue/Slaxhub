@@ -1,4 +1,4 @@
--- Blade Ball Script - Slax Hub v21.1 (Close Range Fix)
+-- Blade Ball Script - Slax Hub v21.6 (MS Timing + Slash Pause)
 -- Developed by yossef
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -41,23 +41,25 @@ local AutoParryEnabled = false
 local AutoSpamEnabled = false
 local ManualSpamEnabled = false
 local AutoSlashEnabled = false
-local ParryAccuracyValue = 50
+local SlashesCounterEnabled = false
 local AutoAccuracyEnabled = true
 local AutoSpamCPS = 350
+
+-- ⏱️ MS-BASED TIMING
+local PARRY_TIME_MS = 100              -- ⭐ افتراضي: 100ms
 
 -- ⚙️ Config
 local GLOBAL_LOCK = 0.18
 local ULTRA_FAST_LOCK = 0.06
-local CLOSE_RANGE_LOCK = 0.04      -- ⚡ Close Range Lock جديد
+local EMERGENCY_LOCK = 0.05
 local BALL_LOCK_DURATION = 0.5
 local MAX_PARRY_DISTANCE = 200
-local MAX_PARRY_ANGLE = 90
 local SPAM_PROXIMITY_RANGE = 60
 
--- 🎯 CLOSE RANGE FIX
-local CLOSE_RANGE_DISTANCE = 50    -- 🎯 مسافة "قريبة"
-local VERY_CLOSE_DISTANCE = 25     -- 🎯 مسافة "قريبة جداً"
-local POINT_BLANK_DISTANCE = 12    -- 🎯 مسافة "ملاصقة"
+-- 🎯 CLOSE RANGE
+local CLOSE_RANGE_DISTANCE = 50
+local VERY_CLOSE_DISTANCE = 25
+local POINT_BLANK_DISTANCE = 12
 
 -- 🛡️ DANGER ZONE
 local DANGER_ZONE_RANGE = 40
@@ -78,6 +80,25 @@ local SLASH_DISTANCE = 35
 local SLASH_SPEED_THRESHOLD = 80
 local SLASH_COOLDOWN = 1.5
 local lastSlashTime = 0
+
+-- ⏸️ SLASH PAUSE (NEW!)
+local ParryPaused = false
+local ParryPauseUntil = 0
+local SLASH_PAUSE_DURATION = 1.2      -- ⭐ يتوقف Auto Parry لمدة 1.2s بعد تفعيل Slash
+
+-- 📊 SLASH COUNTER
+local SlashCount = 0
+local SlashAttempts = 0
+local SlashFails = 0
+
+-- 🛡️ SLASHES OF FURY COUNTER
+local SLASH_COUNTER_RANGE = 50
+local SLASH_COUNTER_COOLDOWN = 0.15
+local SLASH_COUNTER_BURST = 8
+local lastCounterTime = 0
+local SlashCounterActive = false
+local SlashCounterPlayer = nil
+local SlashCounterCount = 0
 
 -- =========================================
 -- Token
@@ -209,17 +230,108 @@ end
 
 local function FireAbility()
     local remote = GetAbilityRemote()
-    if not remote then return end
+    if not remote then return false end
     if remote:IsA('RemoteEvent') then
         remote:FireServer()
     elseif remote:IsA('RemoteFunction') then
         remote:InvokeServer()
     end
+    return true
 end
 
 local function GetPing()
     local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
     return math.clamp(ping, 0.02, 0.4)
+end
+
+-- =========================================
+-- 🛡️ SLASHES COUNTER DETECTION
+-- =========================================
+local function DetectSlashesOfFury(playerPos)
+    local closestAttacker = nil
+    local closestDist = math.huge
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local char = player.Character
+        if not char then continue end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
+
+        local distance = (hrp.Position - playerPos).Magnitude
+        if distance > SLASH_COUNTER_RANGE then continue end
+
+        local isSlashing = false
+        local attrs = {
+            "IsSlashing", "SlashesOfFury", "AbilityActive",
+            "IsAttacking", "UsingAbility", "FuryMode", "Slashing"
+        }
+        for _, attrName in ipairs(attrs) do
+            if char:GetAttribute(attrName) == true or
+               hrp:GetAttribute(attrName) == true or
+               player:GetAttribute(attrName) == true then
+                isSlashing = true
+                break
+            end
+        end
+
+        if not isSlashing then
+            for _, child in pairs(char:GetChildren()) do
+                if child:IsA("BasePart") or child:IsA("Model") or child:IsA("Attachment") or child:IsA("ParticleEmitter") or child:IsA("Trail") then
+                    local name = child.Name:lower()
+                    if name:find("slash") or name:find("fury") or name:find("ability") then
+                        isSlashing = true
+                        break
+                    end
+                end
+            end
+        end
+
+        if not isSlashing then
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                local animator = humanoid:FindFirstChildOfClass("Animator")
+                if animator then
+                    for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                        local animName = ""
+                        if track.Animation then
+                            animName = track.Animation.Name:lower()
+                        end
+                        if animName:find("slash") or animName:find("fury") or animName:find("ability") or animName:find("attack") then
+                            isSlashing = true
+                            break
+                        end
+                    end
+                end
+            end
+        end
+
+        if not isSlashing then
+            for _, obj in pairs(workspace:GetChildren()) do
+                if obj.Name:lower():find("slash") or obj.Name:lower():find("fury") then
+                    if obj:IsA("Model") then
+                        local modelHrp = obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
+                        if modelHrp then
+                            local d = (modelHrp.Position - hrp.Position).Magnitude
+                            if d < 15 then
+                                isSlashing = true
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        if isSlashing then
+            if distance < closestDist then
+                closestDist = distance
+                closestAttacker = player
+            end
+        end
+    end
+
+    return closestAttacker, closestDist
 end
 
 -- =========================================
@@ -386,22 +498,54 @@ local function GetAutoAccuracy(ballSpeed, curveActive, isClose, dangerLevel, dis
     if dangerLevel == 2 then base = base + 30
     elseif dangerLevel == 1 then base = base + 15 end
 
-    -- 🎯 CLOSE RANGE BONUS (جديد)
     if distance < POINT_BLANK_DISTANCE then
-        base = base + 25   -- ملاصقة
+        base = base + 25
     elseif distance < VERY_CLOSE_DISTANCE then
-        base = base + 18   -- قريبة جداً
+        base = base + 18
     elseif distance < CLOSE_RANGE_DISTANCE then
-        base = base + 10   -- قريبة
+        base = base + 10
     end
 
     return math.clamp(math.floor(base), 1, 100)
 end
 
 -- =========================================
--- ⚔️⚡🎯 Auto Parry + Close Range Fix
+-- ⏱️ MS-BASED Parry Window
+-- =========================================
+local function GetParryTimeMs(usedAccuracy, dangerLevel, distance, ballSpeed)
+    local baseMs
+
+    if AutoAccuracyEnabled then
+        -- Auto: 50ms (perfect) → 250ms (safety)
+        baseMs = 50 + (usedAccuracy / 100) * 200
+    else
+        baseMs = PARRY_TIME_MS
+    end
+
+    -- 🛡️ Danger Zone boost
+    if dangerLevel == 2 then
+        baseMs = baseMs + 200
+    elseif dangerLevel == 1 then
+        baseMs = baseMs + 100
+    end
+
+    -- 🎯 Close Range boost
+    if distance < POINT_BLANK_DISTANCE then
+        baseMs = baseMs + 100
+    elseif distance < VERY_CLOSE_DISTANCE then
+        baseMs = baseMs + 60
+    elseif distance < CLOSE_RANGE_DISTANCE then
+        baseMs = baseMs + 30
+    end
+
+    return baseMs
+end
+
+-- =========================================
+-- ⚔️⚡ Main Heartbeat Loop
 -- =========================================
 local lastParryTime = 0
+local lastEmergencyTime = 0
 local ballLocks = {}
 local ballNameLocks = {}
 
@@ -422,9 +566,55 @@ task.spawn(function()
 end)
 
 RunService.Heartbeat:Connect(function()
+    local now = tick()
+
+    -- ⏸️ SLASH PAUSE CHECK
+    if ParryPaused then
+        if now >= ParryPauseUntil then
+            ParryPaused = false  -- ✅ انتهت مدة الإيقاف
+        else
+            -- 🛑 Auto Parry متوقف حالياً
+            -- لكن Slashes Counter يستمر (للحماية)
+        end
+    end
+
+    -- =========================================
+    -- 🛡️🛡️ SLASHES OF FURY COUNTER (يعمل دائماً)
+    -- =========================================
+    if SlashesCounterEnabled then
+        local character = LocalPlayer.Character
+        if character then
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local playerPos = hrp.Position
+                local attacker, dist = DetectSlashesOfFury(playerPos)
+
+                if attacker then
+                    SlashCounterActive = true
+                    SlashCounterPlayer = attacker.Name
+
+                    if (now - lastCounterTime) >= SLASH_COUNTER_COOLDOWN then
+                        lastCounterTime = now
+                        SlashCounterCount = SlashCounterCount + 1
+
+                        task.spawn(function()
+                            for i = 1, SLASH_COUNTER_BURST do
+                                FireParry()
+                            end
+                        end)
+                    end
+                else
+                    SlashCounterActive = false
+                    SlashCounterPlayer = nil
+                end
+            end
+        end
+    end
+
+    -- =========================================
     -- ⚔️ AUTO SLASHES OF FURY
+    -- =========================================
     if AutoSlashEnabled then
-        local now = tick()
         if (now - lastSlashTime) >= SLASH_COOLDOWN then
             local character = LocalPlayer.Character
             if character then
@@ -449,8 +639,19 @@ RunService.Heartbeat:Connect(function()
                             local dot = velocity.Unit:Dot(toPlayer)
                             if dot <= 0.3 then continue end
 
+                            SlashAttempts = SlashAttempts + 1
                             lastSlashTime = now
-                            FireAbility()
+
+                            local success = FireAbility()
+                            if success then
+                                SlashCount = SlashCount + 1
+
+                                -- ⏸️ NEW: أوقف Auto Parry عشان نستخدم القدرة
+                                ParryPaused = true
+                                ParryPauseUntil = now + SLASH_PAUSE_DURATION
+                            else
+                                SlashFails = SlashFails + 1
+                            end
                             break
                         end
                     end
@@ -459,13 +660,17 @@ RunService.Heartbeat:Connect(function()
         end
     end
 
+    -- ⏸️ لو Auto Parry متوقف، اخرج
+    if ParryPaused then
+        return
+    end
+
     if not AutoParryEnabled then
         ballLocks = {}
         ballNameLocks = {}
         return
     end
 
-    local now = tick()
     local ping = GetPing()
 
     local character = LocalPlayer.Character
@@ -480,121 +685,139 @@ RunService.Heartbeat:Connect(function()
     local balls = ballsFolder:GetChildren()
 
     -- =========================================
-    -- 🎯🎯 PHASE -1: POINT BLANK (أعلى أولوية مطلقة!)
+    -- 🎯 PHASE -1: POINT BLANK
     -- =========================================
-    -- أي كرة ملاصقة (12 studs) → صد فوري بدون أي lock
-    for i = 1, #balls do
-        local ball = balls[i]
-        if not ball:IsA("BasePart") then continue end
-        if ball:GetAttribute("realBall") == false then continue end
+    if (now - lastEmergencyTime) >= EMERGENCY_LOCK then
+        for i = 1, #balls do
+            local ball = balls[i]
+            if not ball:IsA("BasePart") then continue end
+            if ball:GetAttribute("realBall") == false then continue end
+            if ballLocks[ball] then continue end
+            if ballNameLocks[ball.Name] then continue end
 
-        local ballPos = ball.Position
-        local velocity = ball.AssemblyLinearVelocity
-        local speed = velocity.Magnitude
-        if speed < 3 then continue end
+            local ballPos = ball.Position
+            local velocity = ball.AssemblyLinearVelocity
+            local speed = velocity.Magnitude
+            if speed < 3 then continue end
 
-        local toPlayer = (playerPos - ballPos).Unit
-        local dot = velocity.Unit:Dot(toPlayer)
-        if dot <= 0 then continue end
+            local toPlayer = (playerPos - ballPos).Unit
+            local dot = velocity.Unit:Dot(toPlayer)
+            if dot <= 0 then continue end
 
-        local distance = (playerPos - ballPos).Magnitude
+            local distance = (playerPos - ballPos).Magnitude
 
-        -- 🎯 POINT BLANK: كرة ملاصقة → صد فوراً!
-        if distance <= POINT_BLANK_DISTANCE and dot > 0.2 then
-            lastParryTime = now
-            ballLocks[ball] = now + BALL_LOCK_DURATION
-            ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
-            FireParry()
-            return
-        end
+            if distance <= POINT_BLANK_DISTANCE and dot > 0.2 then
+                lastEmergencyTime = now
+                lastParryTime = now
+                ballLocks[ball] = now + BALL_LOCK_DURATION
+                ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
+                FireParry()
+                return
+            end
 
-        -- 🎯 VERY CLOSE: كرة قريبة جداً → صد فوراً!
-        if distance <= VERY_CLOSE_DISTANCE and dot > 0.3 then
-            lastParryTime = now
-            ballLocks[ball] = now + BALL_LOCK_DURATION
-            ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
-            FireParry()
-            return
-        end
+            if distance <= VERY_CLOSE_DISTANCE and dot > 0.3 then
+                lastEmergencyTime = now
+                lastParryTime = now
+                ballLocks[ball] = now + BALL_LOCK_DURATION
+                ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
+                FireParry()
+                return
+            end
 
-        -- 🎯 CLOSE: كرة قريبة + جاية → صد فوراً!
-        if distance <= CLOSE_RANGE_DISTANCE and dot > 0.4 and speed > 40 then
-            lastParryTime = now
-            ballLocks[ball] = now + BALL_LOCK_DURATION
-            ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
-            FireParry()
-            return
+            if distance <= CLOSE_RANGE_DISTANCE and dot > 0.4 and speed > 40 then
+                lastEmergencyTime = now
+                lastParryTime = now
+                ballLocks[ball] = now + BALL_LOCK_DURATION
+                ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
+                FireParry()
+                return
+            end
         end
     end
 
+    -- =========================================
     -- 🚨 PHASE 0: SUDDEN THREAT
-    for i = 1, #balls do
-        local ball = balls[i]
-        if not ball:IsA("BasePart") then continue end
-        if ball:GetAttribute("realBall") == false then continue end
+    -- =========================================
+    if (now - lastEmergencyTime) >= EMERGENCY_LOCK then
+        for i = 1, #balls do
+            local ball = balls[i]
+            if not ball:IsA("BasePart") then continue end
+            if ball:GetAttribute("realBall") == false then continue end
+            if ballLocks[ball] then continue end
+            if ballNameLocks[ball.Name] then continue end
 
-        local firstSeen = knownBalls[ball]
-        if not firstSeen then continue end
-        local ballAge = now - firstSeen
-        if ballAge > SUDDEN_BALL_TTL then continue end
+            local firstSeen = knownBalls[ball]
+            if not firstSeen then continue end
+            local ballAge = now - firstSeen
+            if ballAge > SUDDEN_BALL_TTL then continue end
 
-        local ballPos = ball.Position
-        local velocity = ball.AssemblyLinearVelocity
-        local speed = velocity.Magnitude
-        if speed < 3 then continue end
+            local ballPos = ball.Position
+            local velocity = ball.AssemblyLinearVelocity
+            local speed = velocity.Magnitude
+            if speed < 3 then continue end
 
-        local toPlayer = (playerPos - ballPos).Unit
-        local dot = velocity.Unit:Dot(toPlayer)
-        if dot <= 0 then continue end
+            local toPlayer = (playerPos - ballPos).Unit
+            local dot = velocity.Unit:Dot(toPlayer)
+            if dot <= 0 then continue end
 
-        local distance = (playerPos - ballPos).Magnitude
+            local distance = (playerPos - ballPos).Magnitude
 
-        if distance < 80 and dot > 0.3 then
-            lastParryTime = now
-            ballLocks[ball] = now + BALL_LOCK_DURATION
-            ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
-            FireParry()
-            return
+            if distance < 80 and dot > 0.3 then
+                lastEmergencyTime = now
+                lastParryTime = now
+                ballLocks[ball] = now + BALL_LOCK_DURATION
+                ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
+                FireParry()
+                return
+            end
         end
     end
 
-    -- ⚡⚡ PHASE 1: ULTRA FAST
-    for i = 1, #balls do
-        local ball = balls[i]
-        if not ball:IsA("BasePart") then continue end
-        if ball:GetAttribute("realBall") == false then continue end
-        if ballLocks[ball] then continue end
-        if ballNameLocks[ball.Name] then continue end
+    -- =========================================
+    -- ⚡ PHASE 1: ULTRA FAST
+    -- =========================================
+    if (now - lastEmergencyTime) >= EMERGENCY_LOCK then
+        for i = 1, #balls do
+            local ball = balls[i]
+            if not ball:IsA("BasePart") then continue end
+            if ball:GetAttribute("realBall") == false then continue end
+            if ballLocks[ball] then continue end
+            if ballNameLocks[ball.Name] then continue end
 
-        local ballPos = ball.Position
-        local velocity = ball.AssemblyLinearVelocity
-        local speed = velocity.Magnitude
-        if speed < 3 then continue end
+            local ballPos = ball.Position
+            local velocity = ball.AssemblyLinearVelocity
+            local speed = velocity.Magnitude
+            if speed < 3 then continue end
 
-        local toPlayer = (playerPos - ballPos).Unit
-        local dot = velocity.Unit:Dot(toPlayer)
-        if dot <= 0 then continue end
+            local toPlayer = (playerPos - ballPos).Unit
+            local dot = velocity.Unit:Dot(toPlayer)
+            if dot <= 0 then continue end
 
-        local distance = (playerPos - ballPos).Magnitude
+            local distance = (playerPos - ballPos).Magnitude
 
-        if speed >= ULTRA_FAST_SPEED and distance < 120 and dot > 0.3 then
-            lastParryTime = now
-            ballLocks[ball] = now + BALL_LOCK_DURATION
-            ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
-            FireParry()
-            return
-        end
+            if speed >= ULTRA_FAST_SPEED and distance < 120 and dot > 0.3 then
+                lastEmergencyTime = now
+                lastParryTime = now
+                ballLocks[ball] = now + BALL_LOCK_DURATION
+                ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
+                FireParry()
+                return
+            end
 
-        if speed >= FAST_SPEED and distance < 70 and dot > 0.3 then
-            lastParryTime = now
-            ballLocks[ball] = now + BALL_LOCK_DURATION
-            ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
-            FireParry()
-            return
+            if speed >= FAST_SPEED and distance < 70 and dot > 0.3 then
+                lastEmergencyTime = now
+                lastParryTime = now
+                ballLocks[ball] = now + BALL_LOCK_DURATION
+                ballNameLocks[ball.Name] = now + BALL_LOCK_DURATION
+                FireParry()
+                return
+            end
         end
     end
 
+    -- =========================================
     -- ⚙️ PHASE 2: NORMAL SCAN
+    -- =========================================
     local currentLock = GLOBAL_LOCK
     if DangerLevel == 2 then
         currentLock = ULTRA_FAST_LOCK
@@ -635,9 +858,8 @@ RunService.Heartbeat:Connect(function()
 
         local _, curveActive = TrackBall(ball)
 
-        -- 🎯 Prediction ذكي حسب السرعة والمسافة
         local frames = 1
-        if distance < 30 then frames = 0       -- قريب: بدون prediction
+        if distance < 30 then frames = 0
         elseif speed < 40 then frames = 4
         elseif speed < 80 then frames = 3
         elseif speed < 130 then frames = 2
@@ -664,26 +886,19 @@ RunService.Heartbeat:Connect(function()
             AutoAccuracyDebug.Reason = string.format("P:%d S:%d D:%d",
                 math.floor(ping * 1000), math.floor(bestSpeed), math.floor(bestDistance))
         else
-            usedAccuracy = ParryAccuracyValue
+            usedAccuracy = 50
         end
 
-        local accuracyFactor = (usedAccuracy / 100) * 0.45
-        local timeWindow = ping + 0.10 + accuracyFactor
+        -- ⏱️ MS-BASED Window
+        local windowMs = GetParryTimeMs(usedAccuracy, DangerLevel, bestDistance, bestSpeed)
+        local timeWindow = ping + (windowMs / 1000)
 
-        if DangerLevel == 2 then
-            timeWindow = timeWindow + 0.45
-        elseif DangerLevel == 1 then
-            timeWindow = timeWindow + 0.25
-        end
-
-        -- 🎯 Emergency Range يزيد حسب القرب
         local emergencyRange = 20
         if DangerLevel == 2 then emergencyRange = 40
         elseif DangerLevel == 1 then emergencyRange = 30 end
 
-        -- 🎯 Close Range Bonus
         if bestDistance < POINT_BLANK_DISTANCE then
-            emergencyRange = 50  -- أولوية قصوى
+            emergencyRange = 50
         elseif bestDistance < VERY_CLOSE_DISTANCE then
             emergencyRange = 40
         elseif bestDistance < CLOSE_RANGE_DISTANCE then
@@ -708,13 +923,11 @@ local nearPlayerSpam = false
 
 RunService.Heartbeat:Connect(function()
     if not AutoSpamEnabled then return end
-
     local now = tick()
 
     if (now - spamPlayerCheck) > 0.05 then
         spamPlayerCheck = now
         nearPlayerSpam = false
-
         local character = LocalPlayer.Character
         if character then
             local hrp = character:FindFirstChild("HumanoidRootPart")
@@ -746,14 +959,8 @@ RunService.Heartbeat:Connect(function()
     local burst = math.max(1, math.floor(AutoSpamCPS / 60))
     for _ = 1, burst do
         local packet = {
-            args[1],
-            args[2],
-            _tokenize(args[2]),
-            0.5,
-            workspace.CurrentCamera.CFrame,
-            {},
-            {0, 0},
-            false
+            args[1], args[2], _tokenize(args[2]),
+            0.5, workspace.CurrentCamera.CFrame, {}, {0, 0}, false
         }
         if remote:IsA('RemoteEvent') then
             remote:FireServer(unpack(packet))
@@ -856,14 +1063,12 @@ local function UpdateManualBtnVisual()
     if ManualSpamEnabled then
         ManualBtn.Text = "SPAM: ON"
         ManualBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
-
         TweenService:Create(BgGradient, TweenInfo.new(0.3), {
             Color = ColorSequence.new({
                 ColorSequenceKeypoint.new(0.00, Color3.fromRGB(20, 60, 50)),
                 ColorSequenceKeypoint.new(1.00, Color3.fromRGB(30, 80, 60))
             })
         }):Play()
-
         TweenService:Create(StrokeGradient, TweenInfo.new(0.3), {
             Color = ColorSequence.new({
                 ColorSequenceKeypoint.new(0.00, Color3.fromRGB(80, 255, 180)),
@@ -875,14 +1080,12 @@ local function UpdateManualBtnVisual()
     else
         ManualBtn.Text = "SPAM: OFF"
         ManualBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
-
         TweenService:Create(BgGradient, TweenInfo.new(0.3), {
             Color = ColorSequence.new({
                 ColorSequenceKeypoint.new(0.00, Color3.fromRGB(35, 20, 50)),
                 ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
             })
         }):Play()
-
         TweenService:Create(StrokeGradient, TweenInfo.new(0.3), {
             Color = ColorSequence.new({
                 ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 100, 200)),
@@ -928,22 +1131,14 @@ end)
 local function ToggleManualSpam()
     ManualSpamEnabled = not ManualSpamEnabled
     UpdateManualBtnVisual()
-
     if ManualSpamEnabled then
         task.spawn(function()
             local remote, args = GetParryRemote()
             if not remote or not args then return end
-
             for _ = 1, 30 do
                 local packet = {
-                    args[1],
-                    args[2],
-                    _tokenize(args[2]),
-                    0.5,
-                    workspace.CurrentCamera.CFrame,
-                    {},
-                    {0, 0},
-                    false
+                    args[1], args[2], _tokenize(args[2]),
+                    0.5, workspace.CurrentCamera.CFrame, {}, {0, 0}, false
                 }
                 if remote:IsA('RemoteEvent') then
                     remote:FireServer(unpack(packet))
@@ -980,31 +1175,18 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
--- =========================================
--- Manual Spam Loop
--- =========================================
 local lastManualSpamTime = 0
-
 RunService.Heartbeat:Connect(function()
     if not ManualSpamEnabled then return end
-
     local now = tick()
     if (now - lastManualSpamTime) < 0.005 then return end
     lastManualSpamTime = now
-
     local remote, args = GetParryRemote()
     if not remote or not args then return end
-
     for _ = 1, MANUAL_SPAM_BURST do
         local packet = {
-            args[1],
-            args[2],
-            _tokenize(args[2]),
-            0.5,
-            workspace.CurrentCamera.CFrame,
-            {},
-            {0, 0},
-            false
+            args[1], args[2], _tokenize(args[2]),
+            0.5, workspace.CurrentCamera.CFrame, {}, {0, 0}, false
         }
         if remote:IsA('RemoteEvent') then
             remote:FireServer(unpack(packet))
@@ -1015,75 +1197,198 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- =========================================
--- Danger Zone Indicator
+-- 🛡️ Slash Counter Alert
 -- =========================================
-local DangerGui = Instance.new("ScreenGui")
-DangerGui.Name = "SlaxDangerZone_" .. math.random(1, 99999)
-DangerGui.Parent = GetGuiParent()
-DangerGui.ResetOnSpawn = false
-DangerGui.IgnoreGuiInset = true
-DangerGui.DisplayOrder = 99997
+local CounterGui = Instance.new("ScreenGui")
+CounterGui.Name = "SlaxCounterAlert_" .. math.random(1, 99999)
+CounterGui.Parent = GetGuiParent()
+CounterGui.ResetOnSpawn = false
+CounterGui.IgnoreGuiInset = true
+CounterGui.DisplayOrder = 100000
 
-local DangerFrame = Instance.new("Frame")
-DangerFrame.Name = "DangerFrame"
-DangerFrame.Parent = DangerGui
-DangerFrame.BackgroundTransparency = 1
-DangerFrame.Size = UDim2.new(1, 0, 1, 0)
+local CounterAlert = Instance.new("TextLabel")
+CounterAlert.Name = "CounterAlert"
+CounterAlert.Parent = CounterGui
+CounterAlert.BackgroundColor3 = Color3.fromRGB(60, 20, 20)
+CounterAlert.BackgroundTransparency = 0.2
+CounterAlert.BorderSizePixel = 0
+CounterAlert.Position = UDim2.new(0.5, -150, 0.15, 0)
+CounterAlert.Size = UDim2.new(0, 300, 0, 50)
+CounterAlert.Font = Enum.Font.GothamBold
+CounterAlert.Text = "🛡️ SLASHES COUNTERED!"
+CounterAlert.TextColor3 = Color3.fromRGB(255, 100, 100)
+CounterAlert.TextSize = 16
+CounterAlert.Visible = false
 
-local DangerBorder = Instance.new("Frame")
-DangerBorder.Name = "Border"
-DangerBorder.Parent = DangerFrame
-DangerBorder.BackgroundTransparency = 1
-DangerBorder.Size = UDim2.new(1, 0, 1, 0)
-DangerBorder.BorderSizePixel = 20
-DangerBorder.BorderColor3 = Color3.fromRGB(0, 0, 0)
+local CounterCorner = Instance.new("UICorner")
+CounterCorner.CornerRadius = UDim.new(0, 12)
+CounterCorner.Parent = CounterAlert
 
-local DangerLabel = Instance.new("TextLabel")
-DangerLabel.Name = "DangerLabel"
-DangerLabel.Parent = DangerFrame
-DangerLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-DangerLabel.BackgroundTransparency = 0.3
-DangerLabel.BorderSizePixel = 0
-DangerLabel.Position = UDim2.new(0.5, -100, 0.08, 0)
-DangerLabel.Size = UDim2.new(0, 200, 0, 40)
-DangerLabel.Font = Enum.Font.GothamBold
-DangerLabel.Text = "SAFE"
-DangerLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
-DangerLabel.TextSize = 16
-DangerLabel.Visible = false
-
-local DangerCorner = Instance.new("UICorner")
-DangerCorner.CornerRadius = UDim.new(0, 10)
-DangerCorner.Parent = DangerLabel
-
-local DangerStroke = Instance.new("UIStroke")
-DangerStroke.Parent = DangerLabel
-DangerStroke.Color = Color3.fromRGB(100, 255, 150)
-DangerStroke.Thickness = 2
+local CounterStroke = Instance.new("UIStroke")
+CounterStroke.Parent = CounterAlert
+CounterStroke.Color = Color3.fromRGB(255, 80, 80)
+CounterStroke.Thickness = 2.5
 
 task.spawn(function()
     while task.wait(0.1) do
-        if not AutoParryEnabled then
-            DangerLabel.Visible = false
-            DangerBorder.BorderColor3 = Color3.fromRGB(0, 0, 0)
-            continue
+        if SlashesCounterEnabled and SlashCounterActive and SlashCounterPlayer then
+            CounterAlert.Visible = true
+            CounterAlert.Text = string.format("🛡️ COUNTERING %s!", SlashCounterPlayer)
+        else
+            CounterAlert.Visible = false
+        end
+    end
+end)
+
+-- =========================================
+-- 📊 Slash Counter Display
+-- =========================================
+local SlashGui = Instance.new("ScreenGui")
+SlashGui.Name = "SlaxSlashCounter_" .. math.random(1, 99999)
+SlashGui.Parent = GetGuiParent()
+SlashGui.ResetOnSpawn = false
+SlashGui.IgnoreGuiInset = true
+SlashGui.DisplayOrder = 99996
+
+local SlashFrame = Instance.new("Frame")
+SlashFrame.Name = "SlashFrame"
+SlashFrame.Parent = SlashGui
+SlashFrame.BackgroundColor3 = Color3.fromRGB(25, 15, 40)
+SlashFrame.BackgroundTransparency = 0.15
+SlashFrame.BorderSizePixel = 0
+SlashFrame.Position = UDim2.new(0.02, 0, 0.55, 0)
+SlashFrame.Size = UDim2.new(0, 180, 0, 125)
+SlashFrame.Active = true
+SlashFrame.Draggable = true
+
+local SlashCorner = Instance.new("UICorner")
+SlashCorner.CornerRadius = UDim.new(0, 14)
+SlashCorner.Parent = SlashFrame
+
+local SlashStroke = Instance.new("UIStroke")
+SlashStroke.Parent = SlashFrame
+SlashStroke.Thickness = 2.5
+SlashStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+local SlashStrokeGradient = Instance.new("UIGradient")
+SlashStrokeGradient.Parent = SlashStroke
+SlashStrokeGradient.Rotation = 45
+SlashStrokeGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 200, 80)),
+    ColorSequenceKeypoint.new(0.50, Color3.fromRGB(255, 120, 200)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(180, 100, 255))
+})
+
+local SlashTitle = Instance.new("TextLabel")
+SlashTitle.Name = "Title"
+SlashTitle.Parent = SlashFrame
+SlashTitle.BackgroundTransparency = 1
+SlashTitle.Position = UDim2.new(0, 0, 0, 6)
+SlashTitle.Size = UDim2.new(1, 0, 0, 20)
+SlashTitle.Font = Enum.Font.GothamBold
+SlashTitle.Text = "⚔️ SLASHES OF FURY"
+SlashTitle.TextColor3 = Color3.fromRGB(255, 200, 100)
+SlashTitle.TextSize = 12
+
+local SlashCountLabel = Instance.new("TextLabel")
+SlashCountLabel.Name = "Count"
+SlashCountLabel.Parent = SlashFrame
+SlashCountLabel.BackgroundTransparency = 1
+SlashCountLabel.Position = UDim2.new(0, 0, 0, 26)
+SlashCountLabel.Size = UDim2.new(1, 0, 0, 26)
+SlashCountLabel.Font = Enum.Font.GothamBold
+SlashCountLabel.Text = "0"
+SlashCountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+SlashCountLabel.TextSize = 22
+
+local SlashStatusLabel = Instance.new("TextLabel")
+SlashStatusLabel.Name = "Status"
+SlashStatusLabel.Parent = SlashFrame
+SlashStatusLabel.BackgroundTransparency = 1
+SlashStatusLabel.Position = UDim2.new(0, 0, 0, 52)
+SlashStatusLabel.Size = UDim2.new(1, 0, 0, 16)
+SlashStatusLabel.Font = Enum.Font.Gotham
+SlashStatusLabel.Text = "READY"
+SlashStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
+SlashStatusLabel.TextSize = 11
+
+-- ⏸️ Pause Indicator
+local PauseLabel = Instance.new("TextLabel")
+PauseLabel.Name = "Pause"
+PauseLabel.Parent = SlashFrame
+PauseLabel.BackgroundTransparency = 1
+PauseLabel.Position = UDim2.new(0, 0, 0, 68)
+PauseLabel.Size = UDim2.new(1, 0, 0, 14)
+PauseLabel.Font = Enum.Font.GothamBold
+PauseLabel.Text = "⏸️ PARRY: ACTIVE"
+PauseLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
+PauseLabel.TextSize = 10
+
+-- 🛡️ Counter Stats
+local CounterTitle = Instance.new("TextLabel")
+CounterTitle.Name = "CounterTitle"
+CounterTitle.Parent = SlashFrame
+CounterTitle.BackgroundTransparency = 1
+CounterTitle.Position = UDim2.new(0, 0, 0, 84)
+CounterTitle.Size = UDim2.new(1, 0, 0, 16)
+CounterTitle.Font = Enum.Font.GothamBold
+CounterTitle.Text = "🛡️ COUNTERS"
+CounterTitle.TextColor3 = Color3.fromRGB(120, 200, 255)
+CounterTitle.TextSize = 11
+
+local CounterCountLabel = Instance.new("TextLabel")
+CounterCountLabel.Name = "CounterCount"
+CounterCountLabel.Parent = SlashFrame
+CounterCountLabel.BackgroundTransparency = 1
+CounterCountLabel.Position = UDim2.new(0, 0, 0, 100)
+CounterCountLabel.Size = UDim2.new(1, 0, 0, 20)
+CounterCountLabel.Font = Enum.Font.GothamBold
+CounterCountLabel.Text = "0"
+CounterCountLabel.TextColor3 = Color3.fromRGB(120, 200, 255)
+CounterCountLabel.TextSize = 16
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if not AutoSlashEnabled then
+            SlashStatusLabel.Text = "OFF"
+            SlashStatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+            SlashCountLabel.TextColor3 = Color3.fromRGB(120, 120, 120)
+        else
+            local now = tick()
+            local remaining = SLASH_COOLDOWN - (now - lastSlashTime)
+            if remaining > 0 then
+                SlashStatusLabel.Text = string.format("CD: %.1fs", remaining)
+                SlashStatusLabel.TextColor3 = Color3.fromRGB(255, 180, 80)
+            else
+                SlashStatusLabel.Text = "READY"
+                SlashStatusLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
+            end
+            SlashCountLabel.Text = tostring(SlashCount)
         end
 
-        if DangerLevel == 2 then
-            DangerLabel.Visible = true
-            DangerLabel.Text = string.format("DANGER! %d studs", math.floor(ClosestPlayerDist))
-            DangerLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
-            DangerStroke.Color = Color3.fromRGB(255, 80, 80)
-            DangerBorder.BorderColor3 = Color3.fromRGB(255, 50, 50)
-        elseif DangerLevel == 1 then
-            DangerLabel.Visible = true
-            DangerLabel.Text = string.format("Close: %d studs", math.floor(ClosestPlayerDist))
-            DangerLabel.TextColor3 = Color3.fromRGB(255, 200, 80)
-            DangerStroke.Color = Color3.fromRGB(255, 200, 80)
-            DangerBorder.BorderColor3 = Color3.fromRGB(255, 150, 50)
+        -- ⏸️ Pause indicator
+        if ParryPaused then
+            local remaining = ParryPauseUntil - tick()
+            PauseLabel.Text = string.format("⏸️ PAUSED %.1fs", remaining)
+            PauseLabel.TextColor3 = Color3.fromRGB(255, 200, 80)
         else
-            DangerLabel.Visible = false
-            DangerBorder.BorderColor3 = Color3.fromRGB(0, 0, 0)
+            PauseLabel.Text = "▶️ PARRY: ACTIVE"
+            PauseLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
+        end
+
+        CounterCountLabel.Text = tostring(SlashCounterCount)
+
+        if not SlashesCounterEnabled then
+            CounterTitle.TextColor3 = Color3.fromRGB(120, 120, 120)
+            CounterCountLabel.TextColor3 = Color3.fromRGB(100, 100, 100)
+        else
+            if SlashCounterActive then
+                CounterTitle.TextColor3 = Color3.fromRGB(255, 100, 100)
+                CounterCountLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+            else
+                CounterTitle.TextColor3 = Color3.fromRGB(120, 200, 255)
+                CounterCountLabel.TextColor3 = Color3.fromRGB(120, 200, 255)
+            end
         end
     end
 end)
@@ -1107,7 +1412,7 @@ AccLabel.BorderSizePixel = 0
 AccLabel.Position = UDim2.new(0.68, 0, 0.02, 0)
 AccLabel.Size = UDim2.new(0, 200, 0, 60)
 AccLabel.Font = Enum.Font.GothamBold
-AccLabel.Text = "Accuracy: 50"
+AccLabel.Text = "Parry Time: 100ms"
 AccLabel.TextColor3 = Color3.fromRGB(255, 180, 230)
 AccLabel.TextSize = 12
 
@@ -1129,12 +1434,11 @@ task.spawn(function()
             elseif value < 60 then color = Color3.fromRGB(255, 220, 100)
             elseif value < 85 then color = Color3.fromRGB(255, 150, 100)
             else color = Color3.fromRGB(255, 100, 100) end
-
-            AccLabel.Text = string.format("ACC: %d\n%s", value, AutoAccuracyDebug.Reason)
+            AccLabel.Text = string.format("AUTO: %dms\n%s", PARRY_TIME_MS, AutoAccuracyDebug.Reason)
             AccLabel.TextColor3 = color
             AccStroke.Color = color
         elseif AutoParryEnabled then
-            AccLabel.Text = "MANUAL: " .. ParryAccuracyValue
+            AccLabel.Text = string.format("MANUAL: %dms", PARRY_TIME_MS)
             AccLabel.TextColor3 = Color3.fromRGB(255, 200, 80)
             AccStroke.Color = Color3.fromRGB(255, 200, 80)
         else
@@ -1165,70 +1469,20 @@ MainTab:Toggle({
 
 MainTab:Toggle({
     Title = "Auto Accuracy",
-    Desc = "Powerful auto-adjust",
+    Desc = "Auto-adjust timing (ignores MS slider)",
     Value = true,
     Callback = function(Value)
         AutoAccuracyEnabled = Value
     end
 })
 
+-- ⏱️ MS-Based Slider (NEW!)
 MainTab:Slider({
-    Title = "Parry Accuracy (Manual)",
-    Desc = "Used only when Auto is OFF",
+    Title = "Parry Time (ms)",
+    Desc = "Used when Auto Accuracy is OFF - 100ms recommended",
     Value = {
-        Min = 1,
-        Max = 100,
-        Default = 50,
+        Min = 30,
+        Max = 300,
+        Default = 100,
     },
-    Callback = function(Value)
-        ParryAccuracyValue = Value
-    end
-})
-
-MainTab:Toggle({
-    Title = "⚔️ Auto Slashes of Fury",
-    Desc = "Auto-activates ability when ball is near",
-    Value = false,
-    Callback = function(Value)
-        AutoSlashEnabled = Value
-        lastSlashTime = 0
-    end
-})
-
-MainTab:Toggle({
-    Title = "Auto Spam",
-    Desc = "Spams near players (60 studs)",
-    Value = false,
-    Callback = function(Value)
-        AutoSpamEnabled = Value
-    end
-})
-
-MainTab:Slider({
-    Title = "Auto Spam CPS",
-    Desc = "200-500 CPS",
-    Value = {
-        Min = 200,
-        Max = 500,
-        Default = 350,
-    },
-    Callback = function(Value)
-        AutoSpamCPS = Value
-    end
-})
-
-SettingsTab:Button({
-    Title = "Destroy UI",
-    Callback = function()
-        Window:Destroy()
-        ManualGui:Destroy()
-        AccGui:Destroy()
-        DangerGui:Destroy()
-    end
-})
-
-WindUI:Notify({
-    Title = "Slax Hub v21.1 🎯",
-    Content = "Close Range Fix - Now strong at any distance!",
-    Duration = 6
-})
+   
