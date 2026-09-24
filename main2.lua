@@ -1,13 +1,13 @@
--- Blade Ball Script - 417 UI Clone (WindUI)
+-- Slax Hub - Blade Ball Script
 -- Developed by yossef
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 local Window = WindUI:CreateWindow({
-    Title = "417",
+    Title = "Slax Hub",
     Icon = "swords",
     Author = "yossef",
-    Folder = "417Script",
+    Folder = "SlaxHub",
     Size = UDim2.fromOffset(700, 500),
     Transparent = true,
     Theme = "Dark",
@@ -16,7 +16,7 @@ local Window = WindUI:CreateWindow({
 })
 
 Window:EditOpenButton({
-    Title = "417",
+    Title = "Slax Hub",
     Icon = "sword",
     CornerRadius = UDim.new(0, 16),
     StrokeThickness = 2,
@@ -24,16 +24,11 @@ Window:EditOpenButton({
     OnlyMobile = false,
 })
 
--- =========================================
--- Tabs
--- =========================================
 local APTab = Window:Tab({ Title = "AP", Icon = "sword" })
 local OptimTab = Window:Tab({ Title = "OPTIM", Icon = "zap" })
 local SocialTab = Window:Tab({ Title = "SOCIAL", Icon = "users" })
 
--- =========================================
--- Services & Refs
--- =========================================
+-- Services
 local RS = game:GetService("ReplicatedStorage")
 local WS = game:GetService("Workspace")
 local Stats = game:GetService("Stats")
@@ -43,9 +38,7 @@ local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
--- =========================================
 -- State
--- =========================================
 local AutoParryEnabled = false
 local AutoSpamEnabled = false
 local AutoAccuracyEnabled = false
@@ -55,7 +48,6 @@ local CurveType = "straight"
 local CPSValue = 225
 local AnimFix = false
 
--- UI Visibility
 local ShowBallStats = false
 local ShowFpsUI = true
 local ShowKeybindUI = false
@@ -63,8 +55,6 @@ local ShowSpamUI = false
 local ShowTriggerBotUI = false
 local ShowImmortalUI = false
 local ShowCurvesUI = false
-
--- Immortal
 local ImmortalEnabled = false
 
 -- =========================================
@@ -175,7 +165,6 @@ local GLOBAL_LOCK = 0.15
 local BALL_LOCK = 0.5
 local ballLocks = {}
 
--- Trajectory Check
 local function WillHitPlayer(ballPos, ballVel, playerPos)
     local speed = ballVel.Magnitude
     if speed < 1 then return false end
@@ -217,7 +206,6 @@ RunService.Heartbeat:Connect(function()
     local ballsFolder = WS:FindFirstChild("Balls")
     if not ballsFolder then return end
 
-    -- Distance-based accuracy window
     local distanceThreshold = 5 + ((AccuracyValue / 100) * 35)
 
     local bestBall = nil
@@ -236,7 +224,6 @@ RunService.Heartbeat:Connect(function()
         local distance = (playerPos - ballPos).Magnitude
         if distance > 100 then continue end
         if distance > distanceThreshold then continue end
-
         if not WillHitPlayer(ballPos, velocity, playerPos) then continue end
 
         if distance < bestDistance then
@@ -299,7 +286,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- =========================================
--- FPS UI
+-- GetGuiParent
 -- =========================================
 local function GetGuiParent()
     local ok, hui = pcall(gethui)
@@ -309,8 +296,11 @@ local function GetGuiParent()
     return CoreGui
 end
 
+-- =========================================
+-- FPS UI
+-- =========================================
 local FpsGui = Instance.new("ScreenGui")
-FpsGui.Name = "417FpsUI_" .. math.random(1, 99999)
+FpsGui.Name = "SlaxFpsUI_" .. math.random(1, 99999)
 FpsGui.Parent = GetGuiParent()
 FpsGui.ResetOnSpawn = false
 FpsGui.IgnoreGuiInset = true
@@ -338,7 +328,6 @@ FpsStroke.Parent = FpsLabel
 FpsStroke.Color = Color3.fromRGB(255, 180, 80)
 FpsStroke.Thickness = 1.2
 
--- FPS Counter
 local FpsCounter = 0
 local FpsTime = tick()
 
@@ -356,20 +345,19 @@ end)
 -- Ball Stats UI
 -- =========================================
 local BallStatsGui = Instance.new("ScreenGui")
-BallStatsGui.Name = "417BallStats_" .. math.random(1, 99999)
+BallStatsGui.Name = "SlaxBallStats_" .. math.random(1, 99999)
 BallStatsGui.Parent = GetGuiParent()
 BallStatsGui.ResetOnSpawn = false
 BallStatsGui.IgnoreGuiInset = true
 BallStatsGui.DisplayOrder = 99998
 
 local BallStatsLabel = Instance.new("TextLabel")
-BallStatsLabel.Name = "BallStatsLabel"
 BallStatsLabel.Parent = BallStatsGui
 BallStatsLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
 BallStatsLabel.BackgroundTransparency = 0.3
 BallStatsLabel.BorderSizePixel = 0
 BallStatsLabel.Position = UDim2.new(0.02, 0, 0.02, 0)
-BallStatsLabel.Size = UDim2.new(0, 220, 0, 40)
+BallStatsLabel.Size = UDim2.new(0, 220, 0, 50)
 BallStatsLabel.Font = Enum.Font.GothamBold
 BallStatsLabel.Text = "No Balls"
 BallStatsLabel.TextColor3 = Color3.fromRGB(255, 180, 230)
@@ -379,11 +367,6 @@ BallStatsLabel.Visible = false
 local BallStatsCorner = Instance.new("UICorner")
 BallStatsCorner.CornerRadius = UDim.new(0, 8)
 BallStatsCorner.Parent = BallStatsLabel
-
-local BallStatsStroke = Instance.new("UIStroke")
-BallStatsStroke.Parent = BallStatsLabel
-BallStatsStroke.Color = Color3.fromRGB(255, 180, 230)
-BallStatsStroke.Thickness = 1.2
 
 task.spawn(function()
     while task.wait(0.2) do
@@ -397,7 +380,6 @@ task.spawn(function()
             if ballsFolder then
                 local char = LocalPlayer.Character
                 local hrp = char and char:FindFirstChild("HumanoidRootPart")
-
                 for _, ball in ipairs(ballsFolder:GetChildren()) do
                     if not ball:IsA("BasePart") then continue end
                     if ball:GetAttribute("realBall") == false then continue end
@@ -423,87 +405,14 @@ task.spawn(function()
 end)
 
 -- =========================================
--- Keybind UI
--- =========================================
-local KeybindGui = Instance.new("ScreenGui")
-KeybindGui.Name = "417KeybindUI_" .. math.random(1, 99999)
-KeybindGui.Parent = GetGuiParent()
-KeybindGui.ResetOnSpawn = false
-KeybindGui.IgnoreGuiInset = true
-KeybindGui.DisplayOrder = 99997
-
-local KeybindLabel = Instance.new("TextLabel")
-KeybindLabel.Name = "KeybindLabel"
-KeybindLabel.Parent = KeybindGui
-KeybindLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-KeybindLabel.BackgroundTransparency = 0.3
-KeybindLabel.BorderSizePixel = 0
-KeybindLabel.Position = UDim2.new(0.02, 0, 0.15, 0)
-KeybindLabel.Size = UDim2.new(0, 200, 0, 30)
-KeybindLabel.Font = Enum.Font.GothamBold
-KeybindLabel.Text = "E = Toggle Spam"
-KeybindLabel.TextColor3 = Color3.fromRGB(120, 200, 255)
-KeybindLabel.TextSize = 12
-KeybindLabel.Visible = false
-
-local KeybindCorner = Instance.new("UICorner")
-KeybindCorner.CornerRadius = UDim.new(0, 8)
-KeybindCorner.Parent = KeybindLabel
-
-task.spawn(function()
-    while task.wait(0.2) do
-        KeybindLabel.Visible = ShowKeybindUI
-    end
-end)
-
--- =========================================
--- Immortal UI
--- =========================================
-local ImmortalGui = Instance.new("ScreenGui")
-ImmortalGui.Name = "417ImmortalUI_" .. math.random(1, 99999)
-ImmortalGui.Parent = GetGuiParent()
-ImmortalGui.ResetOnSpawn = false
-ImmortalGui.IgnoreGuiInset = true
-ImmortalGui.DisplayOrder = 99996
-
-local ImmortalLabel = Instance.new("TextLabel")
-ImmortalLabel.Name = "ImmortalLabel"
-ImmortalLabel.Parent = ImmortalGui
-ImmortalLabel.BackgroundColor3 = Color3.fromRGB(30, 10, 10)
-ImmortalLabel.BackgroundTransparency = 0.2
-ImmortalLabel.BorderSizePixel = 0
-ImmortalLabel.Position = UDim2.new(0.4, 0, 0.05, 0)
-ImmortalLabel.Size = UDim2.new(0, 260, 0, 40)
-ImmortalLabel.Font = Enum.Font.GothamBold
-ImmortalLabel.Text = "IMMORTAL ACTIVE"
-ImmortalLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-ImmortalLabel.TextSize = 15
-ImmortalLabel.Visible = false
-
-local ImmortalCorner = Instance.new("UICorner")
-ImmortalCorner.CornerRadius = UDim.new(0, 10)
-ImmortalCorner.Parent = ImmortalLabel
-
-local ImmortalStroke = Instance.new("UIStroke")
-ImmortalStroke.Parent = ImmortalLabel
-ImmortalStroke.Color = Color3.fromRGB(255, 80, 80)
-ImmortalStroke.Thickness = 2
-
-task.spawn(function()
-    while task.wait(0.2) do
-        ImmortalLabel.Visible = ShowImmortalUI and ImmortalEnabled
-    end
-end)
-
--- =========================================
 -- Spam UI
 -- =========================================
 local SpamGui = Instance.new("ScreenGui")
-SpamGui.Name = "417SpamUI_" .. math.random(1, 99999)
+SpamGui.Name = "SlaxSpamUI_" .. math.random(1, 99999)
 SpamGui.Parent = GetGuiParent()
 SpamGui.ResetOnSpawn = false
 SpamGui.IgnoreGuiInset = true
-SpamGui.DisplayOrder = 99995
+SpamGui.DisplayOrder = 99997
 
 local SpamBtn = Instance.new("TextButton")
 SpamBtn.Name = "SpamBtn"
@@ -529,4 +438,334 @@ SpamStroke.Parent = SpamBtn
 SpamStroke.Color = Color3.fromRGB(255, 255, 255)
 SpamStroke.Thickness = 1.5
 
-local Manual
+local ManualSpamEnabled = false
+local dragging = false
+local dragInput, dragStart, startPos, dragMoved
+local lastTap = 0
+
+SpamBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragMoved = false
+        dragStart = input.Position
+        startPos = SpamBtn.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+SpamBtn.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        if math.abs(delta.X) > 5 or math.abs(delta.Y) > 5 then
+            dragMoved = true
+        end
+        SpamBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+local function UpdateSpamBtn()
+    if ManualSpamEnabled then
+        SpamBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 100)
+        SpamBtn.Text = "🎯 Trigger: ON"
+        SpamStroke.Color = Color3.fromRGB(180, 255, 200)
+    else
+        SpamBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+        SpamBtn.Text = "🎯 Trigger: OFF"
+        SpamStroke.Color = Color3.fromRGB(255, 255, 255)
+    end
+end
+
+SpamBtn.MouseButton1Click:Connect(function()
+    if dragMoved then return end
+    local now = tick()
+    if now - lastTap < 0.3 then return end
+    lastTap = now
+    ManualSpamEnabled = not ManualSpamEnabled
+    UpdateSpamBtn()
+end)
+
+SpamBtn.TouchTap:Connect(function()
+    local now = tick()
+    if now - lastTap < 0.3 then return end
+    lastTap = now
+    ManualSpamEnabled = not ManualSpamEnabled
+    UpdateSpamBtn()
+end)
+
+local lastManualSpamTime = 0
+RunService.Heartbeat:Connect(function()
+    if not ManualSpamEnabled then return end
+    local now = tick()
+    if (now - lastManualSpamTime) < 0.005 then return end
+    lastManualSpamTime = now
+    local remote, args = GetParryRemote()
+    if not remote or not args then return end
+    for _ = 1, 10 do
+        local packet = {args[1], args[2], _tokenize(args[2]), 0.5, WS.CurrentCamera.CFrame, {}, {0, 0}, false}
+        if remote:IsA('RemoteEvent') then
+            remote:FireServer(unpack(packet))
+        elseif remote:IsA('RemoteFunction') then
+            remote:InvokeServer(unpack(packet))
+        end
+    end
+end)
+
+UpdateSpamBtn()
+
+task.spawn(function()
+    while task.wait(0.2) do
+        SpamBtn.Visible = ShowSpamUI
+    end
+end)
+
+-- =========================================
+-- UI Controls
+-- =========================================
+
+-- ═══════════════ AP TAB ═══════════════
+
+APTab:Toggle({
+    Title = "Auto Parry",
+    Desc = "Auto parry balls that will hit you",
+    Value = false,
+    Callback = function(Value)
+        AutoParryEnabled = Value
+    end
+})
+
+APTab:Slider({
+    Title = "Accuracy",
+    Desc = "Higher = Earlier parry",
+    Value = {
+        Min = 1,
+        Max = 100,
+        Default = 100,
+    },
+    Callback = function(Value)
+        AccuracyValue = Value
+    end
+})
+
+APTab:Toggle({
+    Title = "Auto Accuracy",
+    Desc = "Auto-adjust timing",
+    Value = false,
+    Callback = function(Value)
+        AutoAccuracyEnabled = Value
+    end
+})
+
+APTab:Toggle({
+    Title = "Auto Spam",
+    Desc = "Spams near players",
+    Value = false,
+    Callback = function(Value)
+        AutoSpamEnabled = Value
+    end
+})
+
+APTab:Slider({
+    Title = "Spam Threshold",
+    Desc = "Minimum balls to trigger spam",
+    Value = {
+        Min = 1,
+        Max = 10,
+        Default = 1,
+    },
+    Callback = function(Value)
+        SpamThreshold = Value
+    end
+})
+
+APTab:Dropdown({
+    Title = "Curve Type",
+    Values = { "straight", "left", "right", "up", "down" },
+    Value = "straight",
+    Callback = function(Value)
+        CurveType = Value
+    end
+})
+
+APTab:Slider({
+    Title = "CPS",
+    Desc = "Spam clicks per second",
+    Value = {
+        Min = 50,
+        Max = 500,
+        Default = 225,
+    },
+    Callback = function(Value)
+        CPSValue = Value
+    end
+})
+
+APTab:Toggle({
+    Title = "Anim Fix",
+    Desc = "Fix animation glitches",
+    Value = false,
+    Callback = function(Value)
+        AnimFix = Value
+    end
+})
+
+APTab:Toggle({
+    Title = "Show Ball Stats",
+    Desc = "Show ball count and info",
+    Value = false,
+    Callback = function(Value)
+        ShowBallStats = Value
+    end
+})
+
+APTab:Toggle({
+    Title = "Fps UI",
+    Desc = "Show FPS and ping",
+    Value = true,
+    Callback = function(Value)
+        ShowFpsUI = Value
+        FpsGui.Enabled = Value
+    end
+})
+
+APTab:Toggle({
+    Title = "Show Keybind UI",
+    Desc = "Show keybind hints",
+    Value = false,
+    Callback = function(Value)
+        ShowKeybindUI = Value
+    end
+})
+
+APTab:Toggle({
+    Title = "Show Spam UI",
+    Desc = "Show manual spam button",
+    Value = false,
+    Callback = function(Value)
+        ShowSpamUI = Value
+    end
+})
+
+APTab:Toggle({
+    Title = "Show TriggerBot UI",
+    Desc = "Show triggerbot UI",
+    Value = false,
+    Callback = function(Value)
+        ShowTriggerBotUI = Value
+    end
+})
+
+APTab:Toggle({
+    Title = "Show Immortal UI",
+    Desc = "Show immortal status",
+    Value = false,
+    Callback = function(Value)
+        ShowImmortalUI = Value
+    end
+})
+
+APTab:Toggle({
+    Title = "Show Curves UI",
+    Desc = "Show curve visualization",
+    Value = false,
+    Callback = function(Value)
+        ShowCurvesUI = Value
+    end
+})
+
+APTab:Toggle({
+    Title = "Immortal (bannable)",
+    Desc = "⚠️ BANNABLE - Use at your own risk",
+    Value = false,
+    Callback = function(Value)
+        ImmortalEnabled = Value
+    end
+})
+
+-- ═══════════════ OPTIM TAB ═══════════════
+
+OptimTab:Toggle({
+    Title = "FPS Boost",
+    Desc = "Remove visual effects for FPS",
+    Value = false,
+    Callback = function(Value)
+        if Value then
+            pcall(function()
+                for _, obj in pairs(WS:GetDescendants()) do
+                    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
+                        obj.Enabled = false
+                    end
+                end
+            end)
+        end
+    end
+})
+
+OptimTab:Toggle({
+    Title = "Disable Fog",
+    Desc = "Remove fog effect",
+    Value = false,
+    Callback = function(Value)
+        pcall(function()
+            game:GetService("Lighting").FogEnd = Value and 100000 or 10000
+        end)
+    end
+})
+
+OptimTab:Button({
+    Title = "Clear Cache",
+    Desc = "Clear temporary data",
+    Callback = function()
+        pcall(function()
+            for _, obj in pairs(WS:GetDescendants()) do
+                if obj.Name:find("Debris") then
+                    obj:Destroy()
+                end
+            end
+        end)
+    end
+})
+
+-- ═══════════════ SOCIAL TAB ═══════════════
+
+SocialTab:Paragraph({
+    Title = "About",
+    Desc = "Slax Hub - Blade Ball Script - Made by yossef",
+})
+
+SocialTab:Button({
+    Title = "Copy Discord",
+    Desc = "discord.gg/slaxhub",
+    Callback = function()
+        pcall(function()
+            if setclipboard then
+                setclipboard("discord.gg/slaxhub")
+            end
+        end)
+    end
+})
+
+SocialTab:Button({
+    Title = "Destroy UI",
+    Callback = function()
+        Window:Destroy()
+        FpsGui:Destroy()
+        BallStatsGui:Destroy()
+        SpamGui:Destroy()
+    end
+})
+
+WindUI:Notify({
+    Title = "Slax Hub",
+    Content = "Loaded successfully",
+    Duration = 5
+})
