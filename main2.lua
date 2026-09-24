@@ -1,5 +1,5 @@
 -- Blade Ball Script - Bypass & Fluent UI (Mobile Triggerbot)
--- Slax Hub v6.4 - Developed by yossef
+-- Slax Hub v6.5 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v6.4 (Mobile)",
+    SubTitle = "v6.5 (Mobile)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -42,7 +42,9 @@ local TriggerDistance = 12
 local TriggerSpeed = 5
 local TriggerCooldown = 0.15
 
+-- =========================================
 -- Token Retrieval
+-- =========================================
 local _token = nil
 for _, Function in getgc(true) do
     if type(Function) == 'function' and debug.info(Function, 's'):find('PRY', 1, true) then
@@ -70,7 +72,9 @@ local function _tokenize(_remote_uid)
     return table.concat(characters)
 end
 
+-- =========================================
 -- Hooking
+-- =========================================
 local _reverted = {}
 local _original = {}
 
@@ -106,7 +110,9 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
     end
 end
 
+-- =========================================
 -- Fire Parry
+-- =========================================
 local _parryRemote = nil
 local _parryArgs = nil
 
@@ -137,18 +143,24 @@ local function FireParryBypass()
     end
 end
 
+-- =========================================
 -- Ping
+-- =========================================
 local function GetPing()
     local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
     return math.clamp(ping, 0.02, 0.4)
 end
 
+-- =========================================
 -- Prediction
+-- =========================================
 local function PredictBallPosition(ball, frames)
     return ball.Position + (ball.AssemblyLinearVelocity * (frames * (1/60)))
 end
 
+-- =========================================
 -- Max Angle
+-- =========================================
 local function IsWithinParryAngle(playerPos, ballPos, ballVel)
     local toPlayer = (playerPos - ballPos).Unit
     local velDir = ballVel.Unit
@@ -364,28 +376,40 @@ task.spawn(function()
 end)
 
 -- =========================================
--- 📱 Floating Triggerbot Button (MOBILE TOUCH FIX)
+-- 📱 Floating Triggerbot Button (Mobile-Guaranteed)
 -- =========================================
+local function GetGuiParent()
+    local ok, hui = pcall(gethui)
+    if ok and hui then return hui end
+    local ok2, pg = pcall(function() return LocalPlayer:WaitForChild("PlayerGui", 5) end)
+    if ok2 and pg then return pg end
+    return CoreGui
+end
+
 local TriggerGui = Instance.new("ScreenGui")
-TriggerGui.Name = "SlaxTriggerBotGui"
-TriggerGui.Parent = CoreGui
+TriggerGui.Name = "SlaxTriggerBot_" .. tostring(math.random(1, 99999))
+TriggerGui.Parent = GetGuiParent()
 TriggerGui.ResetOnSpawn = false
+TriggerGui.IgnoreGuiInset = true
+TriggerGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 TriggerGui.DisplayOrder = 999
+TriggerGui.Enabled = true
 
 local TriggerBtn = Instance.new("TextButton")
 TriggerBtn.Name = "TriggerBtn"
 TriggerBtn.Parent = TriggerGui
 TriggerBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
 TriggerBtn.BorderSizePixel = 0
-TriggerBtn.Position = UDim2.new(0.05, 0, 0.5, 0)
-TriggerBtn.Size = UDim2.new(0, 150, 0, 50)  -- أكبر شوي للمس
+TriggerBtn.Position = UDim2.new(0.1, 0, 0.4, 0)
+TriggerBtn.Size = UDim2.new(0, 160, 0, 55)
 TriggerBtn.Font = Enum.Font.GothamBold
 TriggerBtn.Text = "🎯 Trigger: OFF"
 TriggerBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-TriggerBtn.TextSize = 16
+TriggerBtn.TextSize = 17
 TriggerBtn.AutoButtonColor = false
 TriggerBtn.Active = true
 TriggerBtn.Selectable = true
+TriggerBtn.Modal = false
 
 local TriggerCorner = Instance.new("UICorner")
 TriggerCorner.CornerRadius = UDim.new(0, 10)
@@ -395,9 +419,8 @@ local TriggerStroke = Instance.new("UIStroke")
 TriggerStroke.Parent = TriggerBtn
 TriggerStroke.Color = Color3.fromRGB(255, 255, 255)
 TriggerStroke.Thickness = 2
-TriggerStroke.Transparency = 0.3
 
--- دالة تغيير الشكل
+-- دالة تحديث الشكل
 local function UpdateBtnVisual()
     if TriggerbotEnabled then
         TriggerBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 100)
@@ -410,52 +433,21 @@ local function UpdateBtnVisual()
     end
 end
 
--- 📱 TouchTap - الأفضل للجوال
-local lastTap = 0
-TriggerBtn.TouchTap:Connect(function(touchPositions)
-    local now = tick()
-    if now - lastTap < 0.3 then return end  -- منع الضغط المزدوج
-    lastTap = now
-    
-    TriggerbotEnabled = not TriggerbotEnabled
-    UpdateBtnVisual()
-    
-    if TriggerToggle then
-        pcall(function()
-            TriggerToggle:SetValue(TriggerbotEnabled)
-        end)
-    end
-end)
-
--- 💻 MouseButton1Click - للكمبيوتر
-TriggerBtn.MouseButton1Click:Connect(function()
-    local now = tick()
-    if now - lastTap < 0.3 then return end
-    lastTap = now
-    
-    TriggerbotEnabled = not TriggerbotEnabled
-    UpdateBtnVisual()
-    
-    if TriggerToggle then
-        pcall(function()
-            TriggerToggle:SetValue(TriggerbotEnabled)
-        end)
-    end
-end)
-
 -- =========================================
--- 🖐️ نظام السحب (Drag) للموبايل والكمبيوتر
+-- 📱 السحب (Drag)
 -- =========================================
 local dragging = false
 local dragStart = nil
 local startPos = nil
+local dragMoved = false
 
 TriggerBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
+        dragMoved = false
         dragStart = input.Position
         startPos = TriggerBtn.Position
-        
+
         input.Changed:Connect(function()
             if input.UserInputState == Enum.UserInputState.End then
                 dragging = false
@@ -465,17 +457,35 @@ TriggerBtn.InputBegan:Connect(function(input)
 end)
 
 TriggerBtn.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        if dragging then
-            local delta = input.Position - dragStart
-            TriggerBtn.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
+    if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+        local delta = input.Position - dragStart
+        if math.abs(delta.X) > 8 or math.abs(delta.Y) > 8 then
+            dragMoved = true
         end
+        TriggerBtn.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
     end
+end)
+
+-- =========================================
+-- 🎯 التفعيل عند اللمس
+-- =========================================
+local lastToggle = 0
+
+TriggerBtn.Activated:Connect(function()
+    if dragMoved then return end
+    local now = tick()
+    if now - lastToggle < 0.4 then return end
+    lastToggle = now
+
+    TriggerbotEnabled = not TriggerbotEnabled
+    UpdateBtnVisual()
+
+    pcall(function()
+        if TriggerToggle then TriggerToggle:SetValue(TriggerbotEnabled) end
+    end)
 end)
 
 -- =========================================
@@ -596,6 +606,9 @@ Tabs.Main:AddSlider("TriggerCooldown", {
     end
 })
 
+-- =========================================
+-- Settings
+-- =========================================
 InterfaceManager:SetLibrary(Fluent)
 SaveManager:SetLibrary(Fluent)
 SaveManager:IgnoreThemeSettings()
@@ -605,7 +618,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v6.4 📱",
-    Content = "زر Triggerbot جاهز للجوال! المس الزر مرة واحدة",
+    Title = "Slax Hub v6.5 📱",
+    Content = "الزر العائم جاهز للجوال! المس الزر مرة واحدة",
     Duration = 6
 })
