@@ -1,4 +1,4 @@
--- Blade Ball Script - Slax Hub v19.7 (Smaller SPAM Button)
+-- Blade Ball Script - Slax Hub v20.0 (Powerful Auto Accuracy)
 -- Developed by yossef
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -50,10 +50,10 @@ local GLOBAL_LOCK_NEAR = 0.06
 local BALL_LOCK_DURATION = 0.5
 local MAX_PARRY_DISTANCE = 150
 local MAX_PARRY_ANGLE = 85
-
-local PRE_PARRY_BASE = 0.15
-local PRE_PARRY_FAST_BONUS = 0.25
 local SPAM_PROXIMITY_RANGE = 60
+
+-- 🎯 Auto Accuracy History
+local recentParries = {} -- لتتبع النجاح/الفشل
 
 -- =========================================
 -- Token
@@ -225,7 +225,7 @@ local function TrackBall(ball)
 
     local data = ballTracking[ball]
     if not data then
-        ballTracking[ball] = { lastVel = vel, curveScore = 0, curveActive = false }
+        ballTracking[ball] = { lastVel = vel, curveScore = 0, curveActive = false, changes = 0 }
         return 0, false
     end
 
@@ -236,6 +236,7 @@ local function TrackBall(ball)
 
     if angleChange > 3 then
         data.curveScore = data.curveScore + angleChange * 0.1
+        data.changes = data.changes + 1
     else
         data.curveScore = data.curveScore * 0.95
     end
@@ -270,48 +271,110 @@ local function GetPredictionFrames(ballSpeed)
     else return 3 end
 end
 
-local function GetPreParryWindow(ballSpeed)
-    if ballSpeed > 200 then
-        return PRE_PARRY_BASE + PRE_PARRY_FAST_BONUS * 1.2
-    elseif ballSpeed > 150 then
-        return PRE_PARRY_BASE + PRE_PARRY_FAST_BONUS
-    elseif ballSpeed > 120 then
-        return PRE_PARRY_BASE + PRE_PARRY_FAST_BONUS * 0.7
-    elseif ballSpeed > 80 then
-        return PRE_PARRY_BASE + PRE_PARRY_FAST_BONUS * 0.4
-    else
-        return PRE_PARRY_BASE
-    end
-end
-
 -- =========================================
--- Auto Accuracy
+-- 🎯 POWERFUL AUTO ACCURACY SYSTEM
 -- =========================================
-local AutoAccuracyDebug = { Value = 50, Reason = "Starting" }
+-- يحسب Accuracy ذكية حسب:
+-- 1. Ping (البينج)
+-- 2. Ball Speed (سرعة الكرة)
+-- 3. Curve (الانحناء)
+-- 4. Close Combat (القرب)
+-- 5. Distance (المسافة - كل ما قرب زادت)
+-- 6. Time Pressure (ضيق الوقت)
+-- =========================================
+local AutoAccuracyDebug = { Value = 50, Reason = "Starting", Components = {} }
 
-local function GetAutoAccuracy(ballSpeed, curveActive, isClose)
+local function GetAutoAccuracy(ballSpeed, curveActive, isClose, distance, timeToReach)
     local pingMs = GetPing() * 1000
     local base = 50
+    local reasons = {}
 
-    if pingMs < 30 then base = base - 5
-    elseif pingMs < 60 then base = base
-    elseif pingMs < 90 then base = base + 10
-    elseif pingMs < 130 then base = base + 18
-    else base = base + 25 end
+    -- 1️⃣ Ping Component (0-30)
+    local pingBonus = 0
+    if pingMs < 25 then
+        pingBonus = -10  -- ping ممتاز، ما نحتاج زيادة
+        table.insert(reasons, "Ping:" .. math.floor(pingMs) .. "ms↓")
+    elseif pingMs < 50 then
+        pingBonus = 0
+    elseif pingMs < 80 then
+        pingBonus = 12
+        table.insert(reasons, "Ping:" .. math.floor(pingMs) .. "ms")
+    elseif pingMs < 110 then
+        pingBonus = 20
+        table.insert(reasons, "Ping:" .. math.floor(pingMs) .. "ms↑")
+    elseif pingMs < 150 then
+        pingBonus = 28
+        table.insert(reasons, "Ping:" .. math.floor(pingMs) .. "ms")
+    else
+        pingBonus = 35
+        table.insert(reasons, "Ping:" .. math.floor(pingMs) .. "ms!!")
+    end
+    base = base + pingBonus
 
-    if ballSpeed > 200 then base = base + 22
-    elseif ballSpeed > 150 then base = base + 15
-    elseif ballSpeed > 100 then base = base + 10
-    elseif ballSpeed > 60 then base = base + 5 end
+    -- 2️⃣ Ball Speed Component (0-40)
+    local speedBonus = 0
+    if ballSpeed > 250 then
+        speedBonus = 40
+        table.insert(reasons, "Spd:250+!!")
+    elseif ballSpeed > 200 then
+        speedBonus = 32
+        table.insert(reasons, "Spd:200+")
+    elseif ballSpeed > 150 then
+        speedBonus = 24
+        table.insert(reasons, "Spd:150+")
+    elseif ballSpeed > 120 then
+        speedBonus = 18
+    elseif ballSpeed > 90 then
+        speedBonus = 12
+    elseif ballSpeed > 60 then
+        speedBonus = 6
+    end
+    base = base + speedBonus
 
-    if curveActive then base = base + 8 end
-    if isClose then base = base + 5 end
+    -- 3️⃣ Curve Component (0-15)
+    if curveActive then
+        base = base + 12
+        table.insert(reasons, "Curve!")
+    end
 
-    return math.clamp(math.floor(base), 1, 100)
+    -- 4️⃣ Close Combat Component (0-15)
+    if isClose then
+        base = base + 10
+        table.insert(reasons, "Close")
+    end
+
+    -- 5️⃣ Distance Component (0-20)
+    -- كل ما كانت الكرة قريبة، نحتاج صد أسرع
+    if distance < 20 then
+        base = base + 20
+        table.insert(reasons, "VeryClose!")
+    elseif distance < 35 then
+        base = base + 12
+    elseif distance < 50 then
+        base = base + 6
+    end
+
+    -- 6️⃣ Time Pressure (0-15)
+    -- لو الوقت ضيق، نصد أبكر
+    if timeToReach < 0.1 then
+        base = base + 15
+        table.insert(reasons, "Urgent!")
+    elseif timeToReach < 0.2 then
+        base = base + 8
+    end
+
+    -- Clamp
+    base = math.clamp(math.floor(base), 1, 100)
+
+    AutoAccuracyDebug.Value = base
+    AutoAccuracyDebug.Components = reasons
+    AutoAccuracyDebug.Reason = table.concat(reasons, " ")
+
+    return base
 end
 
 -- =========================================
--- Auto Parry
+-- Auto Parry (Focus on Auto Accuracy)
 -- =========================================
 local lastParryTime = 0
 local ballLocks = {}
@@ -351,6 +414,9 @@ RunService.Heartbeat:Connect(function()
     local balls = ballsFolder:GetChildren()
     local bestBall = nil
     local bestTime = math.huge
+    local bestDistance = 0
+    local bestSpeed = 0
+    local bestCurve = false
 
     for i = 1, #balls do
         local ball = balls[i]
@@ -376,52 +442,40 @@ RunService.Heartbeat:Connect(function()
         if not isTarget then continue end
 
         local curveScore, curveActive = TrackBall(ball)
-        local curveBonus = curveActive and math.min(0.25, curveScore * 0.05) or 0
-
         local timeToReach = predictedDistance / speed
 
-        local usedAccuracy
-        if AutoAccuracyEnabled then
-            usedAccuracy = GetAutoAccuracy(speed, curveActive, NearPlayerCached)
-            AutoAccuracyDebug.Value = usedAccuracy
-            AutoAccuracyDebug.Reason = string.format("Ping:%dms Speed:%d",
-                math.floor(GetPing() * 1000), math.floor(speed))
-        else
-            usedAccuracy = ParryAccuracyValue
-        end
-
-        local accuracyFactor = (usedAccuracy / 100) * 0.3
-
-        local closeBonus = 0
-        if NearPlayerCached then
-            if ClosestPlayerDist < 15 then closeBonus = 0.10
-            elseif ClosestPlayerDist < 25 then closeBonus = 0.06
-            else closeBonus = 0.03 end
-        end
-
-        local preParryWindow = GetPreParryWindow(speed)
-
-        local timeWindow = ping + 0.30 + accuracyFactor + curveBonus + closeBonus + preParryWindow
-
-        if (timeToReach <= timeWindow) and (timeToReach >= -0.1) then
-            if timeToReach < bestTime then
-                bestTime = timeToReach
-                bestBall = ball
-            end
-        end
-
-        if predictedDistance <= 30 and speed > 150 then
-            if timeToReach < bestTime then
-                bestTime = timeToReach
-                bestBall = ball
-            end
+        if timeToReach < bestTime then
+            bestTime = timeToReach
+            bestBall = ball
+            bestDistance = predictedDistance
+            bestSpeed = speed
+            bestCurve = curveActive
         end
     end
 
     if bestBall then
-        lastParryTime = now
-        ballLocks[bestBall] = now + BALL_LOCK_DURATION
-        FireParry()
+        -- 🎯 حساب Auto Accuracy القوية
+        local usedAccuracy
+        if AutoAccuracyEnabled then
+            usedAccuracy = GetAutoAccuracy(bestSpeed, bestCurve, NearPlayerCached, bestDistance, bestTime)
+        else
+            usedAccuracy = ParryAccuracyValue
+        end
+
+        local accuracyFactor = (usedAccuracy / 100) * 0.4  -- ✅ زدت التأثير (0.4 بدل 0.3)
+        local timeWindow = ping + 0.20 + accuracyFactor  -- ✅ قللت الأساس لتعتمد أكثر على Accuracy
+
+        -- 🎯 نافذة الصد
+        if bestTime <= timeWindow and bestTime >= -0.1 then
+            lastParryTime = now
+            ballLocks[bestBall] = now + BALL_LOCK_DURATION
+            FireParry()
+        elseif bestDistance <= 25 then
+            -- صد طارئ للكرة القريبة
+            lastParryTime = now
+            ballLocks[bestBall] = now + BALL_LOCK_DURATION
+            FireParry()
+        end
     end
 end)
 
@@ -482,7 +536,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- =========================================
--- MANUAL SPAM TOGGLE - Continuous Spam Loop
+-- MANUAL SPAM TOGGLE
 -- =========================================
 local lastManualSpamTime = 0
 
@@ -516,7 +570,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- =========================================
--- 🌸💜 FLOATING MANUAL SPAM TOGGLE BUTTON (SMALLER)
+-- 🌸💜 FLOATING MANUAL SPAM BUTTON
 -- =========================================
 local function GetGuiParent()
     local ok, hui = pcall(gethui)
@@ -541,7 +595,6 @@ ManualGui.ResetOnSpawn = false
 ManualGui.IgnoreGuiInset = true
 ManualGui.DisplayOrder = 99999
 
--- ✅ صغير: 120x50 بدل 200x80
 local ManualBtn = Instance.new("TextButton")
 ManualBtn.Name = "ManualSpamBtn"
 ManualBtn.Parent = ManualGui
@@ -549,24 +602,22 @@ ManualBtn.BackgroundColor3 = Color3.fromRGB(18, 14, 28)
 ManualBtn.BackgroundTransparency = 0.15
 ManualBtn.BorderSizePixel = 0
 ManualBtn.Position = UDim2.new(0.35, 0, 0.42, 0)
-ManualBtn.Size = UDim2.new(0, 120, 0, 50)  -- ✅ أصغر
+ManualBtn.Size = UDim2.new(0, 90, 0, 38)
 ManualBtn.Font = Enum.Font.GothamBold
 ManualBtn.Text = "SPAM: OFF"
 ManualBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
-ManualBtn.TextSize = 15  -- ✅ أصغر شوي
+ManualBtn.TextSize = 12
 ManualBtn.AutoButtonColor = false
 ManualBtn.Active = true
 ManualBtn.Selectable = true
 
--- زوايا دائرية
 local ManualCorner = Instance.new("UICorner")
-ManualCorner.CornerRadius = UDim.new(0, 12)  -- ✅ أصغر
+ManualCorner.CornerRadius = UDim.new(0, 9)
 ManualCorner.Parent = ManualBtn
 
--- 🌸💜 الحدود بتدرج وردي-بنفسجي
 local ManualStroke = Instance.new("UIStroke")
 ManualStroke.Parent = ManualBtn
-ManualStroke.Thickness = 2
+ManualStroke.Thickness = 1.5
 ManualStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 local StrokeGradient = Instance.new("UIGradient")
@@ -579,11 +630,10 @@ StrokeGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(1.00, Color3.fromRGB(140, 100, 255))
 })
 
--- توهج خارجي (Glow)
 local ManualGlow = Instance.new("UIStroke")
 ManualGlow.Parent = ManualBtn
-ManualGlow.Thickness = 6  -- ✅ أصغر
-ManualGlow.Transparency = 0.75
+ManualGlow.Thickness = 4
+ManualGlow.Transparency = 0.7
 ManualGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 local GlowGradient = Instance.new("UIGradient")
@@ -595,7 +645,6 @@ GlowGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(1.00, Color3.fromRGB(150, 110, 255))
 })
 
--- تدرج خفيف على الخلفية
 local BgGradient = Instance.new("UIGradient")
 BgGradient.Parent = ManualBtn
 BgGradient.Rotation = 45
@@ -609,7 +658,6 @@ BgGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
 })
 
--- 🎨 Update Visual based on Toggle State
 local function UpdateManualBtnVisual()
     if ManualSpamEnabled then
         ManualBtn.Text = "SPAM: ON"
@@ -652,7 +700,6 @@ local function UpdateManualBtnVisual()
     end
 end
 
--- 🖐️ Drag System
 local dragging, dragStart, startPos, dragMoved
 local lastTap = 0
 
@@ -668,7 +715,7 @@ end)
 ManualBtn.InputChanged:Connect(function(input)
     if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
         local delta = input.Position - dragStart
-        if math.abs(delta.X) > 8 or math.abs(delta.Y) > 8 then
+        if math.abs(delta.X) > 6 or math.abs(delta.Y) > 6 then
             dragMoved = true
         end
         ManualBtn.Position = UDim2.new(
@@ -684,7 +731,6 @@ ManualBtn.InputEnded:Connect(function(input)
     end
 end)
 
--- 🎯 Toggle Trigger
 local function ToggleManualSpam()
     ManualSpamEnabled = not ManualSpamEnabled
     UpdateManualBtnVisual()
@@ -708,7 +754,6 @@ ManualBtn.TouchTap:Connect(function()
     end
 end)
 
--- ⌨️ E key toggles too
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode.E then
@@ -717,7 +762,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 
 -- =========================================
--- 📊 ACCURACY DISPLAY
+-- 📊 ADVANCED ACCURACY DISPLAY
 -- =========================================
 local AccGui = Instance.new("ScreenGui")
 AccGui.Name = "SlaxAccDisplay_" .. math.random(1, 99999)
@@ -732,12 +777,15 @@ AccLabel.Parent = AccGui
 AccLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
 AccLabel.BackgroundTransparency = 0.3
 AccLabel.BorderSizePixel = 0
-AccLabel.Position = UDim2.new(0.72, 0, 0.02, 0)
-AccLabel.Size = UDim2.new(0, 180, 0, 55)
+AccLabel.Position = UDim2.new(0.68, 0, 0.02, 0)
+AccLabel.Size = UDim2.new(0, 200, 0, 70)
 AccLabel.Font = Enum.Font.GothamBold
 AccLabel.Text = "🎯 Accuracy: 50"
 AccLabel.TextColor3 = Color3.fromRGB(255, 180, 230)
-AccLabel.TextSize = 13
+AccLabel.TextSize = 11
+AccLabel.TextWrapped = true
+AccLabel.TextXAlignment = Enum.TextXAlignment.Center
+AccLabel.TextYAlignment = Enum.TextYAlignment.Center
 
 local AccCorner = Instance.new("UICorner")
 AccCorner.CornerRadius = UDim.new(0, 10)
@@ -746,15 +794,28 @@ AccCorner.Parent = AccLabel
 local AccStroke = Instance.new("UIStroke")
 AccStroke.Parent = AccLabel
 AccStroke.Color = Color3.fromRGB(255, 180, 230)
-AccStroke.Thickness = 1.5
+AccStroke.Thickness = 1.2
 
 task.spawn(function()
-    while task.wait(0.2) do
+    while task.wait(0.15) do
         if AutoParryEnabled and AutoAccuracyEnabled then
-            AccLabel.Text = string.format("🎯 AUTO: %d\n%s",
-                AutoAccuracyDebug.Value, AutoAccuracyDebug.Reason)
-            AccLabel.TextColor3 = Color3.fromRGB(255, 180, 230)
-            AccStroke.Color = Color3.fromRGB(255, 180, 230)
+            local value = AutoAccuracyDebug.Value
+            -- 🎨 لون حسب القيمة
+            local color
+            if value < 30 then
+                color = Color3.fromRGB(100, 255, 100)     -- أخضر (perfect timing)
+            elseif value < 60 then
+                color = Color3.fromRGB(255, 220, 100)     -- أصفر (balanced)
+            elseif value < 85 then
+                color = Color3.fromRGB(255, 150, 100)     -- برتقالي (early)
+            else
+                color = Color3.fromRGB(255, 100, 100)     -- أحمر (very early)
+            end
+
+            AccLabel.Text = string.format("🎯 ACC: %d\n%s",
+                value, AutoAccuracyDebug.Reason)
+            AccLabel.TextColor3 = color
+            AccStroke.Color = color
         elseif AutoParryEnabled then
             AccLabel.Text = "🎯 MANUAL: " .. ParryAccuracyValue
             AccLabel.TextColor3 = Color3.fromRGB(255, 200, 80)
@@ -771,8 +832,8 @@ end)
 -- UI Controls
 -- =========================================
 MainTab:Toggle({
-    Title = "⚔️ Auto Parry (Pre-Parry)",
-    Desc = "Parries BEFORE ball arrives",
+    Title = "⚔️ Auto Parry",
+    Desc = "Smart parry with powerful Auto Accuracy",
     Value = false,
     Callback = function(Value)
         AutoParryEnabled = Value
@@ -784,8 +845,8 @@ MainTab:Toggle({
 })
 
 MainTab:Toggle({
-    Title = "🎯 Auto Accuracy",
-    Desc = "Auto-adjusts based on ping, speed, curve",
+    Title = "🎯 Auto Accuracy (Powerful)",
+    Desc = "Smart accuracy based on ping, speed, curve, distance",
     Value = true,
     Callback = function(Value)
         AutoAccuracyEnabled = Value
@@ -824,7 +885,7 @@ SettingsTab:Button({
 })
 
 WindUI:Notify({
-    Title = "Slax Hub v19.7 🌸💜",
-    Content = "Smaller SPAM button - Clean look",
+    Title = "Slax Hub v20.0 🎯",
+    Content = "Powerful Auto Accuracy - Pre-Parry removed",
     Duration = 6
 })
