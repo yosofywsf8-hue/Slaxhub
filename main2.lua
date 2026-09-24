@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (BEAST MODE)
--- Slax Hub v8.0 - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (Beast Mode + Fixed Sync)
+-- Slax Hub v8.1 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v8.0 (BEAST MODE)",
+    SubTitle = "v8.1 (BEAST MODE)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -32,7 +32,6 @@ local LocalPlayer = Players.LocalPlayer
 local AutoParryEnabled = false
 local ParryAccuracyValue = 20
 
--- 🎯 Triggerbot
 local TriggerbotEnabled = false
 
 -- =========================================
@@ -145,7 +144,7 @@ local function GetPing()
 end
 
 -- =========================================
--- 🎯 TRIGGERBOT LOOP (MAX POWER)
+-- 🎯 TRIGGERBOT LOOP
 -- =========================================
 task.spawn(function()
     local lastTriggerTime = 0
@@ -191,8 +190,8 @@ end)
 task.spawn(function()
     local lastParryTime = 0
     local globalLockUntil = 0
-    local parriedBalls = {} -- {[ball] = time}
-    local returnedBalls = {} -- لتتبع الكرات المرجعة
+    local parriedBalls = {}
+    local returnedBalls = {}
 
     while task.wait() do
         if not AutoParryEnabled then
@@ -205,7 +204,6 @@ task.spawn(function()
         local now = tick()
         local currentPing = GetPing()
 
-        -- ⛔ قفل عالمي قصير جداً (0.08s فقط = أقصى عدوانية)
         if now < globalLockUntil then continue end
 
         local character = LocalPlayer.Character
@@ -217,17 +215,13 @@ task.spawn(function()
         local ballsFolder = workspace:FindFirstChild("Balls")
         if not ballsFolder then continue end
 
-        -- ✅ نافذة صد واسعة جداً (Aggressive)
-        -- معكوس: 100 = مبكر جداً | 1 = متأخر مثالي
         local convertedAccuracy = 0.08 + ((ParryAccuracyValue / 100) * 0.42)
         local adjustedAccuracy = convertedAccuracy + (currentPing * 0.9)
-        -- ✅ كولداون عالمي قصير جداً
         local globalLockDuration = 0.08 + (currentPing * 0.2)
 
         local bestBall = nil
         local bestTime = math.huge
 
-        -- تنظيف
         for ball, t in pairs(parriedBalls) do
             if not ball.Parent or (now - t) > 2.5 then
                 parriedBalls[ball] = nil
@@ -247,9 +241,7 @@ task.spawn(function()
             local dot = velocity.Unit:Dot(toPlayer)
             local distance = (playerPos - ballPos).Magnitude
 
-            -- 🔄 فحص الكرة المصدودة
             if parriedBalls[ball] then
-                -- هل الكرة رجعت؟ (اتجاه انعكس + قريبة)
                 local returned = false
                 if dot > 0.5 and speed > 15 then
                     returnedBalls[ball] = (returnedBalls[ball] or 0) + 1
@@ -263,28 +255,21 @@ task.spawn(function()
                 if not returned then
                     continue
                 else
-                    -- الكرة رجعت → نصدها
                     parriedBalls[ball] = nil
                     returnedBalls[ball] = nil
                 end
             end
 
-            -- ✅ شرط القدوم: dot > 0 (متساهل جداً - أي كرة جاية)
             if dot <= 0 then continue end
-            -- ✅ لا يوجد حد للمسافة (نصد أي كرة جاية)
 
-            -- ✅ تحقق من target (متساهل)
             local targetAttr = ball:GetAttribute("target")
             local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
             if not isTarget then continue end
 
-            -- ✅ لا زاوية (نصد من أي زاوية)
-            -- ✅ تنبؤ بسيط (فرمتين)
             local predictedPos = ballPos + (velocity * (2/60))
             local predictedDistance = (playerPos - predictedPos).Magnitude
             local timeToReach = predictedDistance / speed
 
-            -- ✅ نافذة واسعة جداً
             if timeToReach <= adjustedAccuracy and timeToReach > -0.05 then
                 if timeToReach < bestTime then
                     bestTime = timeToReach
@@ -293,7 +278,6 @@ task.spawn(function()
             end
         end
 
-        -- 🚀 صد فوري
         if bestBall then
             globalLockUntil = now + globalLockDuration
             lastParryTime = now
@@ -305,7 +289,7 @@ task.spawn(function()
 end)
 
 -- =========================================
--- 📱 Floating Triggerbot Button
+-- 📱 Floating Triggerbot Button (FIXED)
 -- =========================================
 local function GetGuiParent()
     local ok, hui = pcall(gethui)
@@ -349,7 +333,10 @@ TriggerStroke.Parent = TriggerBtn
 TriggerStroke.Color = Color3.fromRGB(255, 255, 255)
 TriggerStroke.Thickness = 2
 
-local function UpdateBtnVisual()
+-- ✅ دالة تحديث الزر + مزامنة مع Toggle
+local TriggerToggle = nil  -- يتم تعيينه لاحقاً
+
+local function UpdateBtnVisual(skipToggle)
     if TriggerbotEnabled then
         TriggerBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 100)
         TriggerBtn.Text = "🎯 Trigger: ON"
@@ -359,55 +346,59 @@ local function UpdateBtnVisual()
         TriggerBtn.Text = "🎯 Trigger: OFF"
         TriggerStroke.Color = Color3.fromRGB(255, 255, 255)
     end
+
+    -- ✅ مزامنة الـ Toggle في القائمة
+    if not skipToggle and TriggerToggle then
+        pcall(function()
+            TriggerToggle:SetValue(TriggerbotEnabled)
+        end)
+    end
 end
 
-local dragging = false
-local dragStart = nil
-local startPos = nil
+-- =========================================
+-- 🖐️ نظام السحب + الضغط (بدون Double Click)
+-- =========================================
+local pressing = false
+local pressStart = nil
+local pressStartPos = nil
 local dragMoved = false
+local lastToggleTime = 0
 
 TriggerBtn.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
+        pressing = true
         dragMoved = false
-        dragStart = input.Position
-        startPos = TriggerBtn.Position
-
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
+        pressStart = input.Position
+        pressStartPos = TriggerBtn.Position
     end
 end)
 
 TriggerBtn.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
-        local delta = input.Position - dragStart
+    if pressing and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+        local delta = input.Position - pressStart
         if math.abs(delta.X) > 8 or math.abs(delta.Y) > 8 then
             dragMoved = true
         end
         TriggerBtn.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + delta.X,
-            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            pressStartPos.X.Scale, pressStartPos.X.Offset + delta.X,
+            pressStartPos.Y.Scale, pressStartPos.Y.Offset + delta.Y
         )
     end
 end)
 
-local lastToggle = 0
-
-TriggerBtn.Activated:Connect(function()
-    if dragMoved then return end
-    local now = tick()
-    if now - lastToggle < 0.4 then return end
-    lastToggle = now
-
-    TriggerbotEnabled = not TriggerbotEnabled
-    UpdateBtnVisual()
-
-    pcall(function()
-        if TriggerToggle then TriggerToggle:SetValue(TriggerbotEnabled) end
-    end)
+TriggerBtn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if pressing and not dragMoved then
+            local now = tick()
+            -- ✅ debounce قوي: 0.6 ثانية
+            if now - lastToggleTime > 0.6 then
+                lastToggleTime = now
+                TriggerbotEnabled = not TriggerbotEnabled
+                UpdateBtnVisual(false)
+            end
+        end
+        pressing = false
+    end
 end)
 
 -- =========================================
@@ -430,10 +421,11 @@ Tabs.Main:AddSlider("ParryAccuracy", {
     end
 })
 
-local TriggerToggle = Tabs.Main:AddToggle("Triggerbot", {Title = "🎯 Triggerbot (MAX POWER)", Default = false })
+-- ✅ Triggerbot Toggle - يزامن مع الزر العائم
+TriggerToggle = Tabs.Main:AddToggle("Triggerbot", {Title = "🎯 Triggerbot (MAX POWER)", Default = false })
 TriggerToggle:OnChanged(function(Value)
     TriggerbotEnabled = Value
-    UpdateBtnVisual()
+    UpdateBtnVisual(true) -- true = لا تزامن مع Toggle (لأنه هو المصدر)
 end)
 
 -- =========================================
@@ -448,7 +440,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v8.0 🔥",
-    Content = "BEAST MODE جاهز! Auto Parry بأقصى قوة ممكنة",
+    Title = "Slax Hub v8.1 🔥",
+    Content = "BEAST MODE + مزامنة الزر جاهزة!",
     Duration = 6
 })
