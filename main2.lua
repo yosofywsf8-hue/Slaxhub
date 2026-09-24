@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (Reversed Accuracy)
--- Slax Hub - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (God-Tier Auto Parry)
+-- Slax Hub v5.0 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v3.7 (Reversed Accuracy)",
+    SubTitle = "v5.0 (God-Tier Auto Parry)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -20,7 +20,7 @@ local Tabs = {
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
--- Services & References
+-- Services
 local replicated_storage = cloneref(game:GetService('ReplicatedStorage'))
 local workspace = cloneref(game:GetService('Workspace'))
 local Stats = cloneref(game:GetService('Stats'))
@@ -30,9 +30,13 @@ local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
-local ParryAccuracyValue = 20 -- افتراضي: صد متأخر (Perfect)
+local ParryAccuracyValue = 20
+local MaxParryAngle = 45       -- زاوية قصوى للصد (بالدرجات)
+local PredictionFrames = 3     -- عدد إطارات التنبؤ
 
+-- =========================================
 -- Token Retrieval Logic
+-- =========================================
 local _token = nil
 for _, Function in getgc(true) do
     if type(Function) == 'function' and debug.info(Function, 's'):find('PRY', 1, true) then
@@ -51,7 +55,6 @@ local function _tokenize(_remote_uid)
     local time = tostring(math.floor(workspace:GetServerTimeNow() * 100))
     local key = _token(_remote_uid, 'TIME')
     local characters = table.create(#time)
-
     for index = 1, #time do
         characters[index] = string.char(bit32.bxor(
             (string.byte(time, index) + index) % 256,
@@ -61,7 +64,9 @@ local function _tokenize(_remote_uid)
     return table.concat(characters)
 end
 
+-- =========================================
 -- Hooking Logic
+-- =========================================
 local _reverted = {}
 local _original = {}
 
@@ -74,7 +79,6 @@ local function _hook(remote)
         _original[getrawmetatable(remote)] = true
         local _meta = getrawmetatable(remote)
         setreadonly(_meta, false)
-
         local _old = _meta.__index
         _meta.__index = function(self, key)
             if (key == 'FireServer' and self:IsA('RemoteEvent')) or (key == 'InvokeServer' and self:IsA('RemoteFunction')) then
@@ -98,7 +102,9 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
     end
 end
 
--- Fire Parry Remote (SINGLE REMOTE ONLY)
+-- =========================================
+-- Fire Parry (Single Remote)
+-- =========================================
 local _parryRemote = nil
 local _parryArgs = nil
 
@@ -110,7 +116,6 @@ local function FireParryBypass()
             break
         end
     end
-
     if not _parryRemote or not _parryArgs then return end
 
     local _packet = {
@@ -123,7 +128,6 @@ local function FireParryBypass()
         {0, 0},
         false
     }
-
     if _parryRemote:IsA('RemoteEvent') then
         _parryRemote:FireServer(unpack(_packet))
     elseif _parryRemote:IsA('RemoteFunction') then
@@ -131,100 +135,159 @@ local function FireParryBypass()
     end
 end
 
--- Get Current Ping
+-- =========================================
+-- Ping
+-- =========================================
 local function GetPing()
     local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
     return math.clamp(ping, 0.02, 0.4)
 end
 
 -- =========================================
--- Auto Parry Loop (Reversed Accuracy)
+-- 🧠 Prediction System (مستوحى من Soluna Hub)
+-- =========================================
+local function PredictBallPosition(ball, frames)
+    local pos = ball.Position
+    local vel = ball.AssemblyLinearVelocity
+    return pos + (vel * (frames * (1/60)))
+end
+
+-- =========================================
+-- 📐 Max Parry Angle Checker
+-- =========================================
+local function IsWithinParryAngle(playerPos, ballPos, ballVel)
+    local toPlayer = (playerPos - ballPos).Unit
+    local velDir = ballVel.Unit
+    local dot = velDir:Dot(toPlayer)
+    -- الزاوية بين اتجاه الكرة واتجاه اللاعب
+    local angle = math.deg(math.acos(math.clamp(dot, -1, 1)))
+    return angle <= MaxParryAngle
+end
+
+-- =========================================
+-- 🔒 Auto Parry Loop (God-Tier)
 -- =========================================
 task.spawn(function()
     local lastParryTime = 0
-    local parriedBalls = {} -- {[ball] = parryTime}
+    local globalLockUntil = 0
+    local parriedBallNames = {}
+    local parriedBallInstances = {}
+    local ballReturnTracker = {}  -- يتتبع الكرات اللي رجعت
 
     while task.wait() do
-        if AutoParryEnabled then
-            local character = LocalPlayer.Character
-            if not character then continue end
-            local hrp = character:FindFirstChild("HumanoidRootPart")
-            if not hrp then continue end
+        if not AutoParryEnabled then
+            parriedBallNames = {}
+            parriedBallInstances = {}
+            globalLockUntil = 0
+            ballReturnTracker = {}
+            continue
+        end
 
-            local playerPos = hrp.Position
-            local ballsFolder = workspace:FindFirstChild("Balls")
-            if not ballsFolder then continue end
+        local now = tick()
+        local currentPing = GetPing()
 
-            local currentPing = GetPing()
-            -- ✅ معكوس: 100 = صد مبكر (نافذة واسعة) | 1 = صد متأخر (نافذة ضيقة/مثالية)
-            local convertedAccuracy = 0.10 + ((ParryAccuracyValue / 100) * 0.45)
-            local adjustedAccuracy = convertedAccuracy + (currentPing * 0.85)
-            local safeCooldown = 0.20 + (currentPing * 0.5)
+        -- ⛔ Global Lock
+        if now < globalLockUntil then continue end
 
-            local bestBall = nil
-            local bestTime = math.huge
+        local character = LocalPlayer.Character
+        if not character then continue end
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
 
-            for _, ball in ipairs(ballsFolder:GetChildren()) do
-                if not ball:IsA("BasePart") then continue end
-                local realAttr = ball:GetAttribute("realBall")
-                if realAttr == false then continue end
+        local playerPos = hrp.Position
+        local ballsFolder = workspace:FindFirstChild("Balls")
+        if not ballsFolder then continue end
 
-                local ballPos = ball.Position
-                local velocity = ball.AssemblyLinearVelocity
-                local speed = velocity.Magnitude
-                if speed < 1 then continue end
+        -- معكوس: 100 = مبكر | 1 = متأخر مثالي
+        local convertedAccuracy = 0.10 + ((ParryAccuracyValue / 100) * 0.45)
+        local adjustedAccuracy = convertedAccuracy + (currentPing * 0.85)
+        local globalLockDuration = 0.45 + (currentPing * 0.7)
 
-                local directionToPlayer = (playerPos - ballPos).Unit
-                local dotProduct = velocity:Dot(directionToPlayer)
-                local distance = (playerPos - ballPos).Magnitude
+        local bestBall = nil
+        local bestTime = math.huge
 
-                local targetAttr = ball:GetAttribute("target")
-                local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
+        for _, ball in ipairs(ballsFolder:GetChildren()) do
+            if not ball:IsA("BasePart") then continue end
+            local realAttr = ball:GetAttribute("realBall")
+            if realAttr == false then continue end
 
-                -- الشرط: الكرة لازم تكون جاية نحوي بوضوح
-                local isComingToMe = dotProduct > 0.3 and distance < 60
-
-                -- فك القفل: فقط لما الكرة تبتعد بوضوح أو مر 2 ثانية
-                if parriedBalls[ball] then
-                    if dotProduct < -0.3 or tick() - parriedBalls[ball] > 2 then
-                        parriedBalls[ball] = nil
-                    end
-                end
-
-                if isComingToMe and isTarget and not parriedBalls[ball] then
-                    local timeToReach = distance / speed
-                    -- نافذة موجبة فقط (منع الصد المزدوج)
-                    if timeToReach <= adjustedAccuracy and timeToReach > 0 then
-                        if timeToReach < bestTime then
-                            bestTime = timeToReach
-                            bestBall = ball
-                        end
-                    end
+            -- 🔒 Instance Lock
+            if parriedBallInstances[ball] and (now - parriedBallInstances[ball]) < 2 then
+                -- 🔄 Ball Return Detection: لو الكرة انعكست، نصدها
+                local vel = ball.AssemblyLinearVelocity
+                local toPlayer = (playerPos - ball.Position).Unit
+                local dot = vel.Unit:Dot(toPlayer)
+                if dot > 0.5 and vel.Magnitude > 5 then
+                    -- الكرة رجعت لنا! نصدها
+                    parriedBallInstances[ball] = nil
+                    parriedBallNames[ball.Name] = nil
+                else
+                    continue
                 end
             end
 
-            if bestBall then
-                if tick() - lastParryTime >= safeCooldown then
-                    lastParryTime = tick()
-                    parriedBalls[bestBall] = tick()
-                    FireParryBypass()
+            -- 🔒 Name Lock
+            local lockTime = parriedBallNames[ball.Name]
+            if lockTime and (now - lockTime) < 2.5 then continue end
+
+            local ballPos = ball.Position
+            local velocity = ball.AssemblyLinearVelocity
+            local speed = velocity.Magnitude
+            if speed < 5 then continue end
+
+            -- 🧠 Prediction: نتنبأ بمكان الكرة بعد بضعة إطارات
+            local predictedPos = PredictBallPosition(ball, PredictionFrames)
+            local distance = (playerPos - predictedPos).Magnitude
+
+            -- 📐 Max Parry Angle Check
+            if not IsWithinParryAngle(playerPos, ballPos, velocity) then continue end
+
+            -- Target check
+            local targetAttr = ball:GetAttribute("target")
+            local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
+            if not isTarget then continue end
+
+            -- حساب وقت الوصول مع التنبؤ
+            local timeToReach = distance / speed
+
+            if timeToReach <= adjustedAccuracy and timeToReach > 0 then
+                if timeToReach < bestTime then
+                    bestTime = timeToReach
+                    bestBall = ball
                 end
             end
-        else
-            parriedBalls = {}
+        end
+
+        -- ⚡ صد مرة واحدة + تفعيل كل الأقفال
+        if bestBall then
+            globalLockUntil = now + globalLockDuration
+            lastParryTime = now
+            parriedBallNames[bestBall.Name] = now
+            parriedBallInstances[bestBall] = now
+            FireParryBypass()
+        end
+
+        -- تنظيف
+        for name, t in pairs(parriedBallNames) do
+            if now - t > 3 then parriedBallNames[name] = nil end
+        end
+        for inst, t in pairs(parriedBallInstances) do
+            if now - t > 3 then parriedBallInstances[inst] = nil end
         end
     end
 end)
 
+-- =========================================
 -- UI Controls
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry", Default = false })
+-- =========================================
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (God-Tier)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
 Tabs.Main:AddSlider("ParryAccuracy", {
     Title = "Parry Accuracy",
-    Description = "100 = صد مبكر | 1 = صد متأخر مثالي (Perfect) - يُنصح بـ 5-20",
+    Description = "100 = صد مبكر | 1 = صد متأخر مثالي (Perfect) - يُنصح بـ 15-25",
     Default = 20,
     Min = 1,
     Max = 100,
@@ -234,7 +297,33 @@ Tabs.Main:AddSlider("ParryAccuracy", {
     end
 })
 
--- UI Settings Manager
+Tabs.Main:AddSlider("MaxParryAngle", {
+    Title = "Max Parry Angle (°)",
+    Description = "أقصى زاوية للصد - يُنصح بـ 40-60",
+    Default = 45,
+    Min = 10,
+    Max = 90,
+    Rounding = 0,
+    Callback = function(Value)
+        MaxParryAngle = Value
+    end
+})
+
+Tabs.Main:AddSlider("PredictionFrames", {
+    Title = "Prediction Frames",
+    Description = "عدد إطارات التنبؤ - يُنصح بـ 2-4",
+    Default = 3,
+    Min = 0,
+    Max = 6,
+    Rounding = 0,
+    Callback = function(Value)
+        PredictionFrames = Value
+    end
+})
+
+-- =========================================
+-- Settings
+-- =========================================
 InterfaceManager:SetLibrary(Fluent)
 SaveManager:SetLibrary(Fluent)
 SaveManager:IgnoreThemeSettings()
@@ -244,7 +333,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub Loaded ✅",
-    Content = "تم عكس الـ Accuracy! 100 = مبكر | 1 = متأخر مثالي",
-    Duration = 5
+    Title = "Slax Hub v5.0 👑",
+    Content = "God-Tier Auto Parry جاهز! Prediction + Max Angle + Return Detection",
+    Duration = 6
 })
