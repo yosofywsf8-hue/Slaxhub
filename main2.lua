@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (Single Fire Auto Parry)
+-- Blade Ball Script - Bypass & Fluent UI (True Single Fire)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v3.2 (Single Fire Fix)",
+    SubTitle = "v3.3 (True Single Fire)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -27,7 +27,6 @@ local Stats = cloneref(game:GetService('Stats'))
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
-local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
@@ -62,7 +61,7 @@ local function _tokenize(_remote_uid)
     return table.concat(characters)
 end
 
--- Hooking Logic for Remote Capture
+-- Hooking Logic
 local _reverted = {}
 local _original = {}
 
@@ -99,29 +98,41 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
     end
 end
 
--- Fire Parry Remote
+-- Fire Parry Remote (SINGLE REMOTE ONLY - FIX)
+local _parryRemote = nil
+local _parryArgs = nil
+
 local function FireParryBypass()
-    for _remote, _origArgs in pairs(_reverted) do
-        local _packet = {
-            _origArgs[1],
-            _origArgs[2],
-            _tokenize(_origArgs[2]),
-            0.5,
-            workspace.CurrentCamera.CFrame,
-            {},
-            {0, 0},
-            false
-        }
-        
-        if _remote:IsA('RemoteEvent') then
-            _remote:FireServer(unpack(_packet))
-        elseif _remote:IsA('RemoteFunction') then
-            _remote:InvokeServer(unpack(_packet))
+    -- نحدد الريموت الصحيح مرة واحدة فقط
+    if not _parryRemote then
+        for _remote, _origArgs in pairs(_reverted) do
+            _parryRemote = _remote
+            _parryArgs = _origArgs
+            break
         end
+    end
+
+    if not _parryRemote or not _parryArgs then return end
+
+    local _packet = {
+        _parryArgs[1],
+        _parryArgs[2],
+        _tokenize(_parryArgs[2]),
+        0.5,
+        workspace.CurrentCamera.CFrame,
+        {},
+        {0, 0},
+        false
+    }
+
+    if _parryRemote:IsA('RemoteEvent') then
+        _parryRemote:FireServer(unpack(_packet))
+    elseif _parryRemote:IsA('RemoteFunction') then
+        _parryRemote:InvokeServer(unpack(_packet))
     end
 end
 
--- Get Current Ping in Seconds
+-- Get Current Ping
 local function GetPing()
     local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
     return math.clamp(ping, 0.02, 0.4)
@@ -150,7 +161,6 @@ task.spawn(function()
             local adjustedAccuracy = convertedAccuracy + (currentPing * 0.85)
             local safeCooldown = 0.15 + (currentPing * 0.4)
 
-            -- نجمع أفضل كرة (الأقرب والأسرع نحوي) بدل ما نصد لكل كرة
             local bestBall = nil
             local bestTime = math.huge
 
@@ -184,7 +194,6 @@ task.spawn(function()
                 end
             end
 
-            -- نصد مرة واحدة فقط للكرة الأفضل
             if bestBall and bestBall ~= lastParriedBall then
                 if tick() - lastParryTime >= safeCooldown then
                     lastParryTime = tick()
@@ -193,7 +202,6 @@ task.spawn(function()
                 end
             end
 
-            -- نصفر lastParriedBall لما الكرة تختفي
             if bestBall == nil then
                 lastParriedBall = nil
             end
@@ -222,7 +230,7 @@ Tabs.Main:AddSlider("ParryAccuracy", {
 })
 
 -- =========================================
--- Manual Spam UI Button (Sharp Edges Rectangular)
+-- Manual Spam UI Button
 -- =========================================
 local SpamGui = Instance.new("ScreenGui")
 SpamGui.Name = "SlaxSpamGui"
@@ -248,7 +256,6 @@ UIStroke.Color = Color3.fromRGB(255, 255, 255)
 UIStroke.Thickness = 1.5
 UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
--- نظام سحب الزر على الشاشة (Drag)
 local dragging, dragInput, dragStart, startPos
 SpamBtn.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -276,7 +283,6 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- تنفيذ الـ Manual Spam
 local function TriggerSpam()
     task.spawn(function()
         for i = 1, 5 do
@@ -307,6 +313,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded ✅",
-    Content = "Auto Parry (Single Fire) جاهز! لا مزيد من الصد المزدوج",
+    Content = "الآن الصد مرة واحدة فقط! (True Single Fire)",
     Duration = 5
 })
