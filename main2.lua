@@ -1,339 +1,293 @@
--- Blade Ball Script - Bypass & Fluent UI (God-Tier Auto Parry)
--- Slax Hub v5.0 - Developed by yossef
+-- =========================================
+-- 🎯 PREMIUM FLOATING TRIGGERBOT BUTTON
+-- =========================================
+local TriggerGui = Instance.new("ScreenGui")
+TriggerGui.Name = "SlaxTriggerBotGui"
+TriggerGui.Parent = CoreGui
+TriggerGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+TriggerGui.ResetOnSpawn = false
+TriggerGui.IgnoreGuiInset = true
 
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+-- الحاوية الرئيسية (شفافة - للسحب والظل)
+local BtnContainer = Instance.new("Frame")
+BtnContainer.Name = "Container"
+BtnContainer.Parent = TriggerGui
+BtnContainer.BackgroundTransparency = 1
+BtnContainer.Size = UDim2.new(0, 150, 0, 50)
+BtnContainer.Position = UDim2.new(0.05, 0, 0.5, 0)
 
-local Window = Fluent:CreateWindow({
-    Title = "Blade Ball - Slax Hub",
-    SubTitle = "v5.0 (God-Tier Auto Parry)",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
+-- زر أساسي
+local TriggerBtn = Instance.new("TextButton")
+TriggerBtn.Name = "TriggerBtn"
+TriggerBtn.Parent = BtnContainer
+TriggerBtn.BackgroundColor3 = Color3.fromRGB(30, 32, 48)
+TriggerBtn.BorderSizePixel = 0
+TriggerBtn.Position = UDim2.new(0, 0, 0, 0)
+TriggerBtn.Size = UDim2.new(1, 0, 1, 0)
+TriggerBtn.Font = Enum.Font.GothamBold
+TriggerBtn.Text = ""
+TriggerBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+TriggerBtn.AutoButtonColor = false
+TriggerBtn.ClipsDescendants = true
+
+-- زوايا دائرية
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 12)
+Corner.Parent = TriggerBtn
+
+-- تدرج لوني (Gradient)
+local Gradient = Instance.new("UIGradient")
+Gradient.Parent = TriggerBtn
+Gradient.Rotation = 45
+Gradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(45, 48, 70)),   -- رمادي مزرق
+    ColorSequenceKeypoint.new(0.50, Color3.fromRGB(35, 38, 55)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(25, 28, 42))
 })
 
-local Tabs = {
-    Main = Window:AddTab({ Title = "Main Auto", Icon = "swords" }),
-    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
-}
+-- حدود (Stroke) فاخرة
+local Stroke = Instance.new("UIStroke")
+Stroke.Parent = TriggerBtn
+Stroke.Color = Color3.fromRGB(90, 100, 140)
+Stroke.Thickness = 1
+Stroke.Transparency = 0.3
+Stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
--- Services
-local replicated_storage = cloneref(game:GetService('ReplicatedStorage'))
-local workspace = cloneref(game:GetService('Workspace'))
-local Stats = cloneref(game:GetService('Stats'))
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui")
-local LocalPlayer = Players.LocalPlayer
+-- توهج خارجي (Glow Effect)
+local GlowStroke = Instance.new("UIStroke")
+GlowStroke.Parent = TriggerBtn
+GlowStroke.Color = Color3.fromRGB(120, 130, 255)
+GlowStroke.Thickness = 4
+GlowStroke.Transparency = 1
+GlowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-local AutoParryEnabled = false
-local ParryAccuracyValue = 20
-local MaxParryAngle = 45       -- زاوية قصوى للصد (بالدرجات)
-local PredictionFrames = 3     -- عدد إطارات التنبؤ
+-- ============ ICON ============
+local IconLabel = Instance.new("TextLabel")
+IconLabel.Name = "Icon"
+IconLabel.Parent = TriggerBtn
+IconLabel.BackgroundTransparency = 1
+IconLabel.Position = UDim2.new(0, 12, 0, 0)
+IconLabel.Size = UDim2.new(0, 28, 1, 0)
+IconLabel.Font = Enum.Font.GothamBold
+IconLabel.Text = "🎯"
+IconLabel.TextColor3 = Color3.fromRGB(200, 210, 255)
+IconLabel.TextSize = 22
+IconLabel.TextXAlignment = Enum.TextXAlignment.Center
 
--- =========================================
--- Token Retrieval Logic
--- =========================================
-local _token = nil
-for _, Function in getgc(true) do
-    if type(Function) == 'function' and debug.info(Function, 's'):find('PRY', 1, true) then
-        for _, value in debug.getupvalues(Function) do
-            if type(value) == 'function' then
-                _token = value
-                break
+-- ============ TEXT ============
+local TextLabel = Instance.new("TextLabel")
+TextLabel.Name = "Label"
+TextLabel.Parent = TriggerBtn
+TextLabel.BackgroundTransparency = 1
+TextLabel.Position = UDim2.new(0, 42, 0, 0)
+TextLabel.Size = UDim2.new(1, -50, 0, 22)
+TextLabel.Font = Enum.Font.GothamBold
+TextLabel.Text = "TRIGGER"
+TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TextLabel.TextSize = 13
+TextLabel.TextXAlignment = Enum.TextXAlignment.Left
+TextLabel.TextYAlignment = Enum.TextYAlignment.Bottom
+
+-- ============ STATUS ============
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Name = "Status"
+StatusLabel.Parent = TriggerBtn
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Position = UDim2.new(0, 42, 0, 20)
+StatusLabel.Size = UDim2.new(1, -50, 0, 18)
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.Text = "● OFF"
+StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+StatusLabel.TextSize = 11
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.TextYAlignment = Enum.TextYAlignment.Top
+
+-- ============ DOT INDICATOR ============
+local Dot = Instance.new("Frame")
+Dot.Name = "Dot"
+Dot.Parent = TriggerBtn
+Dot.BackgroundColor3 = Color3.fromRGB(255, 90, 90)
+Dot.BorderSizePixel = 0
+Dot.Position = UDim2.new(1, -18, 0.5, -4)
+Dot.Size = UDim2.new(0, 8, 0, 8)
+
+local DotCorner = Instance.new("UICorner")
+DotCorner.CornerRadius = UDim.new(1, 0)
+DotCorner.Parent = Dot
+
+local DotStroke = Instance.new("UIStroke")
+DotStroke.Parent = Dot
+DotStroke.Color = Color3.fromRGB(255, 90, 90)
+DotStroke.Thickness = 3
+DotStroke.Transparency = 1
+
+-- ============ نظام السحب ============
+local dragging, dragInput, dragStart, startPos
+local dragMoved = false
+local pressStart = 0
+
+BtnContainer.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragMoved = false
+        pressStart = tick()
+        dragStart = input.Position
+        startPos = BtnContainer.Position
+        
+        -- تأثير الضغط
+        game:GetService("TweenService"):Create(TriggerBtn, TweenInfo.new(0.1), {
+            Size = UDim2.new(0.95, 0, 0.9, 0)
+        }):Play()
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                -- رجوع الحجم
+                game:GetService("TweenService"):Create(TriggerBtn, TweenInfo.new(0.15, Enum.EasingStyle.Back), {
+                    Size = UDim2.new(1, 0, 1, 0)
+                }):Play()
             end
+        end)
+    end
+end)
+
+BtnContainer.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        if math.abs(delta.X) > 3 or math.abs(delta.Y) > 3 then
+            dragMoved = true
         end
-        if _token then break end
+        BtnContainer.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
     end
-end
+end)
 
-local function _tokenize(_remote_uid)
-    if not _token then return "" end
-    local time = tostring(math.floor(workspace:GetServerTimeNow() * 100))
-    local key = _token(_remote_uid, 'TIME')
-    local characters = table.create(#time)
-    for index = 1, #time do
-        characters[index] = string.char(bit32.bxor(
-            (string.byte(time, index) + index) % 256,
-            string.byte(key, (index - 1) % #key + 1)
-        ))
-    end
-    return table.concat(characters)
-end
+-- ============ دالة تحديث المظهر ============
+local TweenService = game:GetService("TweenService")
+local isAnimating = false
 
--- =========================================
--- Hooking Logic
--- =========================================
-local _reverted = {}
-local _original = {}
-
-local function _is_valid(args)
-    return #args == 8 and type(args[2]) == "string" and type(args[3]) == "string" and type(args[4]) == "number" and typeof(args[5]) == "CFrame" and type(args[6]) == "table" and type(args[7]) == "table" and type(args[8]) == "boolean"
-end
-
-local function _hook(remote)
-    if not _reverted[remote] and not _original[getrawmetatable(remote)] then
-        _original[getrawmetatable(remote)] = true
-        local _meta = getrawmetatable(remote)
-        setreadonly(_meta, false)
-        local _old = _meta.__index
-        _meta.__index = function(self, key)
-            if (key == 'FireServer' and self:IsA('RemoteEvent')) or (key == 'InvokeServer' and self:IsA('RemoteFunction')) then
-                return function(_, ...)
-                    local _arguments = {...}
-                    if _is_valid(_arguments) and not _reverted[self] then
-                        _reverted[self] = _arguments
-                    end
-                    return _old(self, key)(_, unpack(_arguments))
+local function UpdateTriggerBtnVisual()
+    if TriggerbotEnabled then
+        -- 🟢 مفعل - أخضر نيون
+        TweenService:Create(Gradient, TweenInfo.new(0.4), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(20, 80, 60)),
+                ColorSequenceKeypoint.new(0.50, Color3.fromRGB(15, 60, 45)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(10, 45, 35))
+            })
+        }):Play()
+        
+        TweenService:Create(Stroke, TweenInfo.new(0.4), {
+            Color = Color3.fromRGB(80, 255, 160),
+            Transparency = 0.1
+        }):Play()
+        
+        TweenService:Create(GlowStroke, TweenInfo.new(0.4), {
+            Color = Color3.fromRGB(80, 255, 160),
+            Transparency = 0.6
+        }):Play()
+        
+        TweenService:Create(IconLabel, TweenInfo.new(0.4), {
+            TextColor3 = Color3.fromRGB(150, 255, 200)
+        }):Play()
+        
+        TweenService:Create(StatusLabel, TweenInfo.new(0.3), {
+            TextColor3 = Color3.fromRGB(120, 255, 180),
+            Text = "● ACTIVE"
+        }):Play()
+        
+        TweenService:Create(Dot, TweenInfo.new(0.3), {
+            BackgroundColor3 = Color3.fromRGB(80, 255, 160)
+        }):Play()
+        
+        TweenService:Create(DotStroke, TweenInfo.new(0.3), {
+            Color = Color3.fromRGB(80, 255, 160)
+        }):Play()
+        
+        TextLabel.TextColor3 = Color3.fromRGB(200, 255, 220)
+        
+        -- نبض ضوئي متكرر
+        if not isAnimating then
+            isAnimating = true
+            task.spawn(function()
+                while TriggerbotEnabled and isAnimating do
+                    TweenService:Create(GlowStroke, TweenInfo.new(1, Enum.EasingStyle.Sine), {
+                        Transparency = 0.85
+                    }):Play()
+                    task.wait(1)
+                    if not TriggerbotEnabled then break end
+                    TweenService:Create(GlowStroke, TweenInfo.new(1, Enum.EasingStyle.Sine), {
+                        Transparency = 0.5
+                    }):Play()
+                    task.wait(1)
                 end
-            end
-            return _old(self, key)
+                isAnimating = false
+            end)
         end
-        setreadonly(_meta, true)
+    else
+        -- 🔴 معطل - رمادي داكن
+        TweenService:Create(Gradient, TweenInfo.new(0.4), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(45, 48, 70)),
+                ColorSequenceKeypoint.new(0.50, Color3.fromRGB(35, 38, 55)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(25, 28, 42))
+            })
+        }):Play()
+        
+        TweenService:Create(Stroke, TweenInfo.new(0.4), {
+            Color = Color3.fromRGB(90, 100, 140),
+            Transparency = 0.3
+        }):Play()
+        
+        TweenService:Create(GlowStroke, TweenInfo.new(0.4), {
+            Color = Color3.fromRGB(120, 130, 255),
+            Transparency = 1
+        }):Play()
+        
+        TweenService:Create(IconLabel, TweenInfo.new(0.4), {
+            TextColor3 = Color3.fromRGB(200, 210, 255)
+        }):Play()
+        
+        TweenService:Create(StatusLabel, TweenInfo.new(0.3), {
+            TextColor3 = Color3.fromRGB(255, 100, 100),
+            Text = "● OFF"
+        }):Play()
+        
+        TweenService:Create(Dot, TweenInfo.new(0.3), {
+            BackgroundColor3 = Color3.fromRGB(255, 90, 90)
+        }):Play()
+        
+        TweenService:Create(DotStroke, TweenInfo.new(0.3), {
+            Color = Color3.fromRGB(255, 90, 90)
+        }):Play()
+        
+        TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     end
 end
 
-for _, _remote in pairs(replicated_storage:GetDescendants()) do
-    if _remote:IsA('RemoteEvent') or _remote:IsA('RemoteFunction') then
-        _hook(_remote)
-    end
-end
-
--- =========================================
--- Fire Parry (Single Remote)
--- =========================================
-local _parryRemote = nil
-local _parryArgs = nil
-
-local function FireParryBypass()
-    if not _parryRemote then
-        for _remote, _origArgs in pairs(_reverted) do
-            _parryRemote = _remote
-            _parryArgs = _origArgs
-            break
-        end
-    end
-    if not _parryRemote or not _parryArgs then return end
-
-    local _packet = {
-        _parryArgs[1],
-        _parryArgs[2],
-        _tokenize(_parryArgs[2]),
-        0.5,
-        workspace.CurrentCamera.CFrame,
-        {},
-        {0, 0},
-        false
-    }
-    if _parryRemote:IsA('RemoteEvent') then
-        _parryRemote:FireServer(unpack(_packet))
-    elseif _parryRemote:IsA('RemoteFunction') then
-        _parryRemote:InvokeServer(unpack(_packet))
-    end
-end
-
--- =========================================
--- Ping
--- =========================================
-local function GetPing()
-    local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-    return math.clamp(ping, 0.02, 0.4)
-end
-
--- =========================================
--- 🧠 Prediction System (مستوحى من Soluna Hub)
--- =========================================
-local function PredictBallPosition(ball, frames)
-    local pos = ball.Position
-    local vel = ball.AssemblyLinearVelocity
-    return pos + (vel * (frames * (1/60)))
-end
-
--- =========================================
--- 📐 Max Parry Angle Checker
--- =========================================
-local function IsWithinParryAngle(playerPos, ballPos, ballVel)
-    local toPlayer = (playerPos - ballPos).Unit
-    local velDir = ballVel.Unit
-    local dot = velDir:Dot(toPlayer)
-    -- الزاوية بين اتجاه الكرة واتجاه اللاعب
-    local angle = math.deg(math.acos(math.clamp(dot, -1, 1)))
-    return angle <= MaxParryAngle
-end
-
--- =========================================
--- 🔒 Auto Parry Loop (God-Tier)
--- =========================================
-task.spawn(function()
-    local lastParryTime = 0
-    local globalLockUntil = 0
-    local parriedBallNames = {}
-    local parriedBallInstances = {}
-    local ballReturnTracker = {}  -- يتتبع الكرات اللي رجعت
-
-    while task.wait() do
-        if not AutoParryEnabled then
-            parriedBallNames = {}
-            parriedBallInstances = {}
-            globalLockUntil = 0
-            ballReturnTracker = {}
-            continue
-        end
-
-        local now = tick()
-        local currentPing = GetPing()
-
-        -- ⛔ Global Lock
-        if now < globalLockUntil then continue end
-
-        local character = LocalPlayer.Character
-        if not character then continue end
-        local hrp = character:FindFirstChild("HumanoidRootPart")
-        if not hrp then continue end
-
-        local playerPos = hrp.Position
-        local ballsFolder = workspace:FindFirstChild("Balls")
-        if not ballsFolder then continue end
-
-        -- معكوس: 100 = مبكر | 1 = متأخر مثالي
-        local convertedAccuracy = 0.10 + ((ParryAccuracyValue / 100) * 0.45)
-        local adjustedAccuracy = convertedAccuracy + (currentPing * 0.85)
-        local globalLockDuration = 0.45 + (currentPing * 0.7)
-
-        local bestBall = nil
-        local bestTime = math.huge
-
-        for _, ball in ipairs(ballsFolder:GetChildren()) do
-            if not ball:IsA("BasePart") then continue end
-            local realAttr = ball:GetAttribute("realBall")
-            if realAttr == false then continue end
-
-            -- 🔒 Instance Lock
-            if parriedBallInstances[ball] and (now - parriedBallInstances[ball]) < 2 then
-                -- 🔄 Ball Return Detection: لو الكرة انعكست، نصدها
-                local vel = ball.AssemblyLinearVelocity
-                local toPlayer = (playerPos - ball.Position).Unit
-                local dot = vel.Unit:Dot(toPlayer)
-                if dot > 0.5 and vel.Magnitude > 5 then
-                    -- الكرة رجعت لنا! نصدها
-                    parriedBallInstances[ball] = nil
-                    parriedBallNames[ball.Name] = nil
-                else
-                    continue
-                end
-            end
-
-            -- 🔒 Name Lock
-            local lockTime = parriedBallNames[ball.Name]
-            if lockTime and (now - lockTime) < 2.5 then continue end
-
-            local ballPos = ball.Position
-            local velocity = ball.AssemblyLinearVelocity
-            local speed = velocity.Magnitude
-            if speed < 5 then continue end
-
-            -- 🧠 Prediction: نتنبأ بمكان الكرة بعد بضعة إطارات
-            local predictedPos = PredictBallPosition(ball, PredictionFrames)
-            local distance = (playerPos - predictedPos).Magnitude
-
-            -- 📐 Max Parry Angle Check
-            if not IsWithinParryAngle(playerPos, ballPos, velocity) then continue end
-
-            -- Target check
-            local targetAttr = ball:GetAttribute("target")
-            local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
-            if not isTarget then continue end
-
-            -- حساب وقت الوصول مع التنبؤ
-            local timeToReach = distance / speed
-
-            if timeToReach <= adjustedAccuracy and timeToReach > 0 then
-                if timeToReach < bestTime then
-                    bestTime = timeToReach
-                    bestBall = ball
-                end
-            end
-        end
-
-        -- ⚡ صد مرة واحدة + تفعيل كل الأقفال
-        if bestBall then
-            globalLockUntil = now + globalLockDuration
-            lastParryTime = now
-            parriedBallNames[bestBall.Name] = now
-            parriedBallInstances[bestBall] = now
-            FireParryBypass()
-        end
-
-        -- تنظيف
-        for name, t in pairs(parriedBallNames) do
-            if now - t > 3 then parriedBallNames[name] = nil end
-        end
-        for inst, t in pairs(parriedBallInstances) do
-            if now - t > 3 then parriedBallInstances[inst] = nil end
+-- ============ تفعيل عند الضغط ============
+TriggerBtn.MouseButton1Click:Connect(function()
+    if not dragMoved and (tick() - pressStart) < 0.5 then
+        TriggerbotEnabled = not TriggerbotEnabled
+        UpdateTriggerBtnVisual()
+        if TriggerToggle then
+            TriggerToggle:SetValue(TriggerbotEnabled)
         end
     end
 end)
 
--- =========================================
--- UI Controls
--- =========================================
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (God-Tier)", Default = false })
-Toggle:OnChanged(function(Value)
-    AutoParryEnabled = Value
-end)
+-- مزامنة مع Toggle
+local oldOnChanged = nil
 
-Tabs.Main:AddSlider("ParryAccuracy", {
-    Title = "Parry Accuracy",
-    Description = "100 = صد مبكر | 1 = صد متأخر مثالي (Perfect) - يُنصح بـ 15-25",
-    Default = 20,
-    Min = 1,
-    Max = 100,
-    Rounding = 0,
-    Callback = function(Value)
-        ParryAccuracyValue = Value
-    end
-})
-
-Tabs.Main:AddSlider("MaxParryAngle", {
-    Title = "Max Parry Angle (°)",
-    Description = "أقصى زاوية للصد - يُنصح بـ 40-60",
-    Default = 45,
-    Min = 10,
-    Max = 90,
-    Rounding = 0,
-    Callback = function(Value)
-        MaxParryAngle = Value
-    end
-})
-
-Tabs.Main:AddSlider("PredictionFrames", {
-    Title = "Prediction Frames",
-    Description = "عدد إطارات التنبؤ - يُنصح بـ 2-4",
-    Default = 3,
-    Min = 0,
-    Max = 6,
-    Rounding = 0,
-    Callback = function(Value)
-        PredictionFrames = Value
-    end
-})
-
--- =========================================
--- Settings
--- =========================================
-InterfaceManager:SetLibrary(Fluent)
-SaveManager:SetLibrary(Fluent)
-SaveManager:IgnoreThemeSettings()
-InterfaceManager:BuildInterfaceSection(Tabs.Settings)
-SaveManager:BuildConfigSection(Tabs.Settings)
-
-Window:SelectTab(1)
-
-Fluent:Notify({
-    Title = "Slax Hub v5.0 👑",
-    Content = "God-Tier Auto Parry جاهز! Prediction + Max Angle + Return Detection",
-    Duration = 6
-})
+-- تهيئة أولية
+UpdateTriggerBtnVisual()
