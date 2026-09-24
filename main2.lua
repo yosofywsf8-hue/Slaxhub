@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (Beast + Auto-Unlock)
--- Slax Hub v9.2 - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (Simple Powerful)
+-- Slax Hub v10.0 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v9.2 (Auto-Unlock)",
+    SubTitle = "v10.0 (Simple & Powerful)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -102,37 +102,26 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
 end
 
 -- =========================================
--- Fire Parry (Safe - Single Remote)
+-- Fire Parry (Simple - works every time)
 -- =========================================
-local _parryRemote = nil
-local _parryArgs = nil
-
 local function FireParryBypass()
-    if not _parryRemote or not _parryRemote.Parent then
-        _parryRemote = nil
-        _parryArgs = nil
-        for _remote, _origArgs in pairs(_reverted) do
-            _parryRemote = _remote
-            _parryArgs = _origArgs
-            break
+    for _remote, _origArgs in pairs(_reverted) do
+        local _packet = {
+            _origArgs[1],
+            _origArgs[2],
+            _tokenize(_origArgs[2]),
+            0.5,
+            workspace.CurrentCamera.CFrame,
+            {},
+            {0, 0},
+            false
+        }
+        if _remote:IsA('RemoteEvent') then
+            _remote:FireServer(unpack(_packet))
+        elseif _remote:IsA('RemoteFunction') then
+            _remote:InvokeServer(unpack(_packet))
         end
-    end
-    if not _parryRemote or not _parryArgs then return end
-
-    local _packet = {
-        _parryArgs[1],
-        _parryArgs[2],
-        _tokenize(_parryArgs[2]),
-        0.5,
-        workspace.CurrentCamera.CFrame,
-        {},
-        {0, 0},
-        false
-    }
-    if _parryRemote:IsA('RemoteEvent') then
-        _parryRemote:FireServer(unpack(_packet))
-    elseif _parryRemote:IsA('RemoteFunction') then
-        _parryRemote:InvokeServer(unpack(_packet))
+        break  -- ريموت واحد فقط
     end
 end
 
@@ -145,7 +134,7 @@ local function GetPing()
 end
 
 -- =========================================
--- 🎯 TRIGGERBOT LOOP (MAX POWER)
+-- 🎯 TRIGGERBOT LOOP
 -- =========================================
 task.spawn(function()
     local lastTriggerTime = 0
@@ -186,23 +175,22 @@ task.spawn(function()
 end)
 
 -- =========================================
--- ⚔️ Auto Parry Loop (Beast + Auto-Unlock)
+-- ⚔️ Auto Parry Loop (SIMPLE - WORKS EVERY TIME)
 -- =========================================
 task.spawn(function()
-    local lastParryTime = 0
-    local parriedBalls = {} -- {[ball] = parryTime}
+    local lastFire = 0
 
     while task.wait() do
         if not AutoParryEnabled then
-            parriedBalls = {}
-            lastParryTime = 0
+            lastFire = 0
             continue
         end
 
         local now = tick()
         local currentPing = GetPing()
-        local cooldown = currentPing + 0.05
-        if (now - lastParryTime) < cooldown then continue end
+
+        -- كولداون صغير جدا (يمنع spam فقط)
+        if (now - lastFire) < (currentPing + 0.03) then continue end
 
         local character = LocalPlayer.Character
         if not character then continue end
@@ -213,24 +201,13 @@ task.spawn(function()
         local ballsFolder = workspace:FindFirstChild("Balls")
         if not ballsFolder then continue end
 
-        -- ✅ Buffer واسع (قوي)
+        -- النافذة: وقت الوصول لازم يكون <= ping + buffer
         local buffer = 0.05 + ((ParryAccuracyValue / 100) * 0.35)
-        local triggerTime = currentPing + buffer
-
-        -- 🧹 تنظيف + فتح القفل تلقائياً بعد ثانية
-        for ball, t in pairs(parriedBalls) do
-            if not ball.Parent or (now - t) > 1.0 then
-                parriedBalls[ball] = nil
-            end
-        end
-
-        local bestBall = nil
-        local bestTime = math.huge
+        local window = currentPing + buffer
 
         for _, ball in ipairs(ballsFolder:GetChildren()) do
             if not ball:IsA("BasePart") then continue end
             if ball:GetAttribute("realBall") == false then continue end
-            if parriedBalls[ball] then continue end
 
             local ballPos = ball.Position
             local velocity = ball.AssemblyLinearVelocity
@@ -241,28 +218,15 @@ task.spawn(function()
             local dot = velocity.Unit:Dot(toPlayer)
             if dot <= 0 then continue end
 
-            local targetAttr = ball:GetAttribute("target")
-            local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
-            if not isTarget then continue end
+            local distance = (playerPos - ballPos).Magnitude
+            local timeToReach = distance / speed
 
-            -- ✅ تنبؤ بسيط (فرمتين)
-            local predictedPos = ballPos + (velocity * (2/60))
-            local predictedDistance = (playerPos - predictedPos).Magnitude
-            local timeToReach = predictedDistance / speed
-
-            -- 🎯 نافذة واسعة
-            if timeToReach <= triggerTime and timeToReach >= -0.05 then
-                if timeToReach < bestTime then
-                    bestTime = timeToReach
-                    bestBall = ball
-                end
+            -- 🎯 نصد فقط لما الوقت مناسب
+            if timeToReach <= window and timeToReach >= 0 then
+                lastFire = now
+                FireParryBypass()
+                break
             end
-        end
-
-        if bestBall then
-            lastParryTime = now
-            parriedBalls[bestBall] = now  -- ⏱️ قفل مؤقت
-            pcall(FireParryBypass)
         end
     end
 end)
@@ -378,7 +342,7 @@ end)
 -- =========================================
 -- UI Controls
 -- =========================================
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry (Beast Mode)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry (Simple)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
@@ -413,7 +377,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v9.2 🔥",
-    Content = "Auto Parry Beast Mode + Auto-Unlock + Triggerbot جاهزين",
+    Title = "Slax Hub v10.0 🔥",
+    Content = "Simple Auto Parry - يصد كل الكرات بدون تعليق",
     Duration = 6
 })
