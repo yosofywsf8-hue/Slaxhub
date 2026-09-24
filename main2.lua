@@ -1,4 +1,4 @@
--- Blade Ball Script - Slax Hub v18.0 (WindUI)
+-- Blade Ball Script - Slax Hub v18.3 (Smart Double Parry)
 -- Developed by yossef
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -37,6 +37,12 @@ local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
 local AutoSpamEnabled = false
+
+-- ⚙️ Smart Double Parry Config
+local CLOSE_COMBAT_RANGE = 30       -- مسافة "قريب من لاعب"
+local GLOBAL_LOCK_FAR = 0.15        -- قفل قوي لما بعيد
+local GLOBAL_LOCK_NEAR = 0.06       -- قفل خفيف لما قريب
+local BALL_LOCK_DURATION = 0.5
 
 -- =========================================
 -- Token
@@ -107,26 +113,45 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
 end
 
 -- =========================================
+-- Cache Remotes
+-- =========================================
+local _parryRemote = nil
+local _parryArgs = nil
+
+local function GetParryRemote()
+    if not _parryRemote or not _parryRemote.Parent then
+        _parryRemote = nil
+        _parryArgs = nil
+        for r, a in pairs(_reverted) do
+            _parryRemote = r
+            _parryArgs = a
+            break
+        end
+    end
+    return _parryRemote, _parryArgs
+end
+
+-- =========================================
 -- Fire
 -- =========================================
 local function FireParry()
-    for _remote, _origArgs in pairs(_reverted) do
-        local _packet = {
-            _origArgs[1],
-            _origArgs[2],
-            _tokenize(_origArgs[2]),
-            0.5,
-            workspace.CurrentCamera.CFrame,
-            {},
-            {0, 0},
-            false
-        }
-        if _remote:IsA('RemoteEvent') then
-            _remote:FireServer(unpack(_packet))
-        elseif _remote:IsA('RemoteFunction') then
-            _remote:InvokeServer(unpack(_packet))
-        end
-        break
+    local remote, args = GetParryRemote()
+    if not remote or not args then return end
+
+    local packet = {
+        args[1],
+        args[2],
+        _tokenize(args[2]),
+        0.5,
+        workspace.CurrentCamera.CFrame,
+        {},
+        {0, 0},
+        false
+    }
+    if remote:IsA('RemoteEvent') then
+        remote:FireServer(unpack(packet))
+    elseif remote:IsA('RemoteFunction') then
+        remote:InvokeServer(unpack(packet))
     end
 end
 
@@ -134,6 +159,46 @@ local function GetPing()
     local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
     return math.clamp(ping, 0.02, 0.4)
 end
+
+-- =========================================
+-- 🎯 Close Combat Detection
+-- =========================================
+local NearPlayerCached = false
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if not AutoParryEnabled then
+            NearPlayerCached = false
+            continue
+        end
+
+        local character = LocalPlayer.Character
+        if not character then
+            NearPlayerCached = false
+            continue
+        end
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if not hrp then
+            NearPlayerCached = false
+            continue
+        end
+
+        local playerPos = hrp.Position
+        NearPlayerCached = false
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player == LocalPlayer then continue end
+            local char = player.Character
+            if not char then continue end
+            local p_hrp = char:FindFirstChild("HumanoidRootPart")
+            if not p_hrp then continue end
+            if (p_hrp.Position - playerPos).Magnitude <= CLOSE_COMBAT_RANGE then
+                NearPlayerCached = true
+                break
+            end
+        end
+    end
+end)
 
 -- =========================================
 -- 🌀 Anti Curve
@@ -147,11 +212,7 @@ local function TrackBall(ball)
 
     local data = ballTracking[ball]
     if not data then
-        ballTracking[ball] = {
-            lastVel = vel,
-            curveScore = 0,
-            curveActive = false
-        }
+        ballTracking[ball] = { lastVel = vel, curveScore = 0, curveActive = false }
         return 0, false
     end
 
@@ -173,119 +234,157 @@ local function TrackBall(ball)
 end
 
 task.spawn(function()
-    while task.wait(1) do
+    while task.wait(2) do
         for ball in pairs(ballTracking) do
-            if not ball.Parent then
-                ballTracking[ball] = nil
-            end
+            if not ball.Parent then ballTracking[ball] = nil end
         end
     end
 end)
 
 -- =========================================
--- ⚔️ Auto Parry
+-- ⚔️ Auto Parry - Smart Double Parry
 -- =========================================
+local lastParryTime = 0
+local ballLocks = {}
+
 task.spawn(function()
-    while task.wait(0.01) do
-        if not AutoParryEnabled then continue end
-
-        local character = LocalPlayer.Character
-        if not character then continue end
-        local hrp = character:FindFirstChild("HumanoidRootPart")
-        if not hrp then continue end
-
-        local playerPos = hrp.Position
-        local ballsFolder = workspace:FindFirstChild("Balls")
-        if not ballsFolder then continue end
-
-        local ping = GetPing()
-
-        for _, ball in ipairs(ballsFolder:GetChildren()) do
-            if not ball:IsA("BasePart") then continue end
-            if ball:GetAttribute("realBall") == false then continue end
-
-            local ballPos = ball.Position
-            local velocity = ball.AssemblyLinearVelocity
-            local speed = velocity.Magnitude
-            if speed < 3 then continue end
-
-            local curveScore, curveActive = TrackBall(ball)
-
-            local toPlayer = (playerPos - ballPos).Unit
-            local dot = velocity.Unit:Dot(toPlayer)
-            if dot <= 0.3 then continue end
-
-            local distance = (playerPos - ballPos).Magnitude
-            local timeToReach = distance / speed
-
-            local curveBonus = 0
-            if curveActive then
-                curveBonus = math.min(0.2, curveScore * 0.05)
-            end
-
-            local timeWindow = ping + 0.35 + curveBonus
-
-            if (timeToReach <= timeWindow) or (distance <= 25) then
-                FireParry()
-                task.wait(0.05)
-                break
+    while task.wait(0.5) do
+        local now = tick()
+        for ball, t in pairs(ballLocks) do
+            if not ball.Parent or now >= t then
+                ballLocks[ball] = nil
             end
         end
     end
 end)
 
--- =========================================
--- ⚡ Auto Spam
--- =========================================
-task.spawn(function()
-    while task.wait(0.02) do
-        if not AutoSpamEnabled then continue end
+RunService.Heartbeat:Connect(function()
+    if not AutoParryEnabled then
+        ballLocks = {}
+        return
+    end
 
-        local character = LocalPlayer.Character
-        if not character then continue end
-        local hrp = character:FindFirstChild("HumanoidRootPart")
-        if not hrp then continue end
+    local now = tick()
+    local ping = GetPing()
 
-        local playerPos = hrp.Position
+    -- 🎯 قفل ديناميكي: قوي لما بعيد، خفيف لما قريب
+    local globalLock = NearPlayerCached and GLOBAL_LOCK_NEAR or GLOBAL_LOCK_FAR
 
-        local nearPlayer = false
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player == LocalPlayer then continue end
-            local char = player.Character
-            if not char then continue end
-            local p_hrp = char:FindFirstChild("HumanoidRootPart")
-            if not p_hrp then continue end
-            if (p_hrp.Position - playerPos).Magnitude <= 50 then
-                nearPlayer = true
-                break
-            end
+    if (now - lastParryTime) < globalLock then return end
+
+    local character = LocalPlayer.Character
+    if not character then return end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local playerPos = hrp.Position
+    local ballsFolder = workspace:FindFirstChild("Balls")
+    if not ballsFolder then return end
+
+    local balls = ballsFolder:GetChildren()
+
+    for i = 1, #balls do
+        local ball = balls[i]
+        if not ball:IsA("BasePart") then continue end
+        if ball:GetAttribute("realBall") == false then continue end
+
+        if ballLocks[ball] then continue end
+
+        local ballPos = ball.Position
+        local velocity = ball.AssemblyLinearVelocity
+        local speed = velocity.Magnitude
+        if speed < 3 then continue end
+
+        local toPlayer = (playerPos - ballPos).Unit
+        local dot = velocity.Unit:Dot(toPlayer)
+        if dot <= 0.3 then continue end
+
+        local distance = (playerPos - ballPos).Magnitude
+        local timeToReach = distance / speed
+
+        local _, curveActive = TrackBall(ball)
+        local curveBonus = curveActive and math.min(0.2, ballTracking[ball].curveScore * 0.05) or 0
+
+        local timeWindow = ping + 0.35 + curveBonus
+
+        -- 🎯 لما قريب: نافذة أوسع (double parry)
+        if NearPlayerCached then
+            timeWindow = timeWindow + 0.1
         end
 
-        if not nearPlayer then continue end
+        if (timeToReach <= timeWindow) or (distance <= 25) then
+            lastParryTime = now
+            ballLocks[ball] = now + BALL_LOCK_DURATION
+            FireParry()
+            return
+        end
+    end
+end)
 
-        for _remote, _origArgs in pairs(_reverted) do
-            local _tokens = {}
-            for i = 1, 5 do
-                _tokens[i] = _tokenize(_origArgs[2])
-            end
-            for i = 1, 5 do
-                local _packet = {
-                    _origArgs[1],
-                    _origArgs[2],
-                    _tokens[i],
-                    0.5,
-                    workspace.CurrentCamera.CFrame,
-                    {},
-                    {0, 0},
-                    false
-                }
-                if _remote:IsA('RemoteEvent') then
-                    _remote:FireServer(unpack(_packet))
-                elseif _remote:IsA('RemoteFunction') then
-                    _remote:InvokeServer(unpack(_packet))
+-- =========================================
+-- ⚡ Auto Spam - HEARTBEAT
+-- =========================================
+local lastSpamTime = 0
+local spamPlayerCheck = 0
+local nearPlayerSpam = false
+
+RunService.Heartbeat:Connect(function()
+    if not AutoSpamEnabled then return end
+
+    local now = tick()
+
+    if (now - spamPlayerCheck) > 0.05 then
+        spamPlayerCheck = now
+
+        local character = LocalPlayer.Character
+        if character then
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local playerPos = hrp.Position
+                nearPlayerSpam = false
+
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer then
+                        local c = p.Character
+                        if c then
+                            local p_hrp = c:FindFirstChild("HumanoidRootPart")
+                            if p_hrp and (p_hrp.Position - playerPos).Magnitude <= 50 then
+                                nearPlayerSpam = true
+                                break
+                            end
+                        end
+                    end
                 end
+            else
+                nearPlayerSpam = false
             end
-            break
+        else
+            nearPlayerSpam = false
+        end
+    end
+
+    if not nearPlayerSpam then return end
+    if (now - lastSpamTime) < 0.016 then return end
+    lastSpamTime = now
+
+    local remote, args = GetParryRemote()
+    if not remote or not args then return end
+
+    for _ = 1, 5 do
+        local packet = {
+            args[1],
+            args[2],
+            _tokenize(args[2]),
+            0.5,
+            workspace.CurrentCamera.CFrame,
+            {},
+            {0, 0},
+            false
+        }
+        if remote:IsA('RemoteEvent') then
+            remote:FireServer(unpack(packet))
+        elseif remote:IsA('RemoteFunction') then
+            remote:InvokeServer(unpack(packet))
         end
     end
 end)
@@ -295,19 +394,20 @@ end)
 -- =========================================
 MainTab:Toggle({
     Title = "⚔️ Auto Parry",
-    Desc = "Auto parry with anti-curve",
+    Desc = "Smart: Double parry near players only",
     Value = false,
     Callback = function(Value)
         AutoParryEnabled = Value
         if not Value then
             ballTracking = {}
+            ballLocks = {}
         end
     end
 })
 
 MainTab:Toggle({
     Title = "⚡ Auto Spam",
-    Desc = "Spams when near players (50 studs)",
+    Desc = "Spams near players (50 studs)",
     Value = false,
     Callback = function(Value)
         AutoSpamEnabled = Value
@@ -322,7 +422,7 @@ SettingsTab:Button({
 })
 
 WindUI:Notify({
-    Title = "Slax Hub v18.0",
-    Content = "WindUI loaded successfully",
+    Title = "Slax Hub v18.3",
+    Content = "Smart Double Parry - Only near players",
     Duration = 5
 })
