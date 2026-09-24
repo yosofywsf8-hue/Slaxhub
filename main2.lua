@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (Beast Mode + Fixed Sync)
--- Slax Hub v8.1 - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (No Spam + Beast Mode)
+-- Slax Hub v9.0 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v8.1 (BEAST MODE)",
+    SubTitle = "v9.0 (No Spam)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -30,8 +30,7 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
-local ParryAccuracyValue = 20
-
+local ParryAccuracyValue = 25
 local TriggerbotEnabled = false
 
 -- =========================================
@@ -185,26 +184,25 @@ task.spawn(function()
 end)
 
 -- =========================================
--- ⚔️ Auto Parry Loop (BEAST MODE)
+-- ⚔️ Auto Parry Loop (Single Fire Per Ball - No Spam)
 -- =========================================
 task.spawn(function()
     local lastParryTime = 0
-    local globalLockUntil = 0
-    local parriedBalls = {}
-    local returnedBalls = {}
+    local parriedBalls = {} -- {[ball] = true}
 
     while task.wait() do
         if not AutoParryEnabled then
             parriedBalls = {}
-            returnedBalls = {}
-            globalLockUntil = 0
+            lastParryTime = 0
             continue
         end
 
         local now = tick()
         local currentPing = GetPing()
 
-        if now < globalLockUntil then continue end
+        -- ✅ كولداون معقول (منع spam)
+        local cooldown = 0.25 + (currentPing * 0.5)
+        if (now - lastParryTime) < cooldown then continue end
 
         local character = LocalPlayer.Character
         if not character then continue end
@@ -215,15 +213,13 @@ task.spawn(function()
         local ballsFolder = workspace:FindFirstChild("Balls")
         if not ballsFolder then continue end
 
-        local convertedAccuracy = 0.08 + ((ParryAccuracyValue / 100) * 0.42)
-        local adjustedAccuracy = convertedAccuracy + (currentPing * 0.9)
-        local globalLockDuration = 0.08 + (currentPing * 0.2)
+        -- ✅ Buffer: 100 = مبكر | 1 = مثالي
+        local buffer = 0.02 + ((ParryAccuracyValue / 100) * 0.20)
+        local triggerTime = currentPing + buffer
 
-        local bestBall = nil
-        local bestTime = math.huge
-
-        for ball, t in pairs(parriedBalls) do
-            if not ball.Parent or (now - t) > 2.5 then
+        -- 🧹 تنظيف الكرات المحذوفة
+        for ball in pairs(parriedBalls) do
+            if not ball.Parent then
                 parriedBalls[ball] = nil
             end
         end
@@ -232,6 +228,9 @@ task.spawn(function()
             if not ball:IsA("BasePart") then continue end
             if ball:GetAttribute("realBall") == false then continue end
 
+            -- 🔒 تجاهل الكرات اللي صدناها
+            if parriedBalls[ball] then continue end
+
             local ballPos = ball.Position
             local velocity = ball.AssemblyLinearVelocity
             local speed = velocity.Magnitude
@@ -239,57 +238,31 @@ task.spawn(function()
 
             local toPlayer = (playerPos - ballPos).Unit
             local dot = velocity.Unit:Dot(toPlayer)
+
+            -- 🔄 لو الكرة ابتعدت، نفتح القفل
+            if dot < -0.3 then
+                parriedBalls[ball] = nil
+                continue
+            end
+
+            if dot <= 0.1 then continue end
+
             local distance = (playerPos - ballPos).Magnitude
+            local timeToReach = distance / speed
 
-            if parriedBalls[ball] then
-                local returned = false
-                if dot > 0.5 and speed > 15 then
-                    returnedBalls[ball] = (returnedBalls[ball] or 0) + 1
-                    if returnedBalls[ball] >= 2 then
-                        returned = true
-                    end
-                else
-                    returnedBalls[ball] = 0
-                end
-
-                if not returned then
-                    continue
-                else
-                    parriedBalls[ball] = nil
-                    returnedBalls[ball] = nil
-                end
+            -- 🎯 نصد لما الوقت مناسب
+            if timeToReach <= triggerTime and timeToReach >= -0.03 then
+                lastParryTime = now
+                parriedBalls[ball] = true
+                FireParryBypass()
+                break
             end
-
-            if dot <= 0 then continue end
-
-            local targetAttr = ball:GetAttribute("target")
-            local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
-            if not isTarget then continue end
-
-            local predictedPos = ballPos + (velocity * (2/60))
-            local predictedDistance = (playerPos - predictedPos).Magnitude
-            local timeToReach = predictedDistance / speed
-
-            if timeToReach <= adjustedAccuracy and timeToReach > -0.05 then
-                if timeToReach < bestTime then
-                    bestTime = timeToReach
-                    bestBall = ball
-                end
-            end
-        end
-
-        if bestBall then
-            globalLockUntil = now + globalLockDuration
-            lastParryTime = now
-            parriedBalls[bestBall] = now
-            returnedBalls[bestBall] = 0
-            FireParryBypass()
         end
     end
 end)
 
 -- =========================================
--- 📱 Floating Triggerbot Button (FIXED)
+-- 📱 Floating Triggerbot Button
 -- =========================================
 local function GetGuiParent()
     local ok, hui = pcall(gethui)
@@ -333,8 +306,8 @@ TriggerStroke.Parent = TriggerBtn
 TriggerStroke.Color = Color3.fromRGB(255, 255, 255)
 TriggerStroke.Thickness = 2
 
--- ✅ دالة تحديث الزر + مزامنة مع Toggle
-local TriggerToggle = nil  -- يتم تعيينه لاحقاً
+-- ✅ TriggerToggle معرف مسبقاً (للربط)
+local TriggerToggle = nil
 
 local function UpdateBtnVisual(skipToggle)
     if TriggerbotEnabled then
@@ -347,7 +320,6 @@ local function UpdateBtnVisual(skipToggle)
         TriggerStroke.Color = Color3.fromRGB(255, 255, 255)
     end
 
-    -- ✅ مزامنة الـ Toggle في القائمة
     if not skipToggle and TriggerToggle then
         pcall(function()
             TriggerToggle:SetValue(TriggerbotEnabled)
@@ -355,9 +327,7 @@ local function UpdateBtnVisual(skipToggle)
     end
 end
 
--- =========================================
--- 🖐️ نظام السحب + الضغط (بدون Double Click)
--- =========================================
+-- 🖐️ Drag + Press (Fixed)
 local pressing = false
 local pressStart = nil
 local pressStartPos = nil
@@ -390,7 +360,6 @@ TriggerBtn.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         if pressing and not dragMoved then
             local now = tick()
-            -- ✅ debounce قوي: 0.6 ثانية
             if now - lastToggleTime > 0.6 then
                 lastToggleTime = now
                 TriggerbotEnabled = not TriggerbotEnabled
@@ -404,15 +373,15 @@ end)
 -- =========================================
 -- UI Controls
 -- =========================================
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry (BEAST MODE)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry (No Spam)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
 Tabs.Main:AddSlider("ParryAccuracy", {
     Title = "Parry Accuracy",
-    Description = "100 = صد مبكر جداً | 1 = صد مثالي - يُنصح بـ 15-25",
-    Default = 20,
+    Description = "100 = صد مبكر | 1 = صد مثالي - يُنصح بـ 20-35",
+    Default = 25,
     Min = 1,
     Max = 100,
     Rounding = 0,
@@ -421,11 +390,10 @@ Tabs.Main:AddSlider("ParryAccuracy", {
     end
 })
 
--- ✅ Triggerbot Toggle - يزامن مع الزر العائم
 TriggerToggle = Tabs.Main:AddToggle("Triggerbot", {Title = "🎯 Triggerbot (MAX POWER)", Default = false })
 TriggerToggle:OnChanged(function(Value)
     TriggerbotEnabled = Value
-    UpdateBtnVisual(true) -- true = لا تزامن مع Toggle (لأنه هو المصدر)
+    UpdateBtnVisual(true)
 end)
 
 -- =========================================
@@ -440,7 +408,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v8.1 🔥",
-    Content = "BEAST MODE + مزامنة الزر جاهزة!",
+    Title = "Slax Hub v9.0 🔥",
+    Content = "Auto Parry بدون spam + Beast Triggerbot جاهزين",
     Duration = 6
 })
