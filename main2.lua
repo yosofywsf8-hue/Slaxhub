@@ -1,4 +1,4 @@
--- Blade Ball Script - Bypass & Fluent UI (True Single Fire)
+-- Blade Ball Script - Bypass & Fluent UI (Per-Ball Lock Fix)
 -- Slax Hub - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v3.3 (True Single Fire)",
+    SubTitle = "v3.4 (Per-Ball Lock Fix)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -98,12 +98,11 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
     end
 end
 
--- Fire Parry Remote (SINGLE REMOTE ONLY - FIX)
+-- Fire Parry Remote (SINGLE REMOTE ONLY)
 local _parryRemote = nil
 local _parryArgs = nil
 
 local function FireParryBypass()
-    -- نحدد الريموت الصحيح مرة واحدة فقط
     if not _parryRemote then
         for _remote, _origArgs in pairs(_reverted) do
             _parryRemote = _remote
@@ -139,11 +138,11 @@ local function GetPing()
 end
 
 -- =========================================
--- Auto Parry Loop (Single Fire - No Double Parry)
+-- Auto Parry Loop (Per-Ball Lock - No Double Parry)
 -- =========================================
 task.spawn(function()
     local lastParryTime = 0
-    local lastParriedBall = nil
+    local parriedBalls = {} -- {[ball] = parryTime}
 
     while task.wait() do
         if AutoParryEnabled then
@@ -159,14 +158,13 @@ task.spawn(function()
             local currentPing = GetPing()
             local convertedAccuracy = 0.55 - ((ParryAccuracyValue / 100) * 0.45)
             local adjustedAccuracy = convertedAccuracy + (currentPing * 0.85)
-            local safeCooldown = 0.15 + (currentPing * 0.4)
+            local safeCooldown = 0.20 + (currentPing * 0.5)
 
             local bestBall = nil
             local bestTime = math.huge
 
             for _, ball in ipairs(ballsFolder:GetChildren()) do
                 if not ball:IsA("BasePart") then continue end
-
                 local realAttr = ball:GetAttribute("realBall")
                 if realAttr == false then continue end
 
@@ -178,12 +176,21 @@ task.spawn(function()
                 local directionToPlayer = (playerPos - ballPos).Unit
                 local dotProduct = velocity:Dot(directionToPlayer)
                 local distance = (playerPos - ballPos).Magnitude
-
                 local isComingToMe = dotProduct > 0 or distance < 12
+
                 local targetAttr = ball:GetAttribute("target")
                 local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
 
-                if isComingToMe and isTarget then
+                -- إذا الكرة كانت مقفولة واتجاهها انعكس = نجح الصد → افتح القفل
+                if parriedBalls[ball] then
+                    if dotProduct < 0 then
+                        parriedBalls[ball] = nil
+                    elseif tick() - parriedBalls[ball] > 2 then
+                        parriedBalls[ball] = nil
+                    end
+                end
+
+                if isComingToMe and isTarget and not parriedBalls[ball] then
                     local timeToReach = distance / speed
                     if timeToReach <= adjustedAccuracy and timeToReach >= -0.08 then
                         if timeToReach < bestTime then
@@ -194,25 +201,22 @@ task.spawn(function()
                 end
             end
 
-            if bestBall and bestBall ~= lastParriedBall then
+            -- نصد مرة واحدة ونقفل الكرة
+            if bestBall then
                 if tick() - lastParryTime >= safeCooldown then
                     lastParryTime = tick()
-                    lastParriedBall = bestBall
+                    parriedBalls[bestBall] = tick()
                     FireParryBypass()
                 end
             end
-
-            if bestBall == nil then
-                lastParriedBall = nil
-            end
         else
-            lastParriedBall = nil
+            parriedBalls = {}
         end
     end
 end)
 
 -- UI Controls
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Single Fire)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "Auto Parry (Per-Ball Lock)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
@@ -313,6 +317,6 @@ Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Slax Hub Loaded ✅",
-    Content = "الآن الصد مرة واحدة فقط! (True Single Fire)",
+    Content = "Per-Ball Lock جاهز! ما راح يصد مرتين لنفس الكرة",
     Duration = 5
 })
