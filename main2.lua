@@ -1,4 +1,4 @@
--- Blade Ball Script - Slax Hub v19.5 (Pink/Purple SPAM Button)
+-- Blade Ball Script - Slax Hub v19.7 (Smaller SPAM Button)
 -- Developed by yossef
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -34,10 +34,12 @@ local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
 local AutoSpamEnabled = false
+local ManualSpamEnabled = false
 local ParryAccuracyValue = 50
 local AutoAccuracyEnabled = true
 
@@ -480,7 +482,41 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- =========================================
--- 🌸💜 FLOATING MANUAL SPAM BUTTON (Pink/Purple Gradient)
+-- MANUAL SPAM TOGGLE - Continuous Spam Loop
+-- =========================================
+local lastManualSpamTime = 0
+
+RunService.Heartbeat:Connect(function()
+    if not ManualSpamEnabled then return end
+
+    local now = tick()
+    if (now - lastManualSpamTime) < 0.02 then return end
+    lastManualSpamTime = now
+
+    local remote, args = GetParryRemote()
+    if not remote or not args then return end
+
+    for _ = 1, 5 do
+        local packet = {
+            args[1],
+            args[2],
+            _tokenize(args[2]),
+            0.5,
+            workspace.CurrentCamera.CFrame,
+            {},
+            {0, 0},
+            false
+        }
+        if remote:IsA('RemoteEvent') then
+            remote:FireServer(unpack(packet))
+        elseif remote:IsA('RemoteFunction') then
+            remote:InvokeServer(unpack(packet))
+        end
+    end
+end)
+
+-- =========================================
+-- 🌸💜 FLOATING MANUAL SPAM TOGGLE BUTTON (SMALLER)
 -- =========================================
 local function GetGuiParent()
     local ok, hui = pcall(gethui)
@@ -490,7 +526,6 @@ local function GetGuiParent()
     return CoreGui
 end
 
--- احذف النسخة القديمة
 pcall(function()
     for _, gui in pairs(GetGuiParent():GetChildren()) do
         if gui.Name:find("SlaxManualSpam") then
@@ -506,7 +541,7 @@ ManualGui.ResetOnSpawn = false
 ManualGui.IgnoreGuiInset = true
 ManualGui.DisplayOrder = 99999
 
--- الخلفية الرئيسية
+-- ✅ صغير: 120x50 بدل 200x80
 local ManualBtn = Instance.new("TextButton")
 ManualBtn.Name = "ManualSpamBtn"
 ManualBtn.Parent = ManualGui
@@ -514,24 +549,24 @@ ManualBtn.BackgroundColor3 = Color3.fromRGB(18, 14, 28)
 ManualBtn.BackgroundTransparency = 0.15
 ManualBtn.BorderSizePixel = 0
 ManualBtn.Position = UDim2.new(0.35, 0, 0.42, 0)
-ManualBtn.Size = UDim2.new(0, 200, 0, 80)
+ManualBtn.Size = UDim2.new(0, 120, 0, 50)  -- ✅ أصغر
 ManualBtn.Font = Enum.Font.GothamBold
-ManualBtn.Text = "SPAM"
+ManualBtn.Text = "SPAM: OFF"
 ManualBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
-ManualBtn.TextSize = 26
+ManualBtn.TextSize = 15  -- ✅ أصغر شوي
 ManualBtn.AutoButtonColor = false
 ManualBtn.Active = true
 ManualBtn.Selectable = true
 
 -- زوايا دائرية
 local ManualCorner = Instance.new("UICorner")
-ManualCorner.CornerRadius = UDim.new(0, 18)
+ManualCorner.CornerRadius = UDim.new(0, 12)  -- ✅ أصغر
 ManualCorner.Parent = ManualBtn
 
 -- 🌸💜 الحدود بتدرج وردي-بنفسجي
 local ManualStroke = Instance.new("UIStroke")
 ManualStroke.Parent = ManualBtn
-ManualStroke.Thickness = 2.5
+ManualStroke.Thickness = 2
 ManualStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 local StrokeGradient = Instance.new("UIGradient")
@@ -547,7 +582,7 @@ StrokeGradient.Color = ColorSequence.new({
 -- توهج خارجي (Glow)
 local ManualGlow = Instance.new("UIStroke")
 ManualGlow.Parent = ManualBtn
-ManualGlow.Thickness = 8
+ManualGlow.Thickness = 6  -- ✅ أصغر
 ManualGlow.Transparency = 0.75
 ManualGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
@@ -574,6 +609,49 @@ BgGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
 })
 
+-- 🎨 Update Visual based on Toggle State
+local function UpdateManualBtnVisual()
+    if ManualSpamEnabled then
+        ManualBtn.Text = "SPAM: ON"
+        ManualBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
+
+        TweenService:Create(BgGradient, TweenInfo.new(0.3), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(20, 60, 50)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(30, 80, 60))
+            })
+        }):Play()
+
+        TweenService:Create(StrokeGradient, TweenInfo.new(0.3), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(80, 255, 180)),
+                ColorSequenceKeypoint.new(0.33, Color3.fromRGB(100, 255, 220)),
+                ColorSequenceKeypoint.new(0.66, Color3.fromRGB(150, 200, 255)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(180, 220, 255))
+            })
+        }):Play()
+    else
+        ManualBtn.Text = "SPAM: OFF"
+        ManualBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
+
+        TweenService:Create(BgGradient, TweenInfo.new(0.3), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(35, 20, 50)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
+            })
+        }):Play()
+
+        TweenService:Create(StrokeGradient, TweenInfo.new(0.3), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 100, 200)),
+                ColorSequenceKeypoint.new(0.33, Color3.fromRGB(230, 80, 230)),
+                ColorSequenceKeypoint.new(0.66, Color3.fromRGB(180, 90, 255)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(140, 100, 255))
+            })
+        }):Play()
+    end
+end
+
 -- 🖐️ Drag System
 local dragging, dragStart, startPos, dragMoved
 local lastTap = 0
@@ -590,7 +668,7 @@ end)
 ManualBtn.InputChanged:Connect(function(input)
     if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
         local delta = input.Position - dragStart
-        if math.abs(delta.X) > 10 or math.abs(delta.Y) > 10 then
+        if math.abs(delta.X) > 8 or math.abs(delta.Y) > 8 then
             dragMoved = true
         end
         ManualBtn.Position = UDim2.new(
@@ -606,42 +684,10 @@ ManualBtn.InputEnded:Connect(function(input)
     end
 end)
 
--- 🎯 Manual Spam Trigger
-local function TriggerManualSpam()
-    local remote, args = GetParryRemote()
-    if not remote or not args then return end
-
-    task.spawn(function()
-        for _ = 1, 10 do
-            local packet = {
-                args[1],
-                args[2],
-                _tokenize(args[2]),
-                0.5,
-                workspace.CurrentCamera.CFrame,
-                {},
-                {0, 0},
-                false
-            }
-            if remote:IsA('RemoteEvent') then
-                remote:FireServer(unpack(packet))
-            elseif remote:IsA('RemoteFunction') then
-                remote:InvokeServer(unpack(packet))
-            end
-            task.wait(0.015)
-        end
-    end)
-
-    -- ✨ Visual Feedback
-    ManualBtn.Text = "✦ FIRED ✦"
-    ManualBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ManualBtn.BackgroundColor3 = Color3.fromRGB(80, 30, 100)
-
-    task.wait(0.15)
-
-    ManualBtn.Text = "SPAM"
-    ManualBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
-    ManualBtn.BackgroundColor3 = Color3.fromRGB(18, 14, 28)
+-- 🎯 Toggle Trigger
+local function ToggleManualSpam()
+    ManualSpamEnabled = not ManualSpamEnabled
+    UpdateManualBtnVisual()
 end
 
 ManualBtn.MouseButton1Click:Connect(function()
@@ -649,7 +695,7 @@ ManualBtn.MouseButton1Click:Connect(function()
         local now = tick()
         if now - lastTap > 0.3 then
             lastTap = now
-            TriggerManualSpam()
+            ToggleManualSpam()
         end
     end
 end)
@@ -658,15 +704,15 @@ ManualBtn.TouchTap:Connect(function()
     local now = tick()
     if now - lastTap > 0.3 then
         lastTap = now
-        TriggerManualSpam()
+        ToggleManualSpam()
     end
 end)
 
--- ⌨️ E key shortcut
+-- ⌨️ E key toggles too
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode.E then
-        TriggerManualSpam()
+        ToggleManualSpam()
     end
 end)
 
@@ -687,11 +733,11 @@ AccLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
 AccLabel.BackgroundTransparency = 0.3
 AccLabel.BorderSizePixel = 0
 AccLabel.Position = UDim2.new(0.72, 0, 0.02, 0)
-AccLabel.Size = UDim2.new(0, 200, 0, 60)
+AccLabel.Size = UDim2.new(0, 180, 0, 55)
 AccLabel.Font = Enum.Font.GothamBold
 AccLabel.Text = "🎯 Accuracy: 50"
 AccLabel.TextColor3 = Color3.fromRGB(255, 180, 230)
-AccLabel.TextSize = 14
+AccLabel.TextSize = 13
 
 local AccCorner = Instance.new("UICorner")
 AccCorner.CornerRadius = UDim.new(0, 10)
@@ -778,7 +824,7 @@ SettingsTab:Button({
 })
 
 WindUI:Notify({
-    Title = "Slax Hub v19.5 🌸💜",
-    Content = "Pink/Purple SPAM button loaded!",
+    Title = "Slax Hub v19.7 🌸💜",
+    Content = "Smaller SPAM button - Clean look",
     Duration = 6
 })
