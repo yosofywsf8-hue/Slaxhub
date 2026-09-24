@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (No Spam + Beast Mode)
--- Slax Hub v9.0 - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (Beast + No Spam)
+-- Slax Hub v9.1 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v9.0 (No Spam)",
+    SubTitle = "v9.1 (Beast Mode)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -143,7 +143,7 @@ local function GetPing()
 end
 
 -- =========================================
--- 🎯 TRIGGERBOT LOOP
+-- 🎯 TRIGGERBOT LOOP (MAX POWER)
 -- =========================================
 task.spawn(function()
     local lastTriggerTime = 0
@@ -184,11 +184,11 @@ task.spawn(function()
 end)
 
 -- =========================================
--- ⚔️ Auto Parry Loop (Single Fire Per Ball - No Spam)
+-- ⚔️ Auto Parry Loop (BEAST + No Spam)
 -- =========================================
 task.spawn(function()
     local lastParryTime = 0
-    local parriedBalls = {} -- {[ball] = true}
+    local parriedBalls = {}
 
     while task.wait() do
         if not AutoParryEnabled then
@@ -200,8 +200,8 @@ task.spawn(function()
         local now = tick()
         local currentPing = GetPing()
 
-        -- ✅ كولداون معقول (منع spam)
-        local cooldown = 0.25 + (currentPing * 0.5)
+        -- ✅ كولداون قصير جداً (يمنع spam بدون تعطيل)
+        local cooldown = currentPing + 0.05
         if (now - lastParryTime) < cooldown then continue end
 
         local character = LocalPlayer.Character
@@ -213,8 +213,8 @@ task.spawn(function()
         local ballsFolder = workspace:FindFirstChild("Balls")
         if not ballsFolder then continue end
 
-        -- ✅ Buffer: 100 = مبكر | 1 = مثالي
-        local buffer = 0.02 + ((ParryAccuracyValue / 100) * 0.20)
+        -- ✅ Buffer واسع (قوي)
+        local buffer = 0.05 + ((ParryAccuracyValue / 100) * 0.35)
         local triggerTime = currentPing + buffer
 
         -- 🧹 تنظيف الكرات المحذوفة
@@ -224,11 +224,14 @@ task.spawn(function()
             end
         end
 
+        local bestBall = nil
+        local bestTime = math.huge
+
         for _, ball in ipairs(ballsFolder:GetChildren()) do
             if not ball:IsA("BasePart") then continue end
             if ball:GetAttribute("realBall") == false then continue end
 
-            -- 🔒 تجاهل الكرات اللي صدناها
+            -- 🔒 تجاهل الكرات المصدودة
             if parriedBalls[ball] then continue end
 
             local ballPos = ball.Position
@@ -239,24 +242,36 @@ task.spawn(function()
             local toPlayer = (playerPos - ballPos).Unit
             local dot = velocity.Unit:Dot(toPlayer)
 
-            -- 🔄 لو الكرة ابتعدت، نفتح القفل
-            if dot < -0.3 then
+            -- 🔄 فتح القفل لو الكرة ابتعدت (يسمح بصدها لو رجعت)
+            if dot < -0.2 then
                 parriedBalls[ball] = nil
                 continue
             end
 
-            if dot <= 0.1 then continue end
+            if dot <= 0 then continue end
 
-            local distance = (playerPos - ballPos).Magnitude
-            local timeToReach = distance / speed
+            local targetAttr = ball:GetAttribute("target")
+            local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
+            if not isTarget then continue end
 
-            -- 🎯 نصد لما الوقت مناسب
-            if timeToReach <= triggerTime and timeToReach >= -0.03 then
-                lastParryTime = now
-                parriedBalls[ball] = true
-                FireParryBypass()
-                break
+            -- ✅ تنبؤ بسيط (فرمتين)
+            local predictedPos = ballPos + (velocity * (2/60))
+            local predictedDistance = (playerPos - predictedPos).Magnitude
+            local timeToReach = predictedDistance / speed
+
+            -- 🎯 نافذة واسعة
+            if timeToReach <= triggerTime and timeToReach >= -0.05 then
+                if timeToReach < bestTime then
+                    bestTime = timeToReach
+                    bestBall = ball
+                end
             end
+        end
+
+        if bestBall then
+            lastParryTime = now
+            parriedBalls[bestBall] = true
+            FireParryBypass()
         end
     end
 end)
@@ -306,7 +321,6 @@ TriggerStroke.Parent = TriggerBtn
 TriggerStroke.Color = Color3.fromRGB(255, 255, 255)
 TriggerStroke.Thickness = 2
 
--- ✅ TriggerToggle معرف مسبقاً (للربط)
 local TriggerToggle = nil
 
 local function UpdateBtnVisual(skipToggle)
@@ -327,7 +341,7 @@ local function UpdateBtnVisual(skipToggle)
     end
 end
 
--- 🖐️ Drag + Press (Fixed)
+-- 🖐️ Drag + Press
 local pressing = false
 local pressStart = nil
 local pressStartPos = nil
@@ -373,7 +387,7 @@ end)
 -- =========================================
 -- UI Controls
 -- =========================================
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry (No Spam)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry (Beast Mode)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
@@ -408,7 +422,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v9.0 🔥",
-    Content = "Auto Parry بدون spam + Beast Triggerbot جاهزين",
+    Title = "Slax Hub v9.1 🔥",
+    Content = "Auto Parry Beast Mode + No Spam + زر Triggerbot جاهزين",
     Duration = 6
 })
