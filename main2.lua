@@ -1,4 +1,4 @@
--- Blade Ball Script - Slax Hub v20.0 (Powerful Auto Accuracy)
+-- Blade Ball Script - Slax Hub v20.2 (Ultra Manual Spam)
 -- Developed by yossef
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -42,18 +42,18 @@ local AutoSpamEnabled = false
 local ManualSpamEnabled = false
 local ParryAccuracyValue = 50
 local AutoAccuracyEnabled = true
+local AutoSpamCPS = 350
 
--- ⚙️ Config
-local CLOSE_COMBAT_RANGE = 30
-local GLOBAL_LOCK_FAR = 0.15
-local GLOBAL_LOCK_NEAR = 0.06
+-- ⚙️ FIXED Config
+local GLOBAL_LOCK = 0.20
 local BALL_LOCK_DURATION = 0.5
 local MAX_PARRY_DISTANCE = 150
 local MAX_PARRY_ANGLE = 85
 local SPAM_PROXIMITY_RANGE = 60
 
--- 🎯 Auto Accuracy History
-local recentParries = {} -- لتتبع النجاح/الفشل
+-- 🌸💜 ULTRA MANUAL SPAM Config
+local MANUAL_SPAM_CPS = 500    -- ⚡ أقصى سرعة
+local MANUAL_SPAM_BURST = 10   -- ⚡ 10 رميات per burst
 
 -- =========================================
 -- Token
@@ -123,9 +123,6 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
     end
 end
 
--- =========================================
--- Cache Remotes
--- =========================================
 local _parryRemote = nil
 local _parryArgs = nil
 
@@ -175,7 +172,7 @@ local NearPlayerCached = false
 local ClosestPlayerDist = math.huge
 
 task.spawn(function()
-    while task.wait(0.05) do
+    while task.wait(0.1) do
         if not AutoParryEnabled and not AutoSpamEnabled then
             NearPlayerCached = false
             ClosestPlayerDist = math.huge
@@ -209,7 +206,7 @@ task.spawn(function()
         end
 
         ClosestPlayerDist = closest
-        NearPlayerCached = closest <= CLOSE_COMBAT_RANGE
+        NearPlayerCached = closest <= 30
     end
 end)
 
@@ -225,7 +222,7 @@ local function TrackBall(ball)
 
     local data = ballTracking[ball]
     if not data then
-        ballTracking[ball] = { lastVel = vel, curveScore = 0, curveActive = false, changes = 0 }
+        ballTracking[ball] = { lastVel = vel, curveScore = 0, curveActive = false }
         return 0, false
     end
 
@@ -236,7 +233,6 @@ local function TrackBall(ball)
 
     if angleChange > 3 then
         data.curveScore = data.curveScore + angleChange * 0.1
-        data.changes = data.changes + 1
     else
         data.curveScore = data.curveScore * 0.95
     end
@@ -263,121 +259,40 @@ local function IsWithinParryAngle(playerPos, ballPos, ballVel)
     return angle <= MAX_PARRY_ANGLE
 end
 
-local function GetPredictionFrames(ballSpeed)
-    if ballSpeed > 200 then return 1
-    elseif ballSpeed > 150 then return 2
-    elseif ballSpeed > 100 then return 3
-    elseif ballSpeed > 60 then return 4
-    else return 3 end
-end
+-- =========================================
+-- 🎯 POWERFUL AUTO ACCURACY
+-- =========================================
+local AutoAccuracyDebug = { Value = 50, Reason = "Starting" }
 
--- =========================================
--- 🎯 POWERFUL AUTO ACCURACY SYSTEM
--- =========================================
--- يحسب Accuracy ذكية حسب:
--- 1. Ping (البينج)
--- 2. Ball Speed (سرعة الكرة)
--- 3. Curve (الانحناء)
--- 4. Close Combat (القرب)
--- 5. Distance (المسافة - كل ما قرب زادت)
--- 6. Time Pressure (ضيق الوقت)
--- =========================================
-local AutoAccuracyDebug = { Value = 50, Reason = "Starting", Components = {} }
-
-local function GetAutoAccuracy(ballSpeed, curveActive, isClose, distance, timeToReach)
+local function GetAutoAccuracy(ballSpeed, curveActive, isClose)
     local pingMs = GetPing() * 1000
     local base = 50
-    local reasons = {}
 
-    -- 1️⃣ Ping Component (0-30)
-    local pingBonus = 0
-    if pingMs < 25 then
-        pingBonus = -10  -- ping ممتاز، ما نحتاج زيادة
-        table.insert(reasons, "Ping:" .. math.floor(pingMs) .. "ms↓")
-    elseif pingMs < 50 then
-        pingBonus = 0
-    elseif pingMs < 80 then
-        pingBonus = 12
-        table.insert(reasons, "Ping:" .. math.floor(pingMs) .. "ms")
-    elseif pingMs < 110 then
-        pingBonus = 20
-        table.insert(reasons, "Ping:" .. math.floor(pingMs) .. "ms↑")
-    elseif pingMs < 150 then
-        pingBonus = 28
-        table.insert(reasons, "Ping:" .. math.floor(pingMs) .. "ms")
-    else
-        pingBonus = 35
-        table.insert(reasons, "Ping:" .. math.floor(pingMs) .. "ms!!")
-    end
-    base = base + pingBonus
+    if pingMs < 30 then base = base - 5
+    elseif pingMs < 60 then base = base
+    elseif pingMs < 90 then base = base + 15
+    elseif pingMs < 130 then base = base + 25
+    else base = base + 35 end
 
-    -- 2️⃣ Ball Speed Component (0-40)
-    local speedBonus = 0
-    if ballSpeed > 250 then
-        speedBonus = 40
-        table.insert(reasons, "Spd:250+!!")
-    elseif ballSpeed > 200 then
-        speedBonus = 32
-        table.insert(reasons, "Spd:200+")
-    elseif ballSpeed > 150 then
-        speedBonus = 24
-        table.insert(reasons, "Spd:150+")
-    elseif ballSpeed > 120 then
-        speedBonus = 18
-    elseif ballSpeed > 90 then
-        speedBonus = 12
-    elseif ballSpeed > 60 then
-        speedBonus = 6
-    end
-    base = base + speedBonus
+    if ballSpeed > 250 then base = base + 40
+    elseif ballSpeed > 200 then base = base + 32
+    elseif ballSpeed > 150 then base = base + 24
+    elseif ballSpeed > 120 then base = base + 18
+    elseif ballSpeed > 90 then base = base + 12
+    elseif ballSpeed > 60 then base = base + 6 end
 
-    -- 3️⃣ Curve Component (0-15)
-    if curveActive then
-        base = base + 12
-        table.insert(reasons, "Curve!")
-    end
+    if curveActive then base = base + 12 end
+    if isClose then base = base + 10 end
 
-    -- 4️⃣ Close Combat Component (0-15)
-    if isClose then
-        base = base + 10
-        table.insert(reasons, "Close")
-    end
-
-    -- 5️⃣ Distance Component (0-20)
-    -- كل ما كانت الكرة قريبة، نحتاج صد أسرع
-    if distance < 20 then
-        base = base + 20
-        table.insert(reasons, "VeryClose!")
-    elseif distance < 35 then
-        base = base + 12
-    elseif distance < 50 then
-        base = base + 6
-    end
-
-    -- 6️⃣ Time Pressure (0-15)
-    -- لو الوقت ضيق، نصد أبكر
-    if timeToReach < 0.1 then
-        base = base + 15
-        table.insert(reasons, "Urgent!")
-    elseif timeToReach < 0.2 then
-        base = base + 8
-    end
-
-    -- Clamp
-    base = math.clamp(math.floor(base), 1, 100)
-
-    AutoAccuracyDebug.Value = base
-    AutoAccuracyDebug.Components = reasons
-    AutoAccuracyDebug.Reason = table.concat(reasons, " ")
-
-    return base
+    return math.clamp(math.floor(base), 1, 100)
 end
 
 -- =========================================
--- Auto Parry (Focus on Auto Accuracy)
+-- ⚔️ Auto Parry - FIXED
 -- =========================================
 local lastParryTime = 0
 local ballLocks = {}
+local ballNameLocks = {}
 
 task.spawn(function()
     while task.wait(0.5) do
@@ -387,20 +302,25 @@ task.spawn(function()
                 ballLocks[ball] = nil
             end
         end
+        for name, t in pairs(ballNameLocks) do
+            if now >= t then
+                ballNameLocks[name] = nil
+            end
+        end
     end
 end)
 
 RunService.Heartbeat:Connect(function()
     if not AutoParryEnabled then
         ballLocks = {}
+        ballNameLocks = {}
         return
     end
 
     local now = tick()
     local ping = GetPing()
 
-    local globalLock = NearPlayerCached and GLOBAL_LOCK_NEAR or GLOBAL_LOCK_FAR
-    if (now - lastParryTime) < globalLock then return end
+    if (now - lastParryTime) < GLOBAL_LOCK then return end
 
     local character = LocalPlayer.Character
     if not character then return end
@@ -414,15 +334,17 @@ RunService.Heartbeat:Connect(function()
     local balls = ballsFolder:GetChildren()
     local bestBall = nil
     local bestTime = math.huge
-    local bestDistance = 0
     local bestSpeed = 0
     local bestCurve = false
+    local bestDistance = 0
 
     for i = 1, #balls do
         local ball = balls[i]
         if not ball:IsA("BasePart") then continue end
         if ball:GetAttribute("realBall") == false then continue end
+
         if ballLocks[ball] then continue end
+        if ballNameLocks[ball.Name] then continue end
 
         local ballPos = ball.Position
         local velocity = ball.AssemblyLinearVelocity
@@ -431,7 +353,12 @@ RunService.Heartbeat:Connect(function()
 
         if not IsWithinParryAngle(playerPos, ballPos, velocity) then continue end
 
-        local frames = GetPredictionFrames(speed)
+        local frames = 1
+        if speed < 60 then frames = 4
+        elseif speed < 100 then frames = 3
+        elseif speed < 150 then frames = 2
+        else frames = 1 end
+
         local predictedPos = ballPos + (velocity * (frames * (1/60)))
         local predictedDistance = (playerPos - predictedPos).Magnitude
 
@@ -441,82 +368,87 @@ RunService.Heartbeat:Connect(function()
         local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
         if not isTarget then continue end
 
-        local curveScore, curveActive = TrackBall(ball)
+        local _, curveActive = TrackBall(ball)
         local timeToReach = predictedDistance / speed
 
         if timeToReach < bestTime then
             bestTime = timeToReach
             bestBall = ball
-            bestDistance = predictedDistance
             bestSpeed = speed
             bestCurve = curveActive
+            bestDistance = predictedDistance
         end
     end
 
     if bestBall then
-        -- 🎯 حساب Auto Accuracy القوية
         local usedAccuracy
         if AutoAccuracyEnabled then
-            usedAccuracy = GetAutoAccuracy(bestSpeed, bestCurve, NearPlayerCached, bestDistance, bestTime)
+            usedAccuracy = GetAutoAccuracy(bestSpeed, bestCurve, NearPlayerCached)
+            AutoAccuracyDebug.Value = usedAccuracy
+            AutoAccuracyDebug.Reason = string.format("Ping:%d Speed:%d",
+                math.floor(ping * 1000), math.floor(bestSpeed))
         else
             usedAccuracy = ParryAccuracyValue
         end
 
-        local accuracyFactor = (usedAccuracy / 100) * 0.4  -- ✅ زدت التأثير (0.4 بدل 0.3)
-        local timeWindow = ping + 0.20 + accuracyFactor  -- ✅ قللت الأساس لتعتمد أكثر على Accuracy
+        local accuracyFactor = (usedAccuracy / 100) * 0.45
+        local timeWindow = ping + 0.10 + accuracyFactor
 
-        -- 🎯 نافذة الصد
-        if bestTime <= timeWindow and bestTime >= -0.1 then
+        if (bestTime <= timeWindow and bestTime >= -0.05) or bestDistance <= 20 then
             lastParryTime = now
             ballLocks[bestBall] = now + BALL_LOCK_DURATION
-            FireParry()
-        elseif bestDistance <= 25 then
-            -- صد طارئ للكرة القريبة
-            lastParryTime = now
-            ballLocks[bestBall] = now + BALL_LOCK_DURATION
+            ballNameLocks[bestBall.Name] = now + BALL_LOCK_DURATION
             FireParry()
         end
     end
 end)
 
 -- =========================================
--- Auto Spam
+-- ⚡ Auto Spam (200-500 CPS)
 -- =========================================
 local lastSpamTime = 0
+local spamPlayerCheck = 0
+local nearPlayerSpam = false
 
 RunService.Heartbeat:Connect(function()
     if not AutoSpamEnabled then return end
 
     local now = tick()
 
-    local character = LocalPlayer.Character
-    if not character then return end
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+    if (now - spamPlayerCheck) > 0.05 then
+        spamPlayerCheck = now
+        nearPlayerSpam = false
 
-    local playerPos = hrp.Position
-    local nearPlayer = false
-
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p == LocalPlayer then continue end
-        local c = p.Character
-        if c then
-            local p_hrp = c:FindFirstChild("HumanoidRootPart")
-            if p_hrp and (p_hrp.Position - playerPos).Magnitude <= SPAM_PROXIMITY_RANGE then
-                nearPlayer = true
-                break
+        local character = LocalPlayer.Character
+        if character then
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local playerPos = hrp.Position
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer then
+                        local c = p.Character
+                        if c then
+                            local p_hrp = c:FindFirstChild("HumanoidRootPart")
+                            if p_hrp and (p_hrp.Position - playerPos).Magnitude <= SPAM_PROXIMITY_RANGE then
+                                nearPlayerSpam = true
+                                break
+                            end
+                        end
+                    end
+                end
             end
         end
     end
 
-    if not nearPlayer then return end
-    if (now - lastSpamTime) < 0.02 then return end
+    if not nearPlayerSpam then return end
+    if (now - lastSpamTime) < 0.016 then return end
     lastSpamTime = now
 
     local remote, args = GetParryRemote()
     if not remote or not args then return end
 
-    for _ = 1, 5 do
+    local burst = math.max(1, math.floor(AutoSpamCPS / 60))
+    for _ = 1, burst do
         local packet = {
             args[1],
             args[2],
@@ -536,7 +468,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- =========================================
--- MANUAL SPAM TOGGLE
+-- 🌸💜 ULTRA MANUAL SPAM (Instantly fires on toggle)
 -- =========================================
 local lastManualSpamTime = 0
 
@@ -544,13 +476,14 @@ RunService.Heartbeat:Connect(function()
     if not ManualSpamEnabled then return end
 
     local now = tick()
-    if (now - lastManualSpamTime) < 0.02 then return end
+    if (now - lastManualSpamTime) < 0.005 then return end  -- ⚡ كل 5ms فقط
     lastManualSpamTime = now
 
     local remote, args = GetParryRemote()
     if not remote or not args then return end
 
-    for _ = 1, 5 do
+    -- ⚡ 10 رميات لكل burst (500+ CPS)
+    for _ = 1, MANUAL_SPAM_BURST do
         local packet = {
             args[1],
             args[2],
@@ -570,7 +503,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- =========================================
--- 🌸💜 FLOATING MANUAL SPAM BUTTON
+-- 🌸💜 FLOATING MANUAL SPAM TOGGLE BUTTON
 -- =========================================
 local function GetGuiParent()
     local ok, hui = pcall(gethui)
@@ -602,17 +535,17 @@ ManualBtn.BackgroundColor3 = Color3.fromRGB(18, 14, 28)
 ManualBtn.BackgroundTransparency = 0.15
 ManualBtn.BorderSizePixel = 0
 ManualBtn.Position = UDim2.new(0.35, 0, 0.42, 0)
-ManualBtn.Size = UDim2.new(0, 90, 0, 38)
+ManualBtn.Size = UDim2.new(0, 100, 0, 42)
 ManualBtn.Font = Enum.Font.GothamBold
 ManualBtn.Text = "SPAM: OFF"
 ManualBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
-ManualBtn.TextSize = 12
+ManualBtn.TextSize = 13
 ManualBtn.AutoButtonColor = false
 ManualBtn.Active = true
 ManualBtn.Selectable = true
 
 local ManualCorner = Instance.new("UICorner")
-ManualCorner.CornerRadius = UDim.new(0, 9)
+ManualCorner.CornerRadius = UDim.new(0, 10)
 ManualCorner.Parent = ManualBtn
 
 local ManualStroke = Instance.new("UIStroke")
@@ -731,9 +664,37 @@ ManualBtn.InputEnded:Connect(function(input)
     end
 end)
 
+-- 🌸💜 ULTRA TOGGLE - Fires immediately on activation
 local function ToggleManualSpam()
     ManualSpamEnabled = not ManualSpamEnabled
     UpdateManualBtnVisual()
+
+    -- ⚡ لو مفعل، أطلق فوراً burst قوي
+    if ManualSpamEnabled then
+        task.spawn(function()
+            local remote, args = GetParryRemote()
+            if not remote or not args then return end
+
+            -- 🚀 Initial Mega Burst: 30 رمية فورية
+            for _ = 1, 30 do
+                local packet = {
+                    args[1],
+                    args[2],
+                    _tokenize(args[2]),
+                    0.5,
+                    workspace.CurrentCamera.CFrame,
+                    {},
+                    {0, 0},
+                    false
+                }
+                if remote:IsA('RemoteEvent') then
+                    remote:FireServer(unpack(packet))
+                elseif remote:IsA('RemoteFunction') then
+                    remote:InvokeServer(unpack(packet))
+                end
+            end
+        end)
+    end
 end
 
 ManualBtn.MouseButton1Click:Connect(function()
@@ -762,7 +723,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 
 -- =========================================
--- 📊 ADVANCED ACCURACY DISPLAY
+-- 📊 ACCURACY DISPLAY
 -- =========================================
 local AccGui = Instance.new("ScreenGui")
 AccGui.Name = "SlaxAccDisplay_" .. math.random(1, 99999)
@@ -778,14 +739,11 @@ AccLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
 AccLabel.BackgroundTransparency = 0.3
 AccLabel.BorderSizePixel = 0
 AccLabel.Position = UDim2.new(0.68, 0, 0.02, 0)
-AccLabel.Size = UDim2.new(0, 200, 0, 70)
+AccLabel.Size = UDim2.new(0, 200, 0, 60)
 AccLabel.Font = Enum.Font.GothamBold
 AccLabel.Text = "🎯 Accuracy: 50"
 AccLabel.TextColor3 = Color3.fromRGB(255, 180, 230)
-AccLabel.TextSize = 11
-AccLabel.TextWrapped = true
-AccLabel.TextXAlignment = Enum.TextXAlignment.Center
-AccLabel.TextYAlignment = Enum.TextYAlignment.Center
+AccLabel.TextSize = 12
 
 local AccCorner = Instance.new("UICorner")
 AccCorner.CornerRadius = UDim.new(0, 10)
@@ -800,20 +758,13 @@ task.spawn(function()
     while task.wait(0.15) do
         if AutoParryEnabled and AutoAccuracyEnabled then
             local value = AutoAccuracyDebug.Value
-            -- 🎨 لون حسب القيمة
             local color
-            if value < 30 then
-                color = Color3.fromRGB(100, 255, 100)     -- أخضر (perfect timing)
-            elseif value < 60 then
-                color = Color3.fromRGB(255, 220, 100)     -- أصفر (balanced)
-            elseif value < 85 then
-                color = Color3.fromRGB(255, 150, 100)     -- برتقالي (early)
-            else
-                color = Color3.fromRGB(255, 100, 100)     -- أحمر (very early)
-            end
+            if value < 30 then color = Color3.fromRGB(100, 255, 100)
+            elseif value < 60 then color = Color3.fromRGB(255, 220, 100)
+            elseif value < 85 then color = Color3.fromRGB(255, 150, 100)
+            else color = Color3.fromRGB(255, 100, 100) end
 
-            AccLabel.Text = string.format("🎯 ACC: %d\n%s",
-                value, AutoAccuracyDebug.Reason)
+            AccLabel.Text = string.format("🎯 ACC: %d\n%s", value, AutoAccuracyDebug.Reason)
             AccLabel.TextColor3 = color
             AccStroke.Color = color
         elseif AutoParryEnabled then
@@ -833,20 +784,21 @@ end)
 -- =========================================
 MainTab:Toggle({
     Title = "⚔️ Auto Parry",
-    Desc = "Smart parry with powerful Auto Accuracy",
+    Desc = "Fixed: No double + handles fast balls",
     Value = false,
     Callback = function(Value)
         AutoParryEnabled = Value
         if not Value then
             ballTracking = {}
             ballLocks = {}
+            ballNameLocks = {}
         end
     end
 })
 
 MainTab:Toggle({
-    Title = "🎯 Auto Accuracy (Powerful)",
-    Desc = "Smart accuracy based on ping, speed, curve, distance",
+    Title = "🎯 Auto Accuracy",
+    Desc = "Powerful auto-adjust",
     Value = true,
     Callback = function(Value)
         AutoAccuracyEnabled = Value
@@ -875,6 +827,19 @@ MainTab:Toggle({
     end
 })
 
+MainTab:Slider({
+    Title = "Auto Spam CPS",
+    Desc = "200-500 CPS",
+    Value = {
+        Min = 200,
+        Max = 500,
+        Default = 350,
+    },
+    Callback = function(Value)
+        AutoSpamCPS = Value
+    end
+})
+
 SettingsTab:Button({
     Title = "Destroy UI",
     Callback = function()
@@ -885,7 +850,7 @@ SettingsTab:Button({
 })
 
 WindUI:Notify({
-    Title = "Slax Hub v20.0 🎯",
-    Content = "Powerful Auto Accuracy - Pre-Parry removed",
+    Title = "Slax Hub v20.2 🌸💜",
+    Content = "Ultra Manual Spam - Instant 30 shot burst on toggle!",
     Duration = 6
 })
