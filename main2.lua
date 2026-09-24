@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (Triggerbot + Floating Button)
--- Slax Hub v6.2 - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (Mobile Triggerbot)
+-- Slax Hub v6.4 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v6.2 (Triggerbot)",
+    SubTitle = "v6.4 (Mobile)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -37,7 +37,6 @@ local PanicModeEnabled = true
 local PanicSpeedThreshold = 120
 local PanicDistanceThreshold = 35
 
--- 🎯 Triggerbot Settings
 local TriggerbotEnabled = false
 local TriggerDistance = 12
 local TriggerSpeed = 5
@@ -207,7 +206,7 @@ task.spawn(function()
 end)
 
 -- =========================================
--- ⚡ Auto Parry Loop (Panic + Trajectory + Global Lock)
+-- ⚡ Auto Parry Loop
 -- =========================================
 task.spawn(function()
     local lastParryTime = 0
@@ -365,12 +364,13 @@ task.spawn(function()
 end)
 
 -- =========================================
--- 🎯 Simple Floating Triggerbot Button
+-- 📱 Floating Triggerbot Button (MOBILE TOUCH FIX)
 -- =========================================
 local TriggerGui = Instance.new("ScreenGui")
 TriggerGui.Name = "SlaxTriggerBotGui"
 TriggerGui.Parent = CoreGui
 TriggerGui.ResetOnSpawn = false
+TriggerGui.DisplayOrder = 999
 
 local TriggerBtn = Instance.new("TextButton")
 TriggerBtn.Name = "TriggerBtn"
@@ -378,69 +378,27 @@ TriggerBtn.Parent = TriggerGui
 TriggerBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
 TriggerBtn.BorderSizePixel = 0
 TriggerBtn.Position = UDim2.new(0.05, 0, 0.5, 0)
-TriggerBtn.Size = UDim2.new(0, 140, 0, 45)
+TriggerBtn.Size = UDim2.new(0, 150, 0, 50)  -- أكبر شوي للمس
 TriggerBtn.Font = Enum.Font.GothamBold
 TriggerBtn.Text = "🎯 Trigger: OFF"
 TriggerBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-TriggerBtn.TextSize = 15
+TriggerBtn.TextSize = 16
 TriggerBtn.AutoButtonColor = false
 TriggerBtn.Active = true
+TriggerBtn.Selectable = true
 
 local TriggerCorner = Instance.new("UICorner")
-TriggerCorner.CornerRadius = UDim.new(0, 8)
+TriggerCorner.CornerRadius = UDim.new(0, 10)
 TriggerCorner.Parent = TriggerBtn
 
 local TriggerStroke = Instance.new("UIStroke")
 TriggerStroke.Parent = TriggerBtn
 TriggerStroke.Color = Color3.fromRGB(255, 255, 255)
-TriggerStroke.Thickness = 1.5
+TriggerStroke.Thickness = 2
 TriggerStroke.Transparency = 0.3
 
--- نظام السحب
-local dragging = false
-local dragInput = nil
-local dragStart = nil
-local startPos = nil
-local dragMoved = false
-
-TriggerBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragMoved = false
-        dragStart = input.Position
-        startPos = TriggerBtn.Position
-
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-TriggerBtn.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        if math.abs(delta.X) > 5 or math.abs(delta.Y) > 5 then
-            dragMoved = true
-        end
-        TriggerBtn.Position = UDim2.new(
-            startPos.X.Scale,
-            startPos.X.Offset + delta.X,
-            startPos.Y.Scale,
-            startPos.Y.Offset + delta.Y
-        )
-    end
-end)
-
--- دالة تحديث الزر
-local function UpdateTriggerBtn()
+-- دالة تغيير الشكل
+local function UpdateBtnVisual()
     if TriggerbotEnabled then
         TriggerBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 100)
         TriggerBtn.Text = "🎯 Trigger: ON"
@@ -451,6 +409,74 @@ local function UpdateTriggerBtn()
         TriggerStroke.Color = Color3.fromRGB(255, 255, 255)
     end
 end
+
+-- 📱 TouchTap - الأفضل للجوال
+local lastTap = 0
+TriggerBtn.TouchTap:Connect(function(touchPositions)
+    local now = tick()
+    if now - lastTap < 0.3 then return end  -- منع الضغط المزدوج
+    lastTap = now
+    
+    TriggerbotEnabled = not TriggerbotEnabled
+    UpdateBtnVisual()
+    
+    if TriggerToggle then
+        pcall(function()
+            TriggerToggle:SetValue(TriggerbotEnabled)
+        end)
+    end
+end)
+
+-- 💻 MouseButton1Click - للكمبيوتر
+TriggerBtn.MouseButton1Click:Connect(function()
+    local now = tick()
+    if now - lastTap < 0.3 then return end
+    lastTap = now
+    
+    TriggerbotEnabled = not TriggerbotEnabled
+    UpdateBtnVisual()
+    
+    if TriggerToggle then
+        pcall(function()
+            TriggerToggle:SetValue(TriggerbotEnabled)
+        end)
+    end
+end)
+
+-- =========================================
+-- 🖐️ نظام السحب (Drag) للموبايل والكمبيوتر
+-- =========================================
+local dragging = false
+local dragStart = nil
+local startPos = nil
+
+TriggerBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = TriggerBtn.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+TriggerBtn.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        if dragging then
+            local delta = input.Position - dragStart
+            TriggerBtn.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end
+end)
 
 -- =========================================
 -- UI Controls
@@ -531,7 +557,7 @@ Tabs.Main:AddSlider("PanicDistance", {
 local TriggerToggle = Tabs.Main:AddToggle("Triggerbot", {Title = "🎯 Triggerbot (يصد لحظة اللمس)", Default = false })
 TriggerToggle:OnChanged(function(Value)
     TriggerbotEnabled = Value
-    UpdateTriggerBtn()
+    UpdateBtnVisual()
 end)
 
 Tabs.Main:AddSlider("TriggerDistance", {
@@ -570,19 +596,6 @@ Tabs.Main:AddSlider("TriggerCooldown", {
     end
 })
 
--- تفعيل الزر العائم
-TriggerBtn.MouseButton1Click:Connect(function()
-    if dragMoved then return end
-    TriggerbotEnabled = not TriggerbotEnabled
-    UpdateTriggerBtn()
-    if TriggerToggle then
-        TriggerToggle:SetValue(TriggerbotEnabled)
-    end
-end)
-
--- تهيئة أولية
-UpdateTriggerBtn()
-
 InterfaceManager:SetLibrary(Fluent)
 SaveManager:SetLibrary(Fluent)
 SaveManager:IgnoreThemeSettings()
@@ -592,7 +605,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v6.2 👑",
-    Content = "Triggerbot + زر عائم + Auto Parry جاهزين!",
+    Title = "Slax Hub v6.4 📱",
+    Content = "زر Triggerbot جاهز للجوال! المس الزر مرة واحدة",
     Duration = 6
 })
