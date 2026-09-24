@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (Auto Parry Beast)
--- Slax Hub v12.0 - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (Adaptive Auto Parry)
+-- Slax Hub v12.1 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v12.0 (Auto Parry Beast)",
+    SubTitle = "v12.1 (Adaptive Accuracy)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -30,14 +30,17 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
-local ParryAccuracyValue = 25
 
 -- ⚙️ إعدادات Auto Parry (Beast)
-local MAX_PARRY_DISTANCE = 120     -- أقصى مسافة للصد
-local MAX_PARRY_ANGLE = 75         -- أقصى زاوية (واسعة)
-local PREDICTION_FRAMES = 3        -- إطارات التنبؤ
-local BALL_LOCK_DURATION = 0.6     -- قفل الكرة بعد الصد
-local GLOBAL_COOLDOWN_BASE = 0.06  -- كولداون أساسي (يمنع spam)
+local MAX_PARRY_DISTANCE = 120
+local MAX_PARRY_ANGLE = 75
+local PREDICTION_FRAMES = 3
+local BALL_LOCK_DURATION = 0.6
+local GLOBAL_COOLDOWN_BASE = 0.06
+
+-- 🎯 Adaptive Accuracy (يضبط نفسه حسب البينج)
+local ACCURACY_MODE = "AUTO" -- "AUTO" أو "MANUAL"
+local MANUAL_ACCURACY = 25
 
 -- =========================================
 -- Token Retrieval
@@ -108,7 +111,7 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
 end
 
 -- =========================================
--- Fire Parry (Single Shot)
+-- Fire Parry
 -- =========================================
 local function FireParryBypass()
     for _remote, _origArgs in pairs(_reverted) do
@@ -140,7 +143,39 @@ local function GetPing()
 end
 
 -- =========================================
--- 🧠 Prediction System
+-- 🎯 Adaptive Accuracy (Auto-Adjust Based on Ping)
+-- =========================================
+local function GetEffectiveAccuracy()
+    if ACCURACY_MODE == "MANUAL" then
+        return MANUAL_ACCURACY
+    end
+
+    -- 🎯 AUTO MODE - أفضل قيمة لكل بينج
+    local ping = GetPing()
+    local pingMs = ping * 1000
+
+    -- الجدول الأمثل:
+    -- < 30ms  → Accuracy = 30 (مبكر شوي)
+    -- 30-60ms → Accuracy = 25 (متوازن) ⭐ الأفضل
+    -- 60-90ms → Accuracy = 20 (دقيق)
+    -- 90-130ms → Accuracy = 15 (دقيق جداً)
+    -- > 130ms → Accuracy = 10 (مثالي - البينج يعوض)
+    
+    if pingMs < 30 then
+        return 30
+    elseif pingMs < 60 then
+        return 25
+    elseif pingMs < 90 then
+        return 20
+    elseif pingMs < 130 then
+        return 15
+    else
+        return 10
+    end
+end
+
+-- =========================================
+-- 🧠 Prediction
 -- =========================================
 local function PredictBallPosition(ball, frames)
     return ball.Position + (ball.AssemblyLinearVelocity * (frames * (1/60)))
@@ -158,11 +193,11 @@ local function IsWithinParryAngle(playerPos, ballPos, ballVel)
 end
 
 -- =========================================
--- ⚔️ Auto Parry Loop (BEAST LEVEL)
+-- ⚔️ Auto Parry Loop (Adaptive Beast)
 -- =========================================
 task.spawn(function()
     local lastFireTime = 0
-    local ballLocks = {} -- {[ball] = unlockTime}
+    local ballLocks = {}
 
     while task.wait() do
         if not AutoParryEnabled then
@@ -174,14 +209,14 @@ task.spawn(function()
         local now = tick()
         local currentPing = GetPing()
 
-        -- 🔓 تنظيف الأقفال المنتهية + الكرات المحذوفة
+        -- 🔓 تنظيف الأقفال
         for ball, unlockTime in pairs(ballLocks) do
             if not ball.Parent or now >= unlockTime then
                 ballLocks[ball] = nil
             end
         end
 
-        -- 🔒 كولداون عالمي (يمنع spam)
+        -- 🔒 كولداون
         local cooldown = GLOBAL_COOLDOWN_BASE + (currentPing * 0.5)
         if (now - lastFireTime) < cooldown then continue end
 
@@ -194,8 +229,9 @@ task.spawn(function()
         local ballsFolder = workspace:FindFirstChild("Balls")
         if not ballsFolder then continue end
 
-        -- 🎯 نافذة الصد (حسب البينج + Buffer)
-        local buffer = 0.05 + ((ParryAccuracyValue / 100) * 0.35)
+        -- 🎯 Accuracy الحالية (Auto أو Manual)
+        local effectiveAccuracy = GetEffectiveAccuracy()
+        local buffer = 0.05 + ((effectiveAccuracy / 100) * 0.35)
         local window = currentPing + buffer
 
         local bestBall = nil
@@ -204,8 +240,6 @@ task.spawn(function()
         for _, ball in ipairs(ballsFolder:GetChildren()) do
             if not ball:IsA("BasePart") then continue end
             if ball:GetAttribute("realBall") == false then continue end
-
-            -- 🔒 تجاهل الكرة إذا كانت مقفولة
             if ballLocks[ball] then continue end
 
             local ballPos = ball.Position
@@ -213,25 +247,18 @@ task.spawn(function()
             local speed = velocity.Magnitude
             if speed < 3 then continue end
 
-            -- 🧠 Prediction
             local predictedPos = PredictBallPosition(ball, PREDICTION_FRAMES)
             local predictedDistance = (playerPos - predictedPos).Magnitude
 
-            -- 📏 Max Distance
             if predictedDistance > MAX_PARRY_DISTANCE then continue end
-
-            -- 📐 Max Angle
             if not IsWithinParryAngle(playerPos, ballPos, velocity) then continue end
 
-            -- 🎯 Target Check
             local targetAttr = ball:GetAttribute("target")
             local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
             if not isTarget then continue end
 
-            -- ⚡ Time to Reach
             local timeToReach = predictedDistance / speed
 
-            -- 🎯 Parry Window
             if timeToReach <= window and timeToReach >= 0 then
                 if timeToReach < bestTime then
                     bestTime = timeToReach
@@ -240,7 +267,6 @@ task.spawn(function()
             end
         end
 
-        -- 🚀 Execute Parry
         if bestBall then
             lastFireTime = now
             ballLocks[bestBall] = now + BALL_LOCK_DURATION
@@ -252,22 +278,33 @@ end)
 -- =========================================
 -- UI Controls
 -- =========================================
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry (Beast)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry (Adaptive Beast)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
 
-Tabs.Main:AddSlider("ParryAccuracy", {
-    Title = "Parry Accuracy",
-    Description = "100 = صد مبكر | 1 = صد مثالي - يُنصح بـ 20-35",
+-- 🎯 Slider للـ Manual (يعمل فقط لو الـ Mode = MANUAL)
+local AccuracySlider = Tabs.Main:AddSlider("ParryAccuracy", {
+    Title = "Parry Accuracy (Manual Mode)",
+    Description = "يُستخدم فقط إذا AUTO معطل - يُنصح بـ 20-35",
     Default = 25,
     Min = 1,
     Max = 100,
     Rounding = 0,
     Callback = function(Value)
-        ParryAccuracyValue = Value
+        MANUAL_ACCURACY = Value
     end
 })
+
+-- 🎯 Toggle للـ Adaptive Mode
+local AdaptiveToggle = Tabs.Main:AddToggle("AdaptiveMode", {Title = "🎯 Adaptive Accuracy (Auto)", Default = true })
+AdaptiveToggle:OnChanged(function(Value)
+    if Value then
+        ACCURACY_MODE = "AUTO"
+    else
+        ACCURACY_MODE = "MANUAL"
+    end
+end)
 
 -- =========================================
 -- Settings
@@ -281,7 +318,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v12.0 👑",
-    Content = "Auto Parry Beast Level - بدون Triggerbot، فقط Auto Parry قوي",
+    Title = "Slax Hub v12.1 👑",
+    Content = "Adaptive Accuracy جاهز! يضبط نفسه حسب البينج",
     Duration = 6
 })
