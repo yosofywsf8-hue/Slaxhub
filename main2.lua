@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (Paid Script Level)
--- Slax Hub v11.0 - Developed by yossef
+-- Blade Ball Script - Bypass & Fluent UI (Auto Parry Beast)
+-- Slax Hub v12.0 - Developed by yossef
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v11.0 (Paid Level)",
+    SubTitle = "v12.0 (Auto Parry Beast)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -31,16 +31,13 @@ local LocalPlayer = Players.LocalPlayer
 
 local AutoParryEnabled = false
 local ParryAccuracyValue = 25
-local TriggerbotEnabled = false
 
--- ⚙️ إعدادات السكربتات المدفوعة (Hardcoded)
-local MAX_PARRY_DISTANCE = 100     -- Max Parry Distance: 100 studs
-local MAX_PARRY_ANGLE = 70         -- Max Parry Angle: 70°
-local PREDICTION_FRAMES = 3        -- Prediction System
-local PREDICTION_ACCURACY = 0.85   -- Prediction Accuracy: 85%
-local HUMANIZED_DELAY = 0.02       -- تأخير بشري (لمنع الكشف)
-local CURVE_DETECTION = true       -- Anti Curve Detection
-local PING_COMPENSATION = true     -- Ping-Based Tuning
+-- ⚙️ إعدادات Auto Parry (Beast)
+local MAX_PARRY_DISTANCE = 120     -- أقصى مسافة للصد
+local MAX_PARRY_ANGLE = 75         -- أقصى زاوية (واسعة)
+local PREDICTION_FRAMES = 3        -- إطارات التنبؤ
+local BALL_LOCK_DURATION = 0.6     -- قفل الكرة بعد الصد
+local GLOBAL_COOLDOWN_BASE = 0.06  -- كولداون أساسي (يمنع spam)
 
 -- =========================================
 -- Token Retrieval
@@ -111,7 +108,7 @@ for _, _remote in pairs(replicated_storage:GetDescendants()) do
 end
 
 -- =========================================
--- Fire Parry (Instant Remote-Based)
+-- Fire Parry (Single Shot)
 -- =========================================
 local function FireParryBypass()
     for _remote, _origArgs in pairs(_reverted) do
@@ -135,7 +132,7 @@ local function FireParryBypass()
 end
 
 -- =========================================
--- Ping (Ping-Based Tuning)
+-- Ping
 -- =========================================
 local function GetPing()
     local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
@@ -143,16 +140,14 @@ local function GetPing()
 end
 
 -- =========================================
--- 🧠 Prediction System (Soluna Hub style)
+-- 🧠 Prediction System
 -- =========================================
 local function PredictBallPosition(ball, frames)
-    local pos = ball.Position
-    local vel = ball.AssemblyLinearVelocity
-    return pos + (vel * (frames * (1/60)))
+    return ball.Position + (ball.AssemblyLinearVelocity * (frames * (1/60)))
 end
 
 -- =========================================
--- 📐 Max Parry Angle (Soluna Hub style)
+-- 📐 Max Angle
 -- =========================================
 local function IsWithinParryAngle(playerPos, ballPos, ballVel)
     local toPlayer = (playerPos - ballPos).Unit
@@ -163,81 +158,32 @@ local function IsWithinParryAngle(playerPos, ballPos, ballVel)
 end
 
 -- =========================================
--- 🌀 Curve Detection (Levi Hub X style)
--- =========================================
-local function IsCurving(ball, playerPos)
-    local vel = ball.AssemblyLinearVelocity
-    local toPlayer = (playerPos - ball.Position).Unit
-    local dot = vel.Unit:Dot(toPlayer)
-    -- الكرة المنحنية يكون اتجاهها غير مباشر لكنها تقترب
-    return dot > 0.3 and dot < 0.75
-end
-
--- =========================================
--- 🎯 TRIGGERBOT LOOP (Instant Trigger)
+-- ⚔️ Auto Parry Loop (BEAST LEVEL)
 -- =========================================
 task.spawn(function()
-    local lastTriggerTime = 0
-    while task.wait() do
-        if not TriggerbotEnabled then lastTriggerTime = 0 continue end
-        local now = tick()
-        if (now - lastTriggerTime) < 0.08 then continue end
-
-        local character = LocalPlayer.Character
-        if not character then continue end
-        local hrp = character:FindFirstChild("HumanoidRootPart")
-        if not hrp then continue end
-
-        local playerPos = hrp.Position
-        local ballsFolder = workspace:FindFirstChild("Balls")
-        if not ballsFolder then continue end
-
-        for _, ball in ipairs(ballsFolder:GetChildren()) do
-            if not ball:IsA("BasePart") then continue end
-            if ball:GetAttribute("realBall") == false then continue end
-
-            local ballPos = ball.Position
-            local velocity = ball.AssemblyLinearVelocity
-            local speed = velocity.Magnitude
-            if speed < 3 then continue end
-
-            local toPlayer = (playerPos - ballPos).Unit
-            local dot = velocity.Unit:Dot(toPlayer)
-            if dot <= 0.2 then continue end
-
-            if (playerPos - ballPos).Magnitude > 18 then continue end
-
-            lastTriggerTime = now
-            FireParryBypass()
-            break
-        end
-    end
-end)
-
--- =========================================
--- ⚔️ Auto Parry Loop (Paid Script Level)
--- =========================================
-task.spawn(function()
-    local lastParryTime = 0
+    local lastFireTime = 0
+    local ballLocks = {} -- {[ball] = unlockTime}
 
     while task.wait() do
         if not AutoParryEnabled then
-            lastParryTime = 0
+            ballLocks = {}
+            lastFireTime = 0
             continue
         end
 
         local now = tick()
         local currentPing = GetPing()
 
-        -- ⚡ Ping-Based Tuning (SpyHub style)
-        local pingCompensation = PING_COMPENSATION and currentPing or 0
+        -- 🔓 تنظيف الأقفال المنتهية + الكرات المحذوفة
+        for ball, unlockTime in pairs(ballLocks) do
+            if not ball.Parent or now >= unlockTime then
+                ballLocks[ball] = nil
+            end
+        end
 
-        -- ⚡ Humanized Delay (لمنع الكشف)
-        local humanizedOffset = HUMANIZED_DELAY * (math.random() * 0.5 + 0.75)
-
-        -- ⚡ Cooldown = Ping + Humanized Delay
-        local cooldown = currentPing + humanizedOffset
-        if (now - lastParryTime) < cooldown then continue end
+        -- 🔒 كولداون عالمي (يمنع spam)
+        local cooldown = GLOBAL_COOLDOWN_BASE + (currentPing * 0.5)
+        if (now - lastFireTime) < cooldown then continue end
 
         local character = LocalPlayer.Character
         if not character then continue end
@@ -248,7 +194,7 @@ task.spawn(function()
         local ballsFolder = workspace:FindFirstChild("Balls")
         if not ballsFolder then continue end
 
-        -- 🧠 Buffer (Prediction Accuracy)
+        -- 🎯 نافذة الصد (حسب البينج + Buffer)
         local buffer = 0.05 + ((ParryAccuracyValue / 100) * 0.35)
         local window = currentPing + buffer
 
@@ -259,33 +205,30 @@ task.spawn(function()
             if not ball:IsA("BasePart") then continue end
             if ball:GetAttribute("realBall") == false then continue end
 
+            -- 🔒 تجاهل الكرة إذا كانت مقفولة
+            if ballLocks[ball] then continue end
+
             local ballPos = ball.Position
             local velocity = ball.AssemblyLinearVelocity
             local speed = velocity.Magnitude
             if speed < 3 then continue end
 
-            -- 🧠 Prediction System
+            -- 🧠 Prediction
             local predictedPos = PredictBallPosition(ball, PREDICTION_FRAMES)
             local predictedDistance = (playerPos - predictedPos).Magnitude
 
-            -- 📏 Max Parry Distance
+            -- 📏 Max Distance
             if predictedDistance > MAX_PARRY_DISTANCE then continue end
 
-            -- 📐 Max Parry Angle
+            -- 📐 Max Angle
             if not IsWithinParryAngle(playerPos, ballPos, velocity) then continue end
-
-            -- 🌀 Curve Detection
-            if CURVE_DETECTION and IsCurving(ball, playerPos) then
-                -- الكرة منحنية → نصد أبكر شوي
-                window = window + 0.08
-            end
 
             -- 🎯 Target Check
             local targetAttr = ball:GetAttribute("target")
             local isTarget = (targetAttr == nil) or (targetAttr == LocalPlayer.Name)
             if not isTarget then continue end
 
-            -- ⚡ Calculate Time to Reach
+            -- ⚡ Time to Reach
             local timeToReach = predictedDistance / speed
 
             -- 🎯 Parry Window
@@ -299,124 +242,17 @@ task.spawn(function()
 
         -- 🚀 Execute Parry
         if bestBall then
-            lastParryTime = now
+            lastFireTime = now
+            ballLocks[bestBall] = now + BALL_LOCK_DURATION
             FireParryBypass()
         end
     end
 end)
 
 -- =========================================
--- 📱 Floating Triggerbot Button
--- =========================================
-local function GetGuiParent()
-    local ok, hui = pcall(gethui)
-    if ok and hui then return hui end
-    local ok2, pg = pcall(function() return LocalPlayer:WaitForChild("PlayerGui", 5) end)
-    if ok2 and pg then return pg end
-    return CoreGui
-end
-
-local TriggerGui = Instance.new("ScreenGui")
-TriggerGui.Name = "SlaxTriggerBot_" .. tostring(math.random(1, 99999))
-TriggerGui.Parent = GetGuiParent()
-TriggerGui.ResetOnSpawn = false
-TriggerGui.IgnoreGuiInset = true
-TriggerGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-TriggerGui.DisplayOrder = 999
-TriggerGui.Enabled = true
-
-local TriggerBtn = Instance.new("TextButton")
-TriggerBtn.Name = "TriggerBtn"
-TriggerBtn.Parent = TriggerGui
-TriggerBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
-TriggerBtn.BorderSizePixel = 0
-TriggerBtn.Position = UDim2.new(0.1, 0, 0.4, 0)
-TriggerBtn.Size = UDim2.new(0, 160, 0, 55)
-TriggerBtn.Font = Enum.Font.GothamBold
-TriggerBtn.Text = "🎯 Trigger: OFF"
-TriggerBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-TriggerBtn.TextSize = 17
-TriggerBtn.AutoButtonColor = false
-TriggerBtn.Active = true
-TriggerBtn.Selectable = true
-TriggerBtn.Modal = false
-
-local TriggerCorner = Instance.new("UICorner")
-TriggerCorner.CornerRadius = UDim.new(0, 10)
-TriggerCorner.Parent = TriggerBtn
-
-local TriggerStroke = Instance.new("UIStroke")
-TriggerStroke.Parent = TriggerBtn
-TriggerStroke.Color = Color3.fromRGB(255, 255, 255)
-TriggerStroke.Thickness = 2
-
-local TriggerToggle = nil
-
-local function UpdateBtnVisual(skipToggle)
-    if TriggerbotEnabled then
-        TriggerBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 100)
-        TriggerBtn.Text = "🎯 Trigger: ON"
-        TriggerStroke.Color = Color3.fromRGB(180, 255, 200)
-    else
-        TriggerBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
-        TriggerBtn.Text = "🎯 Trigger: OFF"
-        TriggerStroke.Color = Color3.fromRGB(255, 255, 255)
-    end
-
-    if not skipToggle and TriggerToggle then
-        pcall(function()
-            TriggerToggle:SetValue(TriggerbotEnabled)
-        end)
-    end
-end
-
--- 🖐️ Drag + Press
-local pressing = false
-local pressStart = nil
-local pressStartPos = nil
-local dragMoved = false
-local lastToggleTime = 0
-
-TriggerBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        pressing = true
-        dragMoved = false
-        pressStart = input.Position
-        pressStartPos = TriggerBtn.Position
-    end
-end)
-
-TriggerBtn.InputChanged:Connect(function(input)
-    if pressing and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
-        local delta = input.Position - pressStart
-        if math.abs(delta.X) > 8 or math.abs(delta.Y) > 8 then
-            dragMoved = true
-        end
-        TriggerBtn.Position = UDim2.new(
-            pressStartPos.X.Scale, pressStartPos.X.Offset + delta.X,
-            pressStartPos.Y.Scale, pressStartPos.Y.Offset + delta.Y
-        )
-    end
-end)
-
-TriggerBtn.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        if pressing and not dragMoved then
-            local now = tick()
-            if now - lastToggleTime > 0.6 then
-                lastToggleTime = now
-                TriggerbotEnabled = not TriggerbotEnabled
-                UpdateBtnVisual(false)
-            end
-        end
-        pressing = false
-    end
-end)
-
--- =========================================
 -- UI Controls
 -- =========================================
-local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry (Paid Level)", Default = false })
+local Toggle = Tabs.Main:AddToggle("AutoParry", {Title = "⚔️ Auto Parry (Beast)", Default = false })
 Toggle:OnChanged(function(Value)
     AutoParryEnabled = Value
 end)
@@ -433,12 +269,6 @@ Tabs.Main:AddSlider("ParryAccuracy", {
     end
 })
 
-TriggerToggle = Tabs.Main:AddToggle("Triggerbot", {Title = "🎯 Triggerbot (Instant)", Default = false })
-TriggerToggle:OnChanged(function(Value)
-    TriggerbotEnabled = Value
-    UpdateBtnVisual(true)
-end)
-
 -- =========================================
 -- Settings
 -- =========================================
@@ -451,7 +281,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v11.0 👑",
-    Content = "Paid Level Auto Parry جاهز! Prediction + Max Angle + Curve Detection",
+    Title = "Slax Hub v12.0 👑",
+    Content = "Auto Parry Beast Level - بدون Triggerbot، فقط Auto Parry قوي",
     Duration = 6
 })
