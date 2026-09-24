@@ -1,4 +1,4 @@
--- Slax Hub - Blade Ball Script
+-- Slax Hub v30.0 - STRONGEST AUTO PARRY
 -- Developed by yossef
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -8,7 +8,7 @@ local Window = WindUI:CreateWindow({
     Icon = "swords",
     Author = "yossef",
     Folder = "SlaxHub",
-    Size = UDim2.fromOffset(700, 500),
+    Size = UDim2.fromOffset(650, 500),
     Transparent = true,
     Theme = "Dark",
     SideBarWidth = 170,
@@ -24,11 +24,12 @@ Window:EditOpenButton({
     OnlyMobile = false,
 })
 
-local APTab = Window:Tab({ Title = "AP", Icon = "sword" })
-local OptimTab = Window:Tab({ Title = "OPTIM", Icon = "zap" })
-local SocialTab = Window:Tab({ Title = "SOCIAL", Icon = "users" })
+local MainTab = Window:Tab({ Title = "Main", Icon = "sword" })
+local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
 
+-- =========================================
 -- Services
+-- =========================================
 local RS = game:GetService("ReplicatedStorage")
 local WS = game:GetService("Workspace")
 local Stats = game:GetService("Stats")
@@ -38,27 +39,15 @@ local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
+-- =========================================
 -- State
+-- =========================================
 local AutoParryEnabled = false
-local AutoSpamEnabled = false
-local AutoAccuracyEnabled = false
-local AccuracyValue = 100
-local SpamThreshold = 1
-local CurveType = "straight"
-local CPSValue = 225
-local AnimFix = false
-
-local ShowBallStats = false
-local ShowFpsUI = true
-local ShowKeybindUI = false
-local ShowSpamUI = false
-local ShowTriggerBotUI = false
-local ShowImmortalUI = false
-local ShowCurvesUI = false
-local ImmortalEnabled = false
+local AccuracyValue = 75
+local UseAutoAccuracy = true
 
 -- =========================================
--- Token
+-- Token Retrieval (Bypass)
 -- =========================================
 local _token = nil
 for _, f in getgc(true) do
@@ -88,7 +77,7 @@ local function _tokenize(uid)
 end
 
 -- =========================================
--- Hook
+-- Remote Hooking
 -- =========================================
 local _reverted = {}
 local _original = {}
@@ -127,6 +116,9 @@ for _, r in pairs(RS:GetDescendants()) do
     end
 end
 
+-- =========================================
+-- Fire Parry (Cached Remote)
+-- =========================================
 local _parryRemote = nil
 local _parryArgs = nil
 
@@ -157,28 +149,129 @@ local function FireParry()
     end
 end
 
--- =========================================
--- Main Loop
--- =========================================
-local lastParryTime = 0
-local GLOBAL_LOCK = 0.15
-local BALL_LOCK = 0.5
-local ballLocks = {}
-
-local function WillHitPlayer(ballPos, ballVel, playerPos)
-    local speed = ballVel.Magnitude
-    if speed < 1 then return false end
-    local dir = ballVel.Unit
-    local toPlayer = playerPos - ballPos
-    local dot = dir:Dot(toPlayer.Unit)
-    if dot <= 0.4 then return false end
-    local projection = toPlayer:Dot(dir)
-    if projection <= 0 then return false end
-    local closestPoint = ballPos + (dir * projection)
-    local missDistance = (playerPos - closestPoint).Magnitude
-    return missDistance <= 8
+local function GetPing()
+    local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+    return math.clamp(ping, 0.02, 0.4)
 end
 
+-- =========================================
+-- 🧠 ADVANCED TRAJECTORY ANALYSIS
+-- =========================================
+-- Determine if ball will hit player (projectile-like collision prediction)
+-- Returns: willHit (bool), timeToImpact (sec), missDistance (studs)
+-- =========================================
+local function AnalyzeTrajectory(ballPos, ballVel, playerPos, playerVel)
+    local relPos = playerPos - ballPos
+    local relVel = ballVel - (playerVel or Vector3.zero)
+
+    local speed = relVel.Magnitude
+    if speed < 3 then return false, 999, 999 end
+
+    -- 🎯 Closest approach time
+    local timeToClosest = relPos:Dot(relVel) / (speed * speed)
+    if timeToClosest < 0 then
+        return false, 999, 999  -- ball is moving away
+    end
+
+    -- 🎯 Closest distance
+    local closestPoint = ballPos + (ballVel * timeToClosest)
+    local closestDist = (playerPos - closestPoint).Magnitude
+
+    -- 🎯 Hit radius (account for character size)
+    local HIT_RADIUS = 6
+
+    if closestDist > HIT_RADIUS then
+        return false, 999, closestDist
+    end
+
+    return true, timeToClosest, closestDist
+end
+
+-- =========================================
+-- 🌀 ANTI-CURVE TRACKING
+-- =========================================
+local ballTracking = {}
+
+local function TrackCurve(ball)
+    local vel = ball.AssemblyLinearVelocity
+    local speed = vel.Magnitude
+    if speed < 3 then return false end
+
+    local data = ballTracking[ball]
+    if not data then
+        ballTracking[ball] = { lastVel = vel, curveScore = 0, curveActive = false }
+        return false
+    end
+
+    local dot = data.lastVel.Unit:Dot(vel.Unit)
+    local angleChange = math.deg(math.acos(math.clamp(dot, -1, 1)))
+
+    if angleChange > 3 then
+        data.curveScore = data.curveScore + angleChange * 0.1
+    else
+        data.curveScore = data.curveScore * 0.9
+    end
+
+    data.curveActive = data.curveScore > 1.5
+    data.lastVel = vel
+
+    return data.curveActive
+end
+
+task.spawn(function()
+    while task.wait(1) do
+        for ball in pairs(ballTracking) do
+            if not ball.Parent then ballTracking[ball] = nil end
+        end
+    end
+end)
+
+-- =========================================
+-- 🎯 ADAPTIVE TIMING CALCULATOR
+-- =========================================
+local function CalculateParryWindow(ballSpeed, curveActive, distance, isClose)
+    -- Base window based on AccuracyValue (inverted: 100 = safety)
+    local baseMs
+    if UseAutoAccuracy then
+        -- Auto: Adaptive
+        baseMs = 80  -- base 80ms
+        
+        -- ⚡ Speed adjustment
+        if ballSpeed > 250 then baseMs = baseMs + 120
+        elseif ballSpeed > 200 then baseMs = baseMs + 90
+        elseif ballSpeed > 150 then baseMs = baseMs + 60
+        elseif ballSpeed > 100 then baseMs = baseMs + 40
+        elseif ballSpeed > 60 then baseMs = baseMs + 20
+        end
+        
+        -- 🌀 Curve adjustment
+        if curveActive then baseMs = baseMs + 40 end
+        
+        -- 📏 Distance adjustment
+        if distance < 12 then baseMs = baseMs + 80
+        elseif distance < 25 then baseMs = baseMs + 50
+        elseif distance < 40 then baseMs = baseMs + 25
+        end
+    else
+        -- Manual: 30ms (perfect) → 250ms (safe)
+        baseMs = 30 + ((AccuracyValue / 100) * 220)
+    end
+
+    -- 🛡️ Close combat bonus (independent)
+    if isClose then baseMs = baseMs + 40 end
+
+    return baseMs
+end
+
+-- =========================================
+-- 🔥⚡ THE STRONGEST AUTO PARRY LOOP
+-- =========================================
+local lastParryTime = 0
+local GLOBAL_LOCK = 0.10
+local BALL_LOCK = 0.6
+local ballLocks = {}
+
+-- Cleanup lock table
 task.spawn(function()
     while task.wait(0.5) do
         local now = tick()
@@ -195,7 +288,7 @@ RunService.Heartbeat:Connect(function()
     end
 
     local now = tick()
-    if (now - lastParryTime) < GLOBAL_LOCK then return end
+    local ping = GetPing()
 
     local character = LocalPlayer.Character
     if not character then return end
@@ -203,15 +296,74 @@ RunService.Heartbeat:Connect(function()
     if not hrp then return end
 
     local playerPos = hrp.Position
+    local playerVel = hrp.AssemblyLinearVelocity
     local ballsFolder = WS:FindFirstChild("Balls")
     if not ballsFolder then return end
 
-    local distanceThreshold = 5 + ((AccuracyValue / 100) * 35)
+    local balls = ballsFolder:GetChildren()
+
+    -- =========================================
+    -- 🚨 PHASE 1: ULTRA-EMERGENCY (Point Blank + Fast)
+    -- =========================================
+    -- Critical: أي كرة قريبة جدا (<15 studs) أو سريعة جدا → صد فوري
+    if (now - lastParryTime) < 0.04 then
+        -- منع double parry
+    else
+        for i = 1, #balls do
+            local ball = balls[i]
+            if not ball:IsA("BasePart") then continue end
+            if ball:GetAttribute("realBall") == false then continue end
+            if ballLocks[ball] then continue end
+
+            local ballPos = ball.Position
+            local velocity = ball.AssemblyLinearVelocity
+            local speed = velocity.Magnitude
+            if speed < 3 then continue end
+
+            local distance = (playerPos - ballPos).Magnitude
+            local dot = velocity.Unit:Dot((playerPos - ballPos).Unit)
+            if dot <= 0.3 then continue end
+
+            -- 🚨 Emergency trigger
+            local isEmergency = false
+
+            -- Point blank (قريب جداً)
+            if distance <= 15 then
+                isEmergency = true
+            -- Ultra fast + relatively close
+            elseif speed >= 200 and distance <= 60 then
+                isEmergency = true
+            -- Fast + very close
+            elseif speed >= 130 and distance <= 30 then
+                isEmergency = true
+            end
+
+            if isEmergency then
+                -- Verify trajectory (even in emergency)
+                local willHit = AnalyzeTrajectory(ballPos, velocity, playerPos, playerVel)
+                if willHit then
+                    lastParryTime = now
+                    ballLocks[ball] = now + BALL_LOCK
+                    FireParry()
+                    return
+                end
+            end
+        end
+    end
+
+    -- =========================================
+    -- 🎯 PHASE 2: PRECISION PARRY (Main)
+    -- =========================================
+    if (now - lastParryTime) < GLOBAL_LOCK then return end
 
     local bestBall = nil
+    local bestTime = math.huge
+    local bestSpeed = 0
     local bestDistance = math.huge
+    local bestCurve = false
 
-    for _, ball in ipairs(ballsFolder:GetChildren()) do
+    for i = 1, #balls do
+        local ball = balls[i]
         if not ball:IsA("BasePart") then continue end
         if ball:GetAttribute("realBall") == false then continue end
         if ballLocks[ball] then continue end
@@ -222,71 +374,43 @@ RunService.Heartbeat:Connect(function()
         if speed < 3 then continue end
 
         local distance = (playerPos - ballPos).Magnitude
-        if distance > 100 then continue end
-        if distance > distanceThreshold then continue end
-        if not WillHitPlayer(ballPos, velocity, playerPos) then continue end
+        if distance > 150 then continue end
 
-        if distance < bestDistance then
-            bestDistance = distance
+        -- 🎯 Full trajectory analysis
+        local willHit, timeToImpact, missDist = AnalyzeTrajectory(ballPos, velocity, playerPos, playerVel)
+        if not willHit then continue end
+
+        -- 🌀 Curve detection
+        local curveActive = TrackCurve(ball)
+
+        -- Track best ball (earliest impact)
+        if timeToImpact < bestTime then
+            bestTime = timeToImpact
             bestBall = ball
+            bestSpeed = speed
+            bestDistance = distance
+            bestCurve = curveActive
         end
     end
 
     if bestBall then
-        lastParryTime = now
-        ballLocks[bestBall] = now + BALL_LOCK
-        FireParry()
-    end
-end)
+        -- 🎯 Calculate parry window
+        local windowMs = CalculateParryWindow(bestSpeed, bestCurve, bestDistance, false)
+        local windowSec = windowMs / 1000
 
--- =========================================
--- Auto Spam Loop
--- =========================================
-local lastSpamTime = 0
-RunService.Heartbeat:Connect(function()
-    if not AutoSpamEnabled then return end
-    local now = tick()
+        -- ⏱️ Fire when ball will arrive within (ping + window)
+        local effectiveWindow = ping + windowSec
 
-    local character = LocalPlayer.Character
-    if not character then return end
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    local playerPos = hrp.Position
-    local nearPlayer = false
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then
-            local c = p.Character
-            if c then
-                local p_hrp = c:FindFirstChild("HumanoidRootPart")
-                if p_hrp and (p_hrp.Position - playerPos).Magnitude <= 60 then
-                    nearPlayer = true
-                    break
-                end
-            end
-        end
-    end
-
-    if not nearPlayer then return end
-    if (now - lastSpamTime) < (1 / math.max(CPSValue, 1)) then return end
-    lastSpamTime = now
-
-    local remote, args = GetParryRemote()
-    if not remote or not args then return end
-
-    local burst = math.max(1, math.floor(CPSValue / 60))
-    for _ = 1, burst do
-        local packet = {args[1], args[2], _tokenize(args[2]), 0.5, WS.CurrentCamera.CFrame, {}, {0, 0}, false}
-        if remote:IsA('RemoteEvent') then
-            remote:FireServer(unpack(packet))
-        elseif remote:IsA('RemoteFunction') then
-            remote:InvokeServer(unpack(packet))
+        if bestTime <= effectiveWindow then
+            lastParryTime = now
+            ballLocks[bestBall] = now + BALL_LOCK
+            FireParry()
         end
     end
 end)
 
 -- =========================================
--- GetGuiParent
+-- FPS/Ping UI
 -- =========================================
 local function GetGuiParent()
     local ok, hui = pcall(gethui)
@@ -296,476 +420,112 @@ local function GetGuiParent()
     return CoreGui
 end
 
--- =========================================
--- FPS UI
--- =========================================
-local FpsGui = Instance.new("ScreenGui")
-FpsGui.Name = "SlaxFpsUI_" .. math.random(1, 99999)
-FpsGui.Parent = GetGuiParent()
-FpsGui.ResetOnSpawn = false
-FpsGui.IgnoreGuiInset = true
-FpsGui.DisplayOrder = 99999
+local StatsGui = Instance.new("ScreenGui")
+StatsGui.Name = "SlaxStatsUI_" .. math.random(1, 99999)
+StatsGui.Parent = GetGuiParent()
+StatsGui.ResetOnSpawn = false
+StatsGui.IgnoreGuiInset = true
+StatsGui.DisplayOrder = 99999
 
-local FpsLabel = Instance.new("TextLabel")
-FpsLabel.Name = "FpsLabel"
-FpsLabel.Parent = FpsGui
-FpsLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-FpsLabel.BackgroundTransparency = 0.3
-FpsLabel.BorderSizePixel = 0
-FpsLabel.Position = UDim2.new(0.78, 0, 0.02, 0)
-FpsLabel.Size = UDim2.new(0, 220, 0, 30)
-FpsLabel.Font = Enum.Font.GothamBold
-FpsLabel.Text = "FPS: 0 | PING: 0 ms"
-FpsLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
-FpsLabel.TextSize = 13
+local StatsLabel = Instance.new("TextLabel")
+StatsLabel.Parent = StatsGui
+StatsLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+StatsLabel.BackgroundTransparency = 0.3
+StatsLabel.BorderSizePixel = 0
+StatsLabel.Position = UDim2.new(0.72, 0, 0.02, 0)
+StatsLabel.Size = UDim2.new(0, 260, 0, 50)
+StatsLabel.Font = Enum.Font.GothamBold
+StatsLabel.Text = "Slax Hub v30.0"
+StatsLabel.TextColor3 = Color3.fromRGB(80, 255, 160)
+StatsLabel.TextSize = 11
 
-local FpsCorner = Instance.new("UICorner")
-FpsCorner.CornerRadius = UDim.new(0, 8)
-FpsCorner.Parent = FpsLabel
+local StatsCorner = Instance.new("UICorner")
+StatsCorner.CornerRadius = UDim.new(0, 8)
+StatsCorner.Parent = StatsLabel
 
-local FpsStroke = Instance.new("UIStroke")
-FpsStroke.Parent = FpsLabel
-FpsStroke.Color = Color3.fromRGB(255, 180, 80)
-FpsStroke.Thickness = 1.2
+local StatsStroke = Instance.new("UIStroke")
+StatsStroke.Parent = StatsLabel
+StatsStroke.Color = Color3.fromRGB(80, 255, 160)
+StatsStroke.Thickness = 1.2
 
-local FpsCounter = 0
-local FpsTime = tick()
+local frameCounter = 0
+local timeCounter = tick()
 
 RunService.RenderStepped:Connect(function()
-    FpsCounter = FpsCounter + 1
-    if (tick() - FpsTime) >= 1 then
+    frameCounter = frameCounter + 1
+    if (tick() - timeCounter) >= 1 then
         local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
-        FpsLabel.Text = string.format("FPS: %d | PING: %d ms", FpsCounter, ping)
-        FpsCounter = 0
-        FpsTime = tick()
-    end
-end)
-
--- =========================================
--- Ball Stats UI
--- =========================================
-local BallStatsGui = Instance.new("ScreenGui")
-BallStatsGui.Name = "SlaxBallStats_" .. math.random(1, 99999)
-BallStatsGui.Parent = GetGuiParent()
-BallStatsGui.ResetOnSpawn = false
-BallStatsGui.IgnoreGuiInset = true
-BallStatsGui.DisplayOrder = 99998
-
-local BallStatsLabel = Instance.new("TextLabel")
-BallStatsLabel.Parent = BallStatsGui
-BallStatsLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-BallStatsLabel.BackgroundTransparency = 0.3
-BallStatsLabel.BorderSizePixel = 0
-BallStatsLabel.Position = UDim2.new(0.02, 0, 0.02, 0)
-BallStatsLabel.Size = UDim2.new(0, 220, 0, 50)
-BallStatsLabel.Font = Enum.Font.GothamBold
-BallStatsLabel.Text = "No Balls"
-BallStatsLabel.TextColor3 = Color3.fromRGB(255, 180, 230)
-BallStatsLabel.TextSize = 11
-BallStatsLabel.Visible = false
-
-local BallStatsCorner = Instance.new("UICorner")
-BallStatsCorner.CornerRadius = UDim.new(0, 8)
-BallStatsCorner.Parent = BallStatsLabel
-
-task.spawn(function()
-    while task.wait(0.2) do
-        BallStatsLabel.Visible = ShowBallStats
-        if ShowBallStats then
-            local ballsFolder = WS:FindFirstChild("Balls")
-            local count = 0
-            local closest = math.huge
-            local closestSpeed = 0
-
-            if ballsFolder then
-                local char = LocalPlayer.Character
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                for _, ball in ipairs(ballsFolder:GetChildren()) do
-                    if not ball:IsA("BasePart") then continue end
-                    if ball:GetAttribute("realBall") == false then continue end
-                    count = count + 1
-                    if hrp then
-                        local d = (hrp.Position - ball.Position).Magnitude
-                        if d < closest then
-                            closest = d
-                            closestSpeed = ball.AssemblyLinearVelocity.Magnitude
-                        end
-                    end
-                end
-            end
-
-            if count > 0 then
-                BallStatsLabel.Text = string.format("Balls: %d\nClosest: %d studs\nSpeed: %d", 
-                    count, math.floor(closest), math.floor(closestSpeed))
-            else
-                BallStatsLabel.Text = "No Balls"
-            end
+        StatsLabel.Text = string.format("⚡ FPS: %d | Ping: %d ms\nParry: %s", 
+            frameCounter, ping, AutoParryEnabled and "ACTIVE" or "OFF")
+        if AutoParryEnabled then
+            StatsLabel.TextColor3 = Color3.fromRGB(80, 255, 160)
+            StatsStroke.Color = Color3.fromRGB(80, 255, 160)
+        else
+            StatsLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+            StatsStroke.Color = Color3.fromRGB(150, 150, 150)
         end
-    end
-end)
-
--- =========================================
--- Spam UI
--- =========================================
-local SpamGui = Instance.new("ScreenGui")
-SpamGui.Name = "SlaxSpamUI_" .. math.random(1, 99999)
-SpamGui.Parent = GetGuiParent()
-SpamGui.ResetOnSpawn = false
-SpamGui.IgnoreGuiInset = true
-SpamGui.DisplayOrder = 99997
-
-local SpamBtn = Instance.new("TextButton")
-SpamBtn.Name = "SpamBtn"
-SpamBtn.Parent = SpamGui
-SpamBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
-SpamBtn.BorderSizePixel = 0
-SpamBtn.Position = UDim2.new(0.05, 0, 0.5, 0)
-SpamBtn.Size = UDim2.new(0, 140, 0, 45)
-SpamBtn.Font = Enum.Font.GothamBold
-SpamBtn.Text = "🎯 Trigger: OFF"
-SpamBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpamBtn.TextSize = 15
-SpamBtn.AutoButtonColor = false
-SpamBtn.Active = true
-SpamBtn.Visible = false
-
-local SpamCorner = Instance.new("UICorner")
-SpamCorner.CornerRadius = UDim.new(0, 8)
-SpamCorner.Parent = SpamBtn
-
-local SpamStroke = Instance.new("UIStroke")
-SpamStroke.Parent = SpamBtn
-SpamStroke.Color = Color3.fromRGB(255, 255, 255)
-SpamStroke.Thickness = 1.5
-
-local ManualSpamEnabled = false
-local dragging = false
-local dragInput, dragStart, startPos, dragMoved
-local lastTap = 0
-
-SpamBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragMoved = false
-        dragStart = input.Position
-        startPos = SpamBtn.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-SpamBtn.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        if math.abs(delta.X) > 5 or math.abs(delta.Y) > 5 then
-            dragMoved = true
-        end
-        SpamBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
-local function UpdateSpamBtn()
-    if ManualSpamEnabled then
-        SpamBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 100)
-        SpamBtn.Text = "🎯 Trigger: ON"
-        SpamStroke.Color = Color3.fromRGB(180, 255, 200)
-    else
-        SpamBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
-        SpamBtn.Text = "🎯 Trigger: OFF"
-        SpamStroke.Color = Color3.fromRGB(255, 255, 255)
-    end
-end
-
-SpamBtn.MouseButton1Click:Connect(function()
-    if dragMoved then return end
-    local now = tick()
-    if now - lastTap < 0.3 then return end
-    lastTap = now
-    ManualSpamEnabled = not ManualSpamEnabled
-    UpdateSpamBtn()
-end)
-
-SpamBtn.TouchTap:Connect(function()
-    local now = tick()
-    if now - lastTap < 0.3 then return end
-    lastTap = now
-    ManualSpamEnabled = not ManualSpamEnabled
-    UpdateSpamBtn()
-end)
-
-local lastManualSpamTime = 0
-RunService.Heartbeat:Connect(function()
-    if not ManualSpamEnabled then return end
-    local now = tick()
-    if (now - lastManualSpamTime) < 0.005 then return end
-    lastManualSpamTime = now
-    local remote, args = GetParryRemote()
-    if not remote or not args then return end
-    for _ = 1, 10 do
-        local packet = {args[1], args[2], _tokenize(args[2]), 0.5, WS.CurrentCamera.CFrame, {}, {0, 0}, false}
-        if remote:IsA('RemoteEvent') then
-            remote:FireServer(unpack(packet))
-        elseif remote:IsA('RemoteFunction') then
-            remote:InvokeServer(unpack(packet))
-        end
-    end
-end)
-
-UpdateSpamBtn()
-
-task.spawn(function()
-    while task.wait(0.2) do
-        SpamBtn.Visible = ShowSpamUI
+        frameCounter = 0
+        timeCounter = tick()
     end
 end)
 
 -- =========================================
 -- UI Controls
 -- =========================================
-
--- ═══════════════ AP TAB ═══════════════
-
-APTab:Toggle({
-    Title = "Auto Parry",
-    Desc = "Auto parry balls that will hit you",
+MainTab:Toggle({
+    Title = "⚡ Auto Parry (STRONGEST)",
+    Desc = "Trajectory-based + Ultra-fast + Anti-curve",
     Value = false,
     Callback = function(Value)
         AutoParryEnabled = Value
+        if not Value then
+            ballLocks = {}
+            ballTracking = {}
+        end
     end
 })
 
-APTab:Slider({
-    Title = "Accuracy",
-    Desc = "Higher = Earlier parry",
+MainTab:Toggle({
+    Title = "Auto Accuracy",
+    Desc = "Auto-adjust timing based on speed/distance/curve",
+    Value = true,
+    Callback = function(Value)
+        UseAutoAccuracy = Value
+    end
+})
+
+MainTab:Slider({
+    Title = "Parry Accuracy",
+    Desc = "100 = Very early | 1 = Perfect (used only when Auto Accuracy is OFF)",
     Value = {
         Min = 1,
         Max = 100,
-        Default = 100,
+        Default = 75,
     },
     Callback = function(Value)
         AccuracyValue = Value
     end
 })
 
-APTab:Toggle({
-    Title = "Auto Accuracy",
-    Desc = "Auto-adjust timing",
-    Value = false,
-    Callback = function(Value)
-        AutoAccuracyEnabled = Value
-    end
-})
-
-APTab:Toggle({
-    Title = "Auto Spam",
-    Desc = "Spams near players",
-    Value = false,
-    Callback = function(Value)
-        AutoSpamEnabled = Value
-    end
-})
-
-APTab:Slider({
-    Title = "Spam Threshold",
-    Desc = "Minimum balls to trigger spam",
-    Value = {
-        Min = 1,
-        Max = 10,
-        Default = 1,
-    },
-    Callback = function(Value)
-        SpamThreshold = Value
-    end
-})
-
-APTab:Dropdown({
-    Title = "Curve Type",
-    Values = { "straight", "left", "right", "up", "down" },
-    Value = "straight",
-    Callback = function(Value)
-        CurveType = Value
-    end
-})
-
-APTab:Slider({
-    Title = "CPS",
-    Desc = "Spam clicks per second",
-    Value = {
-        Min = 50,
-        Max = 500,
-        Default = 225,
-    },
-    Callback = function(Value)
-        CPSValue = Value
-    end
-})
-
-APTab:Toggle({
-    Title = "Anim Fix",
-    Desc = "Fix animation glitches",
-    Value = false,
-    Callback = function(Value)
-        AnimFix = Value
-    end
-})
-
-APTab:Toggle({
-    Title = "Show Ball Stats",
-    Desc = "Show ball count and info",
-    Value = false,
-    Callback = function(Value)
-        ShowBallStats = Value
-    end
-})
-
-APTab:Toggle({
-    Title = "Fps UI",
-    Desc = "Show FPS and ping",
-    Value = true,
-    Callback = function(Value)
-        ShowFpsUI = Value
-        FpsGui.Enabled = Value
-    end
-})
-
-APTab:Toggle({
-    Title = "Show Keybind UI",
-    Desc = "Show keybind hints",
-    Value = false,
-    Callback = function(Value)
-        ShowKeybindUI = Value
-    end
-})
-
-APTab:Toggle({
-    Title = "Show Spam UI",
-    Desc = "Show manual spam button",
-    Value = false,
-    Callback = function(Value)
-        ShowSpamUI = Value
-    end
-})
-
-APTab:Toggle({
-    Title = "Show TriggerBot UI",
-    Desc = "Show triggerbot UI",
-    Value = false,
-    Callback = function(Value)
-        ShowTriggerBotUI = Value
-    end
-})
-
-APTab:Toggle({
-    Title = "Show Immortal UI",
-    Desc = "Show immortal status",
-    Value = false,
-    Callback = function(Value)
-        ShowImmortalUI = Value
-    end
-})
-
-APTab:Toggle({
-    Title = "Show Curves UI",
-    Desc = "Show curve visualization",
-    Value = false,
-    Callback = function(Value)
-        ShowCurvesUI = Value
-    end
-})
-
-APTab:Toggle({
-    Title = "Immortal (bannable)",
-    Desc = "⚠️ BANNABLE - Use at your own risk",
-    Value = false,
-    Callback = function(Value)
-        ImmortalEnabled = Value
-    end
-})
-
--- ═══════════════ OPTIM TAB ═══════════════
-
-OptimTab:Toggle({
-    Title = "FPS Boost",
-    Desc = "Remove visual effects for FPS",
-    Value = false,
-    Callback = function(Value)
-        if Value then
-            pcall(function()
-                for _, obj in pairs(WS:GetDescendants()) do
-                    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
-                        obj.Enabled = false
-                    end
-                end
-            end)
-        end
-    end
-})
-
-OptimTab:Toggle({
-    Title = "Disable Fog",
-    Desc = "Remove fog effect",
-    Value = false,
-    Callback = function(Value)
-        pcall(function()
-            game:GetService("Lighting").FogEnd = Value and 100000 or 10000
-        end)
-    end
-})
-
-OptimTab:Button({
-    Title = "Clear Cache",
-    Desc = "Clear temporary data",
+SettingsTab:Button({
+    Title = "Reset Locks",
+    Desc = "Clear ball locks if stuck",
     Callback = function()
-        pcall(function()
-            for _, obj in pairs(WS:GetDescendants()) do
-                if obj.Name:find("Debris") then
-                    obj:Destroy()
-                end
-            end
-        end)
+        ballLocks = {}
+        ballTracking = {}
     end
 })
 
--- ═══════════════ SOCIAL TAB ═══════════════
-
-SocialTab:Paragraph({
-    Title = "About",
-    Desc = "Slax Hub - Blade Ball Script - Made by yossef",
-})
-
-SocialTab:Button({
-    Title = "Copy Discord",
-    Desc = "discord.gg/slaxhub",
-    Callback = function()
-        pcall(function()
-            if setclipboard then
-                setclipboard("discord.gg/slaxhub")
-            end
-        end)
-    end
-})
-
-SocialTab:Button({
+SettingsTab:Button({
     Title = "Destroy UI",
     Callback = function()
         Window:Destroy()
-        FpsGui:Destroy()
-        BallStatsGui:Destroy()
-        SpamGui:Destroy()
+        StatsGui:Destroy()
     end
 })
 
 WindUI:Notify({
-    Title = "Slax Hub",
-    Content = "Loaded successfully",
-    Duration = 5
+    Title = "Slax Hub v30.0 🔥",
+    Content = "STRONGEST Auto Parry loaded - Trajectory + Adaptive",
+    Duration = 6
 })
