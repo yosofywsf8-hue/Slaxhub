@@ -1,4 +1,4 @@
--- Slax Hub v30.0 - STRONGEST AUTO PARRY
+-- Slax Hub v31.0 - Ultra Simple Auto Parry (WORKING)
 -- Developed by yossef
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -8,7 +8,7 @@ local Window = WindUI:CreateWindow({
     Icon = "swords",
     Author = "yossef",
     Folder = "SlaxHub",
-    Size = UDim2.fromOffset(650, 500),
+    Size = UDim2.fromOffset(600, 450),
     Transparent = true,
     Theme = "Dark",
     SideBarWidth = 170,
@@ -27,27 +27,21 @@ Window:EditOpenButton({
 local MainTab = Window:Tab({ Title = "Main", Icon = "sword" })
 local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
 
--- =========================================
 -- Services
--- =========================================
 local RS = game:GetService("ReplicatedStorage")
 local WS = game:GetService("Workspace")
 local Stats = game:GetService("Stats")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
--- =========================================
 -- State
--- =========================================
 local AutoParryEnabled = false
-local AccuracyValue = 75
-local UseAutoAccuracy = true
+local ParryDistance = 25  -- studs - المسافة اللي يصد فيها
 
 -- =========================================
--- Token Retrieval (Bypass)
+-- Token
 -- =========================================
 local _token = nil
 for _, f in getgc(true) do
@@ -77,7 +71,7 @@ local function _tokenize(uid)
 end
 
 -- =========================================
--- Remote Hooking
+-- Hook
 -- =========================================
 local _reverted = {}
 local _original = {}
@@ -116,9 +110,6 @@ for _, r in pairs(RS:GetDescendants()) do
     end
 end
 
--- =========================================
--- Fire Parry (Cached Remote)
--- =========================================
 local _parryRemote = nil
 local _parryArgs = nil
 
@@ -149,134 +140,20 @@ local function FireParry()
     end
 end
 
-local function GetPing()
-    local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-    return math.clamp(ping, 0.02, 0.4)
-end
-
 -- =========================================
--- 🧠 ADVANCED TRAJECTORY ANALYSIS
--- =========================================
--- Determine if ball will hit player (projectile-like collision prediction)
--- Returns: willHit (bool), timeToImpact (sec), missDistance (studs)
--- =========================================
-local function AnalyzeTrajectory(ballPos, ballVel, playerPos, playerVel)
-    local relPos = playerPos - ballPos
-    local relVel = ballVel - (playerVel or Vector3.zero)
-
-    local speed = relVel.Magnitude
-    if speed < 3 then return false, 999, 999 end
-
-    -- 🎯 Closest approach time
-    local timeToClosest = relPos:Dot(relVel) / (speed * speed)
-    if timeToClosest < 0 then
-        return false, 999, 999  -- ball is moving away
-    end
-
-    -- 🎯 Closest distance
-    local closestPoint = ballPos + (ballVel * timeToClosest)
-    local closestDist = (playerPos - closestPoint).Magnitude
-
-    -- 🎯 Hit radius (account for character size)
-    local HIT_RADIUS = 6
-
-    if closestDist > HIT_RADIUS then
-        return false, 999, closestDist
-    end
-
-    return true, timeToClosest, closestDist
-end
-
--- =========================================
--- 🌀 ANTI-CURVE TRACKING
--- =========================================
-local ballTracking = {}
-
-local function TrackCurve(ball)
-    local vel = ball.AssemblyLinearVelocity
-    local speed = vel.Magnitude
-    if speed < 3 then return false end
-
-    local data = ballTracking[ball]
-    if not data then
-        ballTracking[ball] = { lastVel = vel, curveScore = 0, curveActive = false }
-        return false
-    end
-
-    local dot = data.lastVel.Unit:Dot(vel.Unit)
-    local angleChange = math.deg(math.acos(math.clamp(dot, -1, 1)))
-
-    if angleChange > 3 then
-        data.curveScore = data.curveScore + angleChange * 0.1
-    else
-        data.curveScore = data.curveScore * 0.9
-    end
-
-    data.curveActive = data.curveScore > 1.5
-    data.lastVel = vel
-
-    return data.curveActive
-end
-
-task.spawn(function()
-    while task.wait(1) do
-        for ball in pairs(ballTracking) do
-            if not ball.Parent then ballTracking[ball] = nil end
-        end
-    end
-end)
-
--- =========================================
--- 🎯 ADAPTIVE TIMING CALCULATOR
--- =========================================
-local function CalculateParryWindow(ballSpeed, curveActive, distance, isClose)
-    -- Base window based on AccuracyValue (inverted: 100 = safety)
-    local baseMs
-    if UseAutoAccuracy then
-        -- Auto: Adaptive
-        baseMs = 80  -- base 80ms
-        
-        -- ⚡ Speed adjustment
-        if ballSpeed > 250 then baseMs = baseMs + 120
-        elseif ballSpeed > 200 then baseMs = baseMs + 90
-        elseif ballSpeed > 150 then baseMs = baseMs + 60
-        elseif ballSpeed > 100 then baseMs = baseMs + 40
-        elseif ballSpeed > 60 then baseMs = baseMs + 20
-        end
-        
-        -- 🌀 Curve adjustment
-        if curveActive then baseMs = baseMs + 40 end
-        
-        -- 📏 Distance adjustment
-        if distance < 12 then baseMs = baseMs + 80
-        elseif distance < 25 then baseMs = baseMs + 50
-        elseif distance < 40 then baseMs = baseMs + 25
-        end
-    else
-        -- Manual: 30ms (perfect) → 250ms (safe)
-        baseMs = 30 + ((AccuracyValue / 100) * 220)
-    end
-
-    -- 🛡️ Close combat bonus (independent)
-    if isClose then baseMs = baseMs + 40 end
-
-    return baseMs
-end
-
--- =========================================
--- 🔥⚡ THE STRONGEST AUTO PARRY LOOP
+-- 🔥 SIMPLE & POWERFUL AUTO PARRY
 -- =========================================
 local lastParryTime = 0
-local GLOBAL_LOCK = 0.10
-local BALL_LOCK = 0.6
-local ballLocks = {}
+local ballLocks = {}  -- table: {[ball] = unlockTime}
 
--- Cleanup lock table
+-- Cleanup
 task.spawn(function()
-    while task.wait(0.5) do
+    while task.wait(0.3) do
         local now = tick()
         for ball, t in pairs(ballLocks) do
-            if not ball.Parent or now >= t then ballLocks[ball] = nil end
+            if not ball.Parent or now >= t then
+                ballLocks[ball] = nil
+            end
         end
     end
 end)
@@ -288,7 +165,9 @@ RunService.Heartbeat:Connect(function()
     end
 
     local now = tick()
-    local ping = GetPing()
+
+    -- Global cooldown - منع spam
+    if (now - lastParryTime) < 0.08 then return end
 
     local character = LocalPlayer.Character
     if not character then return end
@@ -296,74 +175,14 @@ RunService.Heartbeat:Connect(function()
     if not hrp then return end
 
     local playerPos = hrp.Position
-    local playerVel = hrp.AssemblyLinearVelocity
     local ballsFolder = WS:FindFirstChild("Balls")
     if not ballsFolder then return end
 
-    local balls = ballsFolder:GetChildren()
-
-    -- =========================================
-    -- 🚨 PHASE 1: ULTRA-EMERGENCY (Point Blank + Fast)
-    -- =========================================
-    -- Critical: أي كرة قريبة جدا (<15 studs) أو سريعة جدا → صد فوري
-    if (now - lastParryTime) < 0.04 then
-        -- منع double parry
-    else
-        for i = 1, #balls do
-            local ball = balls[i]
-            if not ball:IsA("BasePart") then continue end
-            if ball:GetAttribute("realBall") == false then continue end
-            if ballLocks[ball] then continue end
-
-            local ballPos = ball.Position
-            local velocity = ball.AssemblyLinearVelocity
-            local speed = velocity.Magnitude
-            if speed < 3 then continue end
-
-            local distance = (playerPos - ballPos).Magnitude
-            local dot = velocity.Unit:Dot((playerPos - ballPos).Unit)
-            if dot <= 0.3 then continue end
-
-            -- 🚨 Emergency trigger
-            local isEmergency = false
-
-            -- Point blank (قريب جداً)
-            if distance <= 15 then
-                isEmergency = true
-            -- Ultra fast + relatively close
-            elseif speed >= 200 and distance <= 60 then
-                isEmergency = true
-            -- Fast + very close
-            elseif speed >= 130 and distance <= 30 then
-                isEmergency = true
-            end
-
-            if isEmergency then
-                -- Verify trajectory (even in emergency)
-                local willHit = AnalyzeTrajectory(ballPos, velocity, playerPos, playerVel)
-                if willHit then
-                    lastParryTime = now
-                    ballLocks[ball] = now + BALL_LOCK
-                    FireParry()
-                    return
-                end
-            end
-        end
-    end
-
-    -- =========================================
-    -- 🎯 PHASE 2: PRECISION PARRY (Main)
-    -- =========================================
-    if (now - lastParryTime) < GLOBAL_LOCK then return end
-
+    -- ابحث على أقرب كرة جاية
     local bestBall = nil
-    local bestTime = math.huge
-    local bestSpeed = 0
     local bestDistance = math.huge
-    local bestCurve = false
 
-    for i = 1, #balls do
-        local ball = balls[i]
+    for _, ball in ipairs(ballsFolder:GetChildren()) do
         if not ball:IsA("BasePart") then continue end
         if ball:GetAttribute("realBall") == false then continue end
         if ballLocks[ball] then continue end
@@ -371,46 +190,33 @@ RunService.Heartbeat:Connect(function()
         local ballPos = ball.Position
         local velocity = ball.AssemblyLinearVelocity
         local speed = velocity.Magnitude
-        if speed < 3 then continue end
+        if speed < 5 then continue end
+
+        -- هل الكرة جاية نحوي؟
+        local toPlayer = (playerPos - ballPos).Unit
+        local dot = velocity.Unit:Dot(toPlayer)
+        if dot <= 0 then continue end  -- رايحة بعيد
 
         local distance = (playerPos - ballPos).Magnitude
-        if distance > 150 then continue end
 
-        -- 🎯 Full trajectory analysis
-        local willHit, timeToImpact, missDist = AnalyzeTrajectory(ballPos, velocity, playerPos, playerVel)
-        if not willHit then continue end
-
-        -- 🌀 Curve detection
-        local curveActive = TrackCurve(ball)
-
-        -- Track best ball (earliest impact)
-        if timeToImpact < bestTime then
-            bestTime = timeToImpact
-            bestBall = ball
-            bestSpeed = speed
-            bestDistance = distance
-            bestCurve = curveActive
+        -- 🎯 فحص المسافة
+        if distance <= ParryDistance then
+            if distance < bestDistance then
+                bestDistance = distance
+                bestBall = ball
+            end
         end
     end
 
     if bestBall then
-        -- 🎯 Calculate parry window
-        local windowMs = CalculateParryWindow(bestSpeed, bestCurve, bestDistance, false)
-        local windowSec = windowMs / 1000
-
-        -- ⏱️ Fire when ball will arrive within (ping + window)
-        local effectiveWindow = ping + windowSec
-
-        if bestTime <= effectiveWindow then
-            lastParryTime = now
-            ballLocks[bestBall] = now + BALL_LOCK
-            FireParry()
-        end
+        lastParryTime = now
+        ballLocks[bestBall] = now + 0.5  -- قفل 500ms
+        FireParry()
     end
 end)
 
 -- =========================================
--- FPS/Ping UI
+-- Stats UI
 -- =========================================
 local function GetGuiParent()
     local ok, hui = pcall(gethui)
@@ -433,11 +239,11 @@ StatsLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
 StatsLabel.BackgroundTransparency = 0.3
 StatsLabel.BorderSizePixel = 0
 StatsLabel.Position = UDim2.new(0.72, 0, 0.02, 0)
-StatsLabel.Size = UDim2.new(0, 260, 0, 50)
+StatsLabel.Size = UDim2.new(0, 240, 0, 40)
 StatsLabel.Font = Enum.Font.GothamBold
-StatsLabel.Text = "Slax Hub v30.0"
+StatsLabel.Text = "Slax Hub"
 StatsLabel.TextColor3 = Color3.fromRGB(80, 255, 160)
-StatsLabel.TextSize = 11
+StatsLabel.TextSize = 12
 
 local StatsCorner = Instance.new("UICorner")
 StatsCorner.CornerRadius = UDim.new(0, 8)
@@ -448,15 +254,15 @@ StatsStroke.Parent = StatsLabel
 StatsStroke.Color = Color3.fromRGB(80, 255, 160)
 StatsStroke.Thickness = 1.2
 
-local frameCounter = 0
-local timeCounter = tick()
+local frames = 0
+local lastTime = tick()
 
 RunService.RenderStepped:Connect(function()
-    frameCounter = frameCounter + 1
-    if (tick() - timeCounter) >= 1 then
+    frames = frames + 1
+    if (tick() - lastTime) >= 1 then
         local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
-        StatsLabel.Text = string.format("⚡ FPS: %d | Ping: %d ms\nParry: %s", 
-            frameCounter, ping, AutoParryEnabled and "ACTIVE" or "OFF")
+        StatsLabel.Text = string.format("FPS: %d | Ping: %d | Parry: %s",
+            frames, ping, AutoParryEnabled and "ON" or "OFF")
         if AutoParryEnabled then
             StatsLabel.TextColor3 = Color3.fromRGB(80, 255, 160)
             StatsStroke.Color = Color3.fromRGB(80, 255, 160)
@@ -464,8 +270,8 @@ RunService.RenderStepped:Connect(function()
             StatsLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
             StatsStroke.Color = Color3.fromRGB(150, 150, 150)
         end
-        frameCounter = 0
-        timeCounter = tick()
+        frames = 0
+        lastTime = tick()
     end
 end)
 
@@ -473,46 +279,32 @@ end)
 -- UI Controls
 -- =========================================
 MainTab:Toggle({
-    Title = "⚡ Auto Parry (STRONGEST)",
-    Desc = "Trajectory-based + Ultra-fast + Anti-curve",
+    Title = "⚡ Auto Parry",
+    Desc = "Simple & works - parries balls coming at you",
     Value = false,
     Callback = function(Value)
         AutoParryEnabled = Value
-        if not Value then
-            ballLocks = {}
-            ballTracking = {}
-        end
-    end
-})
-
-MainTab:Toggle({
-    Title = "Auto Accuracy",
-    Desc = "Auto-adjust timing based on speed/distance/curve",
-    Value = true,
-    Callback = function(Value)
-        UseAutoAccuracy = Value
+        if not Value then ballLocks = {} end
     end
 })
 
 MainTab:Slider({
-    Title = "Parry Accuracy",
-    Desc = "100 = Very early | 1 = Perfect (used only when Auto Accuracy is OFF)",
+    Title = "Parry Distance (studs)",
+    Desc = "Distance to trigger parry - 20-30 recommended",
     Value = {
-        Min = 1,
-        Max = 100,
-        Default = 75,
+        Min = 5,
+        Max = 80,
+        Default = 25,
     },
     Callback = function(Value)
-        AccuracyValue = Value
+        ParryDistance = Value
     end
 })
 
 SettingsTab:Button({
     Title = "Reset Locks",
-    Desc = "Clear ball locks if stuck",
     Callback = function()
         ballLocks = {}
-        ballTracking = {}
     end
 })
 
@@ -525,7 +317,7 @@ SettingsTab:Button({
 })
 
 WindUI:Notify({
-    Title = "Slax Hub v30.0 🔥",
-    Content = "STRONGEST Auto Parry loaded - Trajectory + Adaptive",
-    Duration = 6
+    Title = "Slax Hub v31.0",
+    Content = "Simple Auto Parry - Just Works",
+    Duration = 5
 })
