@@ -1,4 +1,4 @@
--- Slax Hub - Blade Ball Script (No Slash)
+-- Slax Hub - Blade Ball Script
 -- Developed by yossef
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -8,10 +8,10 @@ local Window = WindUI:CreateWindow({
     Icon = "swords",
     Author = "yossef",
     Folder = "SlaxHub",
-    Size = UDim2.fromOffset(600, 450),
+    Size = UDim2.fromOffset(620, 500),
     Transparent = true,
     Theme = "Dark",
-    SideBarWidth = 170,
+    SideBarWidth = 180,
     HasOutline = true,
 })
 
@@ -24,7 +24,9 @@ Window:EditOpenButton({
     OnlyMobile = false,
 })
 
-local MainTab = Window:Tab({ Title = "Main", Icon = "sword" })
+-- Tabs
+local ParryTab = Window:Tab({ Title = "Auto Parry", Icon = "shield" })
+local SpamTab = Window:Tab({ Title = "Spam", Icon = "zap" })
 local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
 
 -- Services
@@ -34,6 +36,7 @@ local Stats = game:GetService("Stats")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
@@ -41,11 +44,20 @@ local LocalPlayer = Players.LocalPlayer
 local AutoParryEnabled = false
 local AutoSpamEnabled = false
 local ManualSpamEnabled = false
-local ParryDistance = 25
-local PingCompensation = 1.5
-local SafetyBuffer = 8
+local TriggerbotEnabled = false
+local Accuracy = 75  -- ⭐ الوحيد القابل للتعديل
 local AutoSpamCPS = 350
 local SpamRange = 60
+
+-- Triggerbot
+local TriggerDistance = 12
+local TriggerCPS = 60
+local TriggerHitRadius = 5
+
+-- 🔒 Internal Hardcoded (ما تظهر في UI)
+local PING_COMPENSATION = 1.5
+local SAFETY_BUFFER = 8
+local HIT_RADIUS = 6
 
 -- =========================================
 -- Token
@@ -166,12 +178,117 @@ local function GetPing()
 end
 
 -- =========================================
--- Auto Parry Loop
+-- Trajectory Check
+-- =========================================
+local function WillHitMe(ballPos, ballVel, playerPos, hitRadius)
+    hitRadius = hitRadius or HIT_RADIUS
+    local speed = ballVel.Magnitude
+    if speed < 1 then return false end
+    
+    local toPlayer = playerPos - ballPos
+    local dir = ballVel.Unit
+    
+    local dot = dir:Dot(toPlayer.Unit)
+    if dot <= 0 then return false end
+    
+    local projection = toPlayer:Dot(dir)
+    if projection <= 0 then return false end
+    
+    local closestPoint = ballPos + (dir * projection)
+    local missDistance = (playerPos - closestPoint).Magnitude
+    
+    if missDistance > hitRadius then return false end
+    
+    return true
+end
+
+-- ═══════════════════════════════════════════════════════
+-- 🔥 Accuracy → Parry Distance Converter
+-- ═══════════════════════════════════════════════════════
+-- Accuracy 1 = 8 studs (perfect)
+-- Accuracy 50 = 25 studs (balanced)
+-- Accuracy 100 = 50 studs (early/safe)
+-- =========================================
+local function GetParryDistance()
+    return 8 + (Accuracy / 100) * 42
+end
+
+-- =========================================
+-- Triggerbot Loop
+-- =========================================
+local lastTriggerTime = 0
+local triggerLocks = {}
+local TriggerCount = 0
+
+task.spawn(function()
+    while task.wait(0.2) do
+        local now = tick()
+        for ball, t in pairs(triggerLocks) do
+            if not ball.Parent or now >= t then
+                triggerLocks[ball] = nil
+            end
+        end
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not TriggerbotEnabled then
+        triggerLocks = {}
+        return
+    end
+    
+    local now = tick()
+    if (now - lastTriggerTime) < (1 / math.max(TriggerCPS, 1)) then return end
+    
+    local character = LocalPlayer.Character
+    if not character then return end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    local playerPos = hrp.Position
+    local ballsFolder = WS:FindFirstChild("Balls")
+    if not ballsFolder then return end
+    
+    local bestBall = nil
+    local bestDistance = math.huge
+    
+    for _, ball in ipairs(ballsFolder:GetChildren()) do
+        if not ball:IsA("BasePart") then continue end
+        if ball:GetAttribute("realBall") == false then continue end
+        if triggerLocks[ball] then continue end
+        
+        local ballPos = ball.Position
+        local velocity = ball.AssemblyLinearVelocity
+        local speed = velocity.Magnitude
+        if speed < 5 then continue end
+        
+        local distance = (playerPos - ballPos).Magnitude
+        if distance > TriggerDistance then continue end
+        
+        local willHit = WillHitMe(ballPos, velocity, playerPos, TriggerHitRadius)
+        if not willHit then continue end
+        
+        if distance < bestDistance then
+            bestDistance = distance
+            bestBall = ball
+        end
+    end
+    
+    if bestBall then
+        lastTriggerTime = now
+        triggerLocks[bestBall] = now + 0.3
+        FireParry()
+        TriggerCount = TriggerCount + 1
+    end
+end)
+
+-- =========================================
+-- Auto Parry Loop (Accuracy Only)
 -- =========================================
 local lastParryTime = 0
 local ballLocks = {}
 local ParryCount = 0
-local LastInfo = { dist = 0, speed = 0, trigger = 0 }
+local LastInfo = { dist = 0, speed = 0, trigger = 0, reason = "None" }
 
 task.spawn(function()
     while task.wait(0.3) do
@@ -203,12 +320,11 @@ RunService.Heartbeat:Connect(function()
     if not ballsFolder then return end
     
     local ping = GetPing()
-    local bestBall = nil
-    local bestDistance = math.huge
-    local bestSpeed = 0
-    local bestTrigger = 0
+    local parryDist = GetParryDistance()
+    local balls = ballsFolder:GetChildren()
     
-    for _, ball in ipairs(ballsFolder:GetChildren()) do
+    -- PHASE 1: FAST BALL EMERGENCY
+    for _, ball in ipairs(balls) do
         if not ball:IsA("BasePart") then continue end
         if ball:GetAttribute("realBall") == false then continue end
         if ballLocks[ball] then continue end
@@ -220,18 +336,59 @@ RunService.Heartbeat:Connect(function()
         
         local toPlayer = (playerPos - ballPos).Unit
         local dot = velocity.Unit:Dot(toPlayer)
-        if dot <= 0.15 then continue end
+        if dot <= 0.3 then continue end
         
         local distance = (playerPos - ballPos).Magnitude
         
-        -- Ping Compensation
-        local pingDist = ping * speed * PingCompensation
-        local triggerDist = ParryDistance + pingDist + SafetyBuffer
+        local isEmergency = false
+        if speed >= 200 and distance < 100 then isEmergency = true
+        elseif speed >= 150 and distance < 70 then isEmergency = true
+        elseif speed >= 120 and distance < 40 then isEmergency = true
+        elseif distance <= 15 then isEmergency = true end
         
-        -- Speed bonus
-        if speed > 200 then triggerDist = triggerDist + 20
-        elseif speed > 150 then triggerDist = triggerDist + 15
-        elseif speed > 100 then triggerDist = triggerDist + 10 end
+        if isEmergency then
+            local willHit = WillHitMe(ballPos, velocity, playerPos)
+            if willHit or distance <= 12 then
+                lastParryTime = now
+                ballLocks[ball] = now + 0.5
+                FireParry()
+                ParryCount = ParryCount + 1
+                LastInfo.dist = distance
+                LastInfo.speed = speed
+                LastInfo.trigger = distance
+                LastInfo.reason = "EMERGENCY"
+                return
+            end
+        end
+    end
+    
+    -- PHASE 2: NORMAL PARRY
+    local bestBall = nil
+    local bestDistance = math.huge
+    local bestSpeed = 0
+    local bestTrigger = 0
+    
+    for _, ball in ipairs(balls) do
+        if not ball:IsA("BasePart") then continue end
+        if ball:GetAttribute("realBall") == false then continue end
+        if ballLocks[ball] then continue end
+        
+        local ballPos = ball.Position
+        local velocity = ball.AssemblyLinearVelocity
+        local speed = velocity.Magnitude
+        if speed < 5 then continue end
+        
+        local willHit = WillHitMe(ballPos, velocity, playerPos)
+        if not willHit then continue end
+        
+        local distance = (playerPos - ballPos).Magnitude
+        
+        -- Ping Compensation (hardcoded 1.5)
+        local pingDist = ping * speed * PING_COMPENSATION
+        local triggerDist = parryDist + pingDist + SAFETY_BUFFER
+        
+        if speed > 150 then triggerDist = triggerDist + 15
+        elseif speed > 100 then triggerDist = triggerDist + 8 end
         
         if distance <= triggerDist then
             if distance < bestDistance then
@@ -251,10 +408,9 @@ RunService.Heartbeat:Connect(function()
         LastInfo.dist = bestDistance
         LastInfo.speed = bestSpeed
         LastInfo.trigger = bestTrigger
+        LastInfo.reason = "NORMAL"
     end
 end)
-
-print("[Slax Hub] Auto Parry ready")
 
 -- =========================================
 -- Auto Spam Loop
@@ -360,8 +516,8 @@ StatsLabel.Parent = StatsGui
 StatsLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
 StatsLabel.BackgroundTransparency = 0.25
 StatsLabel.BorderSizePixel = 0
-StatsLabel.Position = UDim2.new(0.65, 0, 0.02, 0)
-StatsLabel.Size = UDim2.new(0, 260, 0, 70)
+StatsLabel.Position = UDim2.new(0.62, 0, 0.02, 0)
+StatsLabel.Size = UDim2.new(0, 280, 0, 90)
 StatsLabel.Font = Enum.Font.GothamBold
 StatsLabel.Text = "Slax Hub"
 StatsLabel.TextColor3 = Color3.fromRGB(80, 255, 160)
@@ -386,15 +542,17 @@ RunService.RenderStepped:Connect(function()
     if (tick() - lastFpsTime) >= 1 then
         local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
         StatsLabel.Text = string.format(
-            "Slax Hub | FPS: %d | Ping: %d ms\nParry: %s | Parries: %d\n📍 dist: %d | spd: %d | trig: %d",
+            "Slax Hub | FPS: %d | Ping: %d ms\nParry: %s | Parries: %d | ACC: %d\nTriggerbot: %s | Triggers: %d\n📍 dist: %d | spd: %d",
             frames, ping,
             AutoParryEnabled and "ON" or "OFF",
             ParryCount,
+            Accuracy,
+            TriggerbotEnabled and "ON" or "OFF",
+            TriggerCount,
             math.floor(LastInfo.dist),
-            math.floor(LastInfo.speed),
-            math.floor(LastInfo.trigger)
+            math.floor(LastInfo.speed)
         )
-        if AutoParryEnabled then
+        if AutoParryEnabled or TriggerbotEnabled then
             StatsLabel.TextColor3 = Color3.fromRGB(80, 255, 160)
             StatsStroke.Color = Color3.fromRGB(80, 255, 160)
         else
@@ -407,103 +565,161 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- =========================================
--- Manual Spam Button (🎯 Old Style)
+-- 🌸💜 SPAM BUTTON
 -- =========================================
 local ManualGui = Instance.new("ScreenGui")
-ManualGui.Name = "SlaxManual_" .. math.random(1, 99999)
+ManualGui.Name = "SlaxManualSpam_" .. math.random(1, 99999)
 ManualGui.Parent = GetGuiParent()
 ManualGui.ResetOnSpawn = false
 ManualGui.IgnoreGuiInset = true
-ManualGui.DisplayOrder = 99998
+ManualGui.DisplayOrder = 99999
 
 local ManualBtn = Instance.new("TextButton")
+ManualBtn.Name = "ManualSpamBtn"
 ManualBtn.Parent = ManualGui
-ManualBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+ManualBtn.BackgroundColor3 = Color3.fromRGB(18, 14, 28)
+ManualBtn.BackgroundTransparency = 0.15
 ManualBtn.BorderSizePixel = 0
-ManualBtn.Position = UDim2.new(0.05, 0, 0.5, 0)
-ManualBtn.Size = UDim2.new(0, 140, 0, 45)
+ManualBtn.Position = UDim2.new(0.05, 0, 0.45, 0)
+ManualBtn.Size = UDim2.new(0, 110, 0, 42)
 ManualBtn.Font = Enum.Font.GothamBold
-ManualBtn.Text = "🎯 Trigger: OFF"
-ManualBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ManualBtn.TextSize = 15
+ManualBtn.Text = "SPAM: OFF"
+ManualBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
+ManualBtn.TextSize = 13
 ManualBtn.AutoButtonColor = false
 ManualBtn.Active = true
+ManualBtn.Selectable = true
 
 local ManualCorner = Instance.new("UICorner")
-ManualCorner.CornerRadius = UDim.new(0, 8)
+ManualCorner.CornerRadius = UDim.new(0, 10)
 ManualCorner.Parent = ManualBtn
 
 local ManualStroke = Instance.new("UIStroke")
 ManualStroke.Parent = ManualBtn
-ManualStroke.Color = Color3.fromRGB(255, 255, 255)
 ManualStroke.Thickness = 1.5
-ManualStroke.Transparency = 0.3
+ManualStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-local dragging, dragInput, dragStart, startPos, dragMoved
+local StrokeGradient = Instance.new("UIGradient")
+StrokeGradient.Parent = ManualStroke
+StrokeGradient.Rotation = 45
+StrokeGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 100, 200)),
+    ColorSequenceKeypoint.new(0.33, Color3.fromRGB(230, 80, 230)),
+    ColorSequenceKeypoint.new(0.66, Color3.fromRGB(180, 90, 255)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(140, 100, 255))
+})
+
+local ManualGlow = Instance.new("UIStroke")
+ManualGlow.Parent = ManualBtn
+ManualGlow.Thickness = 4
+ManualGlow.Transparency = 0.7
+ManualGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+local GlowGradient = Instance.new("UIGradient")
+GlowGradient.Parent = ManualGlow
+GlowGradient.Rotation = 45
+GlowGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 100, 200)),
+    ColorSequenceKeypoint.new(0.50, Color3.fromRGB(210, 100, 255)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(150, 110, 255))
+})
+
+local BgGradient = Instance.new("UIGradient")
+BgGradient.Parent = ManualBtn
+BgGradient.Rotation = 45
+BgGradient.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0.00, 0.15),
+    NumberSequenceKeypoint.new(0.50, 0.25),
+    NumberSequenceKeypoint.new(1.00, 0.15)
+})
+BgGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(35, 20, 50)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
+})
+
+local function UpdateManualBtn()
+    if ManualSpamEnabled then
+        ManualBtn.Text = "SPAM: ON"
+        ManualBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
+        TweenService:Create(BgGradient, TweenInfo.new(0.3), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(20, 60, 50)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(30, 80, 60))
+            })
+        }):Play()
+        TweenService:Create(StrokeGradient, TweenInfo.new(0.3), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(80, 255, 180)),
+                ColorSequenceKeypoint.new(0.33, Color3.fromRGB(100, 255, 220)),
+                ColorSequenceKeypoint.new(0.66, Color3.fromRGB(150, 200, 255)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(180, 220, 255))
+            })
+        }):Play()
+    else
+        ManualBtn.Text = "SPAM: OFF"
+        ManualBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
+        TweenService:Create(BgGradient, TweenInfo.new(0.3), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(35, 20, 50)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
+            })
+        }):Play()
+        TweenService:Create(StrokeGradient, TweenInfo.new(0.3), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 100, 200)),
+                ColorSequenceKeypoint.new(0.33, Color3.fromRGB(230, 80, 230)),
+                ColorSequenceKeypoint.new(0.66, Color3.fromRGB(180, 90, 255)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(140, 100, 255))
+            })
+        }):Play()
+    end
+end
+
+local dragging, dragStart, startPos, dragMoved
 local lastTap = 0
 
 ManualBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
         dragMoved = false
         dragStart = input.Position
         startPos = ManualBtn.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
     end
 end)
 
 ManualBtn.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
+    if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
         local delta = input.Position - dragStart
-        if math.abs(delta.X) > 5 or math.abs(delta.Y) > 5 then
+        if math.abs(delta.X) > 6 or math.abs(delta.Y) > 6 then
             dragMoved = true
         end
-        ManualBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        ManualBtn.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
     end
 end)
 
-local function UpdateManualBtn()
-    if ManualSpamEnabled then
-        ManualBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 100)
-        ManualBtn.Text = "🎯 Trigger: ON"
-        ManualStroke.Color = Color3.fromRGB(180, 255, 200)
-    else
-        ManualBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
-        ManualBtn.Text = "🎯 Trigger: OFF"
-        ManualStroke.Color = Color3.fromRGB(255, 255, 255)
+ManualBtn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
     end
-end
+end)
 
 ManualBtn.MouseButton1Click:Connect(function()
     if dragMoved then return end
     local now = tick()
-    if now - lastTap < 0.3 then return end
-    lastTap = now
-    ManualSpamEnabled = not ManualSpamEnabled
-    UpdateManualBtn()
+    if now - lastTap > 0.3 then
+        lastTap = now
+        ManualSpamEnabled = not ManualSpamEnabled
+        UpdateManualBtn()
+    end
 end)
 
 ManualBtn.TouchTap:Connect(function()
     local now = tick()
-    if now - lastTap < 0.3 then return end
-    lastTap = now
-    ManualSpamEnabled = not ManualSpamEnabled
-    UpdateManualBtn()
-end)
-
-UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode.E then
+    if now - lastTap > 0.3 then
+        lastTap = now
         ManualSpamEnabled = not ManualSpamEnabled
         UpdateManualBtn()
     end
@@ -512,11 +728,188 @@ end)
 UpdateManualBtn()
 
 -- =========================================
--- UI Controls
+-- 🎯 TRIGGER BUTTON
 -- =========================================
-MainTab:Toggle({
-    Title = "⚡ Auto Parry (Ping Adaptive)",
-    Desc = "Fires earlier based on your ping",
+local TriggerGui = Instance.new("ScreenGui")
+TriggerGui.Name = "SlaxTrigger_" .. math.random(1, 99999)
+TriggerGui.Parent = GetGuiParent()
+TriggerGui.ResetOnSpawn = false
+TriggerGui.IgnoreGuiInset = true
+TriggerGui.DisplayOrder = 99999
+
+local TriggerBtn = Instance.new("TextButton")
+TriggerBtn.Name = "TriggerBtn"
+TriggerBtn.Parent = TriggerGui
+TriggerBtn.BackgroundColor3 = Color3.fromRGB(18, 14, 28)
+TriggerBtn.BackgroundTransparency = 0.15
+TriggerBtn.BorderSizePixel = 0
+TriggerBtn.Position = UDim2.new(0.05, 0, 0.55, 0)
+TriggerBtn.Size = UDim2.new(0, 110, 0, 42)
+TriggerBtn.Font = Enum.Font.GothamBold
+TriggerBtn.Text = "TRIGGER: OFF"
+TriggerBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
+TriggerBtn.TextSize = 13
+TriggerBtn.AutoButtonColor = false
+TriggerBtn.Active = true
+TriggerBtn.Selectable = true
+
+local TriggerCorner = Instance.new("UICorner")
+TriggerCorner.CornerRadius = UDim.new(0, 10)
+TriggerCorner.Parent = TriggerBtn
+
+local TriggerStroke = Instance.new("UIStroke")
+TriggerStroke.Parent = TriggerBtn
+TriggerStroke.Thickness = 1.5
+TriggerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+local TStrokeGradient = Instance.new("UIGradient")
+TStrokeGradient.Parent = TriggerStroke
+TStrokeGradient.Rotation = 45
+TStrokeGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 100, 200)),
+    ColorSequenceKeypoint.new(0.33, Color3.fromRGB(230, 80, 230)),
+    ColorSequenceKeypoint.new(0.66, Color3.fromRGB(180, 90, 255)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(140, 100, 255))
+})
+
+local TriggerGlow = Instance.new("UIStroke")
+TriggerGlow.Parent = TriggerBtn
+TriggerGlow.Thickness = 4
+TriggerGlow.Transparency = 0.7
+TriggerGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+local TGlowGradient = Instance.new("UIGradient")
+TGlowGradient.Parent = TriggerGlow
+TGlowGradient.Rotation = 45
+TGlowGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 100, 200)),
+    ColorSequenceKeypoint.new(0.50, Color3.fromRGB(210, 100, 255)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(150, 110, 255))
+})
+
+local TBgGradient = Instance.new("UIGradient")
+TBgGradient.Parent = TriggerBtn
+TBgGradient.Rotation = 45
+TBgGradient.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0.00, 0.15),
+    NumberSequenceKeypoint.new(0.50, 0.25),
+    NumberSequenceKeypoint.new(1.00, 0.15)
+})
+TBgGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(35, 20, 50)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
+})
+
+local function UpdateTriggerBtn()
+    if TriggerbotEnabled then
+        TriggerBtn.Text = "TRIGGER: ON"
+        TriggerBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
+        TweenService:Create(TBgGradient, TweenInfo.new(0.3), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(20, 60, 50)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(30, 80, 60))
+            })
+        }):Play()
+        TweenService:Create(TStrokeGradient, TweenInfo.new(0.3), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(80, 255, 180)),
+                ColorSequenceKeypoint.new(0.33, Color3.fromRGB(100, 255, 220)),
+                ColorSequenceKeypoint.new(0.66, Color3.fromRGB(150, 200, 255)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(180, 220, 255))
+            })
+        }):Play()
+    else
+        TriggerBtn.Text = "TRIGGER: OFF"
+        TriggerBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
+        TweenService:Create(TBgGradient, TweenInfo.new(0.3), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(35, 20, 50)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
+            })
+        }):Play()
+        TweenService:Create(TStrokeGradient, TweenInfo.new(0.3), {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 100, 200)),
+                ColorSequenceKeypoint.new(0.33, Color3.fromRGB(230, 80, 230)),
+                ColorSequenceKeypoint.new(0.66, Color3.fromRGB(180, 90, 255)),
+                ColorSequenceKeypoint.new(1.00, Color3.fromRGB(140, 100, 255))
+            })
+        }):Play()
+    end
+end
+
+local tDragging, tDragStart, tStartPos, tDragMoved
+local tLastTap = 0
+
+TriggerBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        tDragging = true
+        tDragMoved = false
+        tDragStart = input.Position
+        tStartPos = TriggerBtn.Position
+    end
+end)
+
+TriggerBtn.InputChanged:Connect(function(input)
+    if tDragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+        local delta = input.Position - tDragStart
+        if math.abs(delta.X) > 6 or math.abs(delta.Y) > 6 then
+            tDragMoved = true
+        end
+        TriggerBtn.Position = UDim2.new(
+            tStartPos.X.Scale, tStartPos.X.Offset + delta.X,
+            tStartPos.Y.Scale, tStartPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+TriggerBtn.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        tDragging = false
+    end
+end)
+
+TriggerBtn.MouseButton1Click:Connect(function()
+    if tDragMoved then return end
+    local now = tick()
+    if now - tLastTap > 0.3 then
+        tLastTap = now
+        TriggerbotEnabled = not TriggerbotEnabled
+        UpdateTriggerBtn()
+    end
+end)
+
+TriggerBtn.TouchTap:Connect(function()
+    local now = tick()
+    if now - tLastTap > 0.3 then
+        tLastTap = now
+        TriggerbotEnabled = not TriggerbotEnabled
+        UpdateTriggerBtn()
+    end
+end)
+
+UpdateTriggerBtn()
+
+-- Keyboard
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.E then
+        ManualSpamEnabled = not ManualSpamEnabled
+        UpdateManualBtn()
+    elseif input.KeyCode == Enum.KeyCode.Q then
+        TriggerbotEnabled = not TriggerbotEnabled
+        UpdateTriggerBtn()
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════
+-- UI CONTROLS
+-- ═══════════════════════════════════════════════════════
+
+-- TAB 1: AUTO PARRY (Accuracy فقط)
+ParryTab:Toggle({
+    Title = "⚡ Auto Parry",
+    Desc = "Trajectory check + Fast ball emergency",
     Value = false,
     Callback = function(Value)
         AutoParryEnabled = Value
@@ -524,54 +917,76 @@ MainTab:Toggle({
     end
 })
 
-MainTab:Slider({
-    Title = "Base Distance (studs)",
-    Desc = "Base trigger distance",
-    Value = { Min = 5, Max = 100, Default = 25 },
-    Callback = function(Value) ParryDistance = Value end
+ParryTab:Slider({
+    Title = "Accuracy",
+    Desc = "100 = Early/Safe | 1 = Perfect timing (يُنصح بـ 60-85)",
+    Value = { Min = 1, Max = 100, Default = 75 },
+    Callback = function(Value) Accuracy = Value end
 })
 
-MainTab:Slider({
-    Title = "Ping Compensation",
-    Desc = "Higher = Earlier parry (150 = default)",
-    Value = { Min = 0, Max = 300, Default = 150 },
-    Callback = function(Value) PingCompensation = Value / 100 end
-})
-
-MainTab:Slider({
-    Title = "Safety Buffer (studs)",
-    Desc = "Extra distance for safety",
-    Value = { Min = 0, Max = 30, Default = 8 },
-    Callback = function(Value) SafetyBuffer = Value end
-})
-
-MainTab:Toggle({
+-- TAB 2: SPAM
+SpamTab:Toggle({
     Title = "⚡ Auto Spam (Near Players)",
     Desc = "Spams when players are within range",
     Value = false,
     Callback = function(Value) AutoSpamEnabled = Value end
 })
 
-MainTab:Slider({
+SpamTab:Slider({
     Title = "Spam Range (studs)",
     Desc = "Distance to trigger auto spam",
     Value = { Min = 20, Max = 150, Default = 60 },
     Callback = function(Value) SpamRange = Value end
 })
 
-MainTab:Slider({
+SpamTab:Slider({
     Title = "CPS (Clicks Per Second)",
     Desc = "Spam rate",
     Value = { Min = 50, Max = 500, Default = 350 },
     Callback = function(Value) AutoSpamCPS = Value end
 })
 
+SpamTab:Toggle({
+    Title = "🎯 Triggerbot (Trajectory Only)",
+    Desc = "Fires ONLY when ball is heading directly at you",
+    Value = false,
+    Callback = function(Value)
+        TriggerbotEnabled = Value
+        if not Value then triggerLocks = {} end
+        UpdateTriggerBtn()
+    end
+})
+
+SpamTab:Slider({
+    Title = "Trigger Distance (studs)",
+    Desc = "Distance for triggerbot to fire",
+    Value = { Min = 5, Max = 30, Default = 12 },
+    Callback = function(Value) TriggerDistance = Value end
+})
+
+SpamTab:Slider({
+    Title = "Trigger Hit Radius (studs)",
+    Desc = "Trajectory accuracy - lower = stricter",
+    Value = { Min = 3, Max = 10, Default = 5 },
+    Callback = function(Value) TriggerHitRadius = Value end
+})
+
+SpamTab:Slider({
+    Title = "Trigger CPS",
+    Desc = "Triggerbot fire rate",
+    Value = { Min = 30, Max = 120, Default = 60 },
+    Callback = function(Value) TriggerCPS = Value end
+})
+
+-- TAB 3: SETTINGS
 SettingsTab:Button({
     Title = "🔄 Reset Ball Locks",
     Desc = "Clear stuck ball locks",
     Callback = function()
         ballLocks = {}
+        triggerLocks = {}
         ParryCount = 0
+        TriggerCount = 0
     end
 })
 
@@ -581,13 +996,14 @@ SettingsTab:Button({
         Window:Destroy()
         StatsGui:Destroy()
         ManualGui:Destroy()
+        TriggerGui:Destroy()
     end
 })
 
 WindUI:Notify({
     Title = "Slax Hub Loaded ✅",
-    Content = "Auto Parry + Auto Spam ready",
+    Content = "Auto Parry with Accuracy slider only!",
     Duration = 5
 })
 
-print("[Slax Hub] ✅ Loaded - No Slash version")
+print("[Slax Hub] ✅ Loaded - Accuracy Only")
