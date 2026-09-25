@@ -1,30 +1,8 @@
--- Slax Hub - Fixed (UI First)
+-- Slax Hub - Blade Ball Script (Fixed with Sections)
 -- Developed by yossef
 
 -- ═══════════════════════════════════════════════════════
--- 1. STATE (قبل كل شي)
--- ═══════════════════════════════════════════════════════
-local AutoParryEnabled = false
-local AutoSpamEnabled = false
-local ManualSpamEnabled = false
-local TriggerbotEnabled = false
-local Accuracy = 75
-local AutoSpamCPS = 350
-local SpamRange = 60
-local TriggerDistance = 12
-local TriggerCPS = 60
-local TriggerHitRadius = 5
-local HitRadius = 6
-local PingCompensation = 1.5
-local SafetyBuffer = 8
-
-local ballLocks = {}
-local triggerLocks = {}
-local ParryCount = 0
-local TriggerCount = 0
-
--- ═══════════════════════════════════════════════════════
--- 2. UI LIBRARY (أول شي!)
+-- UI LIBRARY
 -- ═══════════════════════════════════════════════════════
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
@@ -49,16 +27,44 @@ Window:EditOpenButton({
     OnlyMobile = false,
 })
 
+-- ═══════════════════════════════════════════════════════
+-- TABS
+-- ═══════════════════════════════════════════════════════
 local ParryTab = Window:Tab({ Title = "Auto Parry", Icon = "sword" })
 local SpamTab = Window:Tab({ Title = "Spam", Icon = "zap" })
 local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
 
 -- ═══════════════════════════════════════════════════════
--- 3. UI CONTROLS (قبل أي منطق!)
+-- SECTIONS
+-- ═══════════════════════════════════════════════════════
+local ParrySection = ParryTab:Section({ Title = "Auto Parry" })
+local SpamSection = SpamTab:Section({ Title = "Auto Spam" })
+local TriggerSection = SpamTab:Section({ Title = "Triggerbot" })
+local SettingsSection = SettingsTab:Section({ Title = "Actions" })
+
+-- ═══════════════════════════════════════════════════════
+-- STATE
+-- ═══════════════════════════════════════════════════════
+local AutoParryEnabled = false
+local AutoSpamEnabled = false
+local ManualSpamEnabled = false
+local TriggerbotEnabled = false
+local Accuracy = 75
+local AutoSpamCPS = 350
+local SpamRange = 60
+local TriggerDistance = 12
+local TriggerCPS = 60
+local TriggerHitRadius = 5
+local HitRadius = 6
+local PingCompensation = 1.5
+local SafetyBuffer = 8
+
+-- ═══════════════════════════════════════════════════════
+-- UI CONTROLS (BEFORE any logic)
 -- ═══════════════════════════════════════════════════════
 
 -- TAB 1: AUTO PARRY
-ParryTab:Toggle({
+ParrySection:Toggle({
     Title = "⚡ Auto Parry",
     Desc = "Trajectory check + Fast ball emergency",
     Value = false,
@@ -67,7 +73,7 @@ ParryTab:Toggle({
     end
 })
 
-ParryTab:Slider({
+ParrySection:Slider({
     Title = "Accuracy",
     Desc = "100 = Early | 1 = Perfect (recommend 60-85)",
     Value = { Min = 1, Max = 100, Default = 75 },
@@ -77,7 +83,7 @@ ParryTab:Slider({
 })
 
 -- TAB 2: SPAM
-SpamTab:Toggle({
+SpamSection:Toggle({
     Title = "⚡ Auto Spam",
     Desc = "Spams when players are within range",
     Value = false,
@@ -86,7 +92,7 @@ SpamTab:Toggle({
     end
 })
 
-SpamTab:Slider({
+SpamSection:Slider({
     Title = "Spam Range (studs)",
     Desc = "Distance to trigger auto spam",
     Value = { Min = 20, Max = 150, Default = 60 },
@@ -95,7 +101,7 @@ SpamTab:Slider({
     end
 })
 
-SpamTab:Slider({
+SpamSection:Slider({
     Title = "CPS",
     Desc = "Spam rate (Clicks Per Second)",
     Value = { Min = 50, Max = 500, Default = 350 },
@@ -104,7 +110,8 @@ SpamTab:Slider({
     end
 })
 
-SpamTab:Toggle({
+-- TAB 2: TRIGGERBOT SECTION
+TriggerSection:Toggle({
     Title = "🎯 Triggerbot",
     Desc = "Fires ONLY when ball is heading at you",
     Value = false,
@@ -113,7 +120,7 @@ SpamTab:Toggle({
     end
 })
 
-SpamTab:Slider({
+TriggerSection:Slider({
     Title = "Trigger Distance (studs)",
     Desc = "Distance for triggerbot to fire",
     Value = { Min = 5, Max = 30, Default = 12 },
@@ -122,7 +129,7 @@ SpamTab:Slider({
     end
 })
 
-SpamTab:Slider({
+TriggerSection:Slider({
     Title = "Trigger Hit Radius (studs)",
     Desc = "Lower = stricter trajectory",
     Value = { Min = 3, Max = 10, Default = 5 },
@@ -131,7 +138,7 @@ SpamTab:Slider({
     end
 })
 
-SpamTab:Slider({
+TriggerSection:Slider({
     Title = "Trigger CPS",
     Desc = "Triggerbot fire rate",
     Value = { Min = 30, Max = 120, Default = 60 },
@@ -141,26 +148,25 @@ SpamTab:Slider({
 })
 
 -- TAB 3: SETTINGS
-SettingsTab:Button({
+SettingsSection:Button({
     Title = "🔄 Reset Counters",
     Desc = "Clear parry/trigger counters",
     Callback = function()
-        ParryCount = 0
-        TriggerCount = 0
-        ballLocks = {}
-        triggerLocks = {}
+        -- Will be updated when logic loads
     end
 })
 
-SettingsTab:Button({
+SettingsSection:Button({
     Title = "🗑️ Destroy UI",
     Callback = function()
         pcall(function() Window:Destroy() end)
     end
 })
 
+print("[Slax Hub] UI Ready ✅")
+
 -- ═══════════════════════════════════════════════════════
--- 4. UI READY - NOW DO THE LOGIC (in pcall)
+-- LOGIC (in pcall so errors don't break UI)
 -- ═══════════════════════════════════════════════════════
 
 task.spawn(function()
@@ -172,9 +178,13 @@ task.spawn(function()
         local Players = game:GetService("Players")
         local RunService = game:GetService("RunService")
         local UserInputService = game:GetService("UserInputService")
-        local TweenService = game:GetService("TweenService")
         local CoreGui = game:GetService("CoreGui")
         local LocalPlayer = Players.LocalPlayer
+
+        local ballLocks = {}
+        local triggerLocks = {}
+        local ParryCount = 0
+        local TriggerCount = 0
 
         -- ═══ Token ═══
         local _token = nil
@@ -533,7 +543,7 @@ task.spawn(function()
 
         print("[Slax Hub] ✅ All systems ready")
 
-        -- ═══ Stats UI ═══
+        -- ═══ GUI Parent ═══
         local function GetGuiParent()
             local ok, hui = pcall(gethui)
             if ok and hui then return hui end
@@ -542,6 +552,7 @@ task.spawn(function()
             return CoreGui
         end
 
+        -- ═══ Stats UI ═══
         local StatsGui = Instance.new("ScreenGui")
         StatsGui.Name = "SlaxStats_" .. math.random(1, 99999)
         StatsGui.Parent = GetGuiParent()
@@ -871,19 +882,39 @@ task.spawn(function()
             end
         end)
 
-        -- Watch for toggles from UI to update buttons
+        -- Watch UI toggles (سواء من الزر أو من القائمة)
         task.spawn(function()
             while task.wait(0.2) do
                 pcall(function()
-                    UpdateManualBtn()
-                    UpdateTriggerBtn()
+                    if ManualSpamEnabled and ManualBtn.Text == "SPAM: OFF" then
+                        UpdateManualBtn()
+                    elseif not ManualSpamEnabled and ManualBtn.Text == "SPAM: ON" then
+                        UpdateManualBtn()
+                    end
+                    if TriggerbotEnabled and TriggerBtn.Text == "TRIGGER: OFF" then
+                        UpdateTriggerBtn()
+                    elseif not TriggerbotEnabled and TriggerBtn.Text == "TRIGGER: ON" then
+                        UpdateTriggerBtn()
+                    end
                 end)
             end
         end)
+
+        -- Update Reset Button in Settings
+        SettingsSection:Button({
+            Title = "🔄 Full Reset",
+            Desc = "Reset counters and states",
+            Callback = function()
+                ParryCount = 0
+                TriggerCount = 0
+                ballLocks = {}
+                triggerLocks = {}
+            end
+        })
     end)
 
     if not success then
-        warn("[Slax Hub] Error in logic: " .. tostring(err))
+        warn("[Slax Hub] Logic Error: " .. tostring(err))
     end
 end)
 
@@ -892,8 +923,8 @@ end)
 -- ═══════════════════════════════════════════════════════
 WindUI:Notify({
     Title = "Slax Hub Loaded ✅",
-    Content = "UI Ready - Systems loading...",
+    Content = "Auto Parry + Spam + Triggerbot ready!",
     Duration = 5
 })
 
-print("[Slax Hub] ✅ UI Loaded")
+print("[Slax Hub] ✅ Loaded successfully")
