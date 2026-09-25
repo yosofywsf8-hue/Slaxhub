@@ -1,5 +1,7 @@
--- Slax Hub - Ultimate Auto Parry (Final)
+-- ═══════════════════════════════════════════════════════
+-- Slax Hub - BEAST MODE Auto Parry + All Fixes
 -- Developed by yossef
+-- ═══════════════════════════════════════════════════════
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
@@ -24,35 +26,40 @@ Window:EditOpenButton({
     OnlyMobile = true,
 })
 
--- Tabs
+-- ═══════════════════════════════════════════════════════
+-- TABS + SECTIONS
+-- ═══════════════════════════════════════════════════════
 local ParryTab = Window:Tab({ Title = "Parry", Icon = "sword" })
 local SpamTab = Window:Tab({ Title = "Spam", Icon = "zap" })
 local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
 
--- Sections
 local ParrySection = ParryTab:Section({ Title = "Auto Parry" })
 local SpamSection = SpamTab:Section({ Title = "Auto Spam" })
 local TriggerSection = SpamTab:Section({ Title = "Triggerbot" })
 local SettingsSection = SettingsTab:Section({ Title = "Actions" })
 
--- State
+-- ═══════════════════════════════════════════════════════
+-- STATE
+-- ═══════════════════════════════════════════════════════
 local AutoParryEnabled = false
 local AutoSpamEnabled = false
-local ManualSpamEnabled = false
-local TriggerbotEnabled = false
+local ManualSpamVisible = false
+local ManualSpamActive = false
+local TriggerbotVisible = false
+local TriggerbotActive = false
 local Accuracy = 50
 local AutoSpamCPS = 350
 local SpamRange = 60
-local TriggerDistance = 20
-local TriggerCPS = 60
+local TriggerDistance = 25
+local TriggerCPS = 80
 
 -- ═══════════════════════════════════════════════════════
 -- UI CONTROLS
 -- ═══════════════════════════════════════════════════════
 
 ParrySection:Toggle({
-    Title = "⚡ Auto Parry",
-    Desc = "Ultimate - no bugs, close combat fix",
+    Title = "⚡ Auto Parry (BEAST MODE)",
+    Desc = "Extreme detection - parries everything",
     Value = false,
     Callback = function(Value) AutoParryEnabled = Value end
 })
@@ -83,31 +90,35 @@ SpamSection:Slider({
     Callback = function(Value) AutoSpamCPS = Value end
 })
 
--- 🎯 MANUAL SPAM Toggle (اللي يظهر الزر)
 SpamSection:Toggle({
-    Title = "🌸 Show Manual Spam Button",
-    Desc = "Display the pink SPAM button on screen",
+    Title = "🌸 Manual Spam",
+    Desc = "Show pink SPAM button on screen",
     Value = false,
-    Callback = function(Value) ManualSpamEnabled = Value end
+    Callback = function(Value)
+        ManualSpamVisible = Value
+        ManualSpamActive = Value
+    end
 })
 
--- 🎯 TRIGGERBOT Toggle (اللي يظهر الزر)
 TriggerSection:Toggle({
     Title = "🎯 Triggerbot",
-    Desc = "Fire only when ball is heading at you",
+    Desc = "Show TRIGGER button on screen",
     Value = false,
-    Callback = function(Value) TriggerbotEnabled = Value end
+    Callback = function(Value)
+        TriggerbotVisible = Value
+        TriggerbotActive = Value
+    end
 })
 
 TriggerSection:Slider({
     Title = "Trigger Distance (studs)",
-    Value = { Min = 8, Max = 40, Default = 20 },
+    Value = { Min = 10, Max = 50, Default = 25 },
     Callback = function(Value) TriggerDistance = Value end
 })
 
 TriggerSection:Slider({
     Title = "Trigger CPS",
-    Value = { Min = 30, Max = 120, Default = 60 },
+    Value = { Min = 30, Max = 120, Default = 80 },
     Callback = function(Value) TriggerCPS = Value end
 })
 
@@ -125,7 +136,6 @@ task.spawn(function()
     local success, err = pcall(function()
         local RS = game:GetService("ReplicatedStorage")
         local WS = game:GetService("Workspace")
-        local Stats = game:GetService("Stats")
         local Players = game:GetService("Players")
         local RunService = game:GetService("RunService")
         local UserInputService = game:GetService("UserInputService")
@@ -133,39 +143,75 @@ task.spawn(function()
         local LocalPlayer = Players.LocalPlayer
 
         local ballLocks = {}
-        local triggerLocks = {}
 
-        -- Token
+        -- ═══════════════════════════════════════════════
+        -- 🔐 BYPASS - TOKEN RETRIEVAL (3 Methods)
+        -- ═══════════════════════════════════════════════
         local _token = nil
+
+        -- Method 1: Search by function name containing "PRY"
         for _, f in getgc(true) do
-            if type(f) == 'function' and debug.info(f, 's'):find('PRY', 1, true) then
-                for _, v in debug.getupvalues(f) do
-                    if type(v) == 'function' then
-                        _token = v
-                        break
+            if type(f) == 'function' then
+                local ok, name = pcall(function() return debug.info(f, 's') end)
+                if ok and name and tostring(name):find('PRY', 1, true) then
+                    local ok2, ups = pcall(function() return debug.getupvalues(f) end)
+                    if ok2 and ups then
+                        for _, v in pairs(ups) do
+                            if type(v) == 'function' then
+                                _token = v
+                                break
+                            end
+                        end
                     end
+                    if _token then break end
                 end
-                if _token then break end
             end
         end
 
-        print("[Slax Hub] Token: " .. (_token and "OK" or "FAILED"))
+        -- Method 2: Search in upvalues
+        if not _token then
+            for _, f in getgc(true) do
+                if type(f) == 'function' then
+                    local ok, ups = pcall(function() return debug.getupvalues(f) end)
+                    if ok and ups then
+                        for _, v in pairs(ups) do
+                            if type(v) == 'function' then
+                                local ok2, name = pcall(function() return debug.info(v, 's') end)
+                                if ok2 and name and tostring(name):find('PRY', 1, true) then
+                                    _token = v
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    if _token then break end
+                end
+            end
+        end
+
+        print("[Slax Hub] Token: " .. (_token and "✅ OK" or "❌ FAILED"))
 
         local function _tokenize(uid)
             if not _token then return "" end
-            local t = tostring(math.floor(WS:GetServerTimeNow() * 100))
-            local k = _token(uid, 'TIME')
-            local chars = table.create(#t)
-            for i = 1, #t do
-                chars[i] = string.char(bit32.bxor(
-                    (string.byte(t, i) + i) % 256,
-                    string.byte(k, (i - 1) % #k + 1)
-                ))
-            end
-            return table.concat(chars)
+            local ok, result = pcall(function()
+                local t = tostring(math.floor(WS:GetServerTimeNow() * 100))
+                local k = _token(uid, 'TIME')
+                local chars = table.create(#t)
+                for i = 1, #t do
+                    chars[i] = string.char(bit32.bxor(
+                        (string.byte(t, i) + i) % 256,
+                        string.byte(k, (i - 1) % #k + 1)
+                    ))
+                end
+                return table.concat(chars)
+            end)
+            if ok then return result end
+            return ""
         end
 
-        -- Hook
+        -- ═══════════════════════════════════════════════
+        -- 🎣 REMOTE HOOKING
+        -- ═══════════════════════════════════════════════
         local _reverted = {}
         local _original = {}
 
@@ -181,26 +227,28 @@ task.spawn(function()
         end
 
         local function _hook(remote)
-            if not _reverted[remote] and not _original[getrawmetatable(remote)] then
-                _original[getrawmetatable(remote)] = true
-                local _meta = getrawmetatable(remote)
-                setreadonly(_meta, false)
-                local _old = _meta.__index
-                _meta.__index = function(self, key)
-                    if (key == 'FireServer' and self:IsA('RemoteEvent')) 
-                        or (key == 'InvokeServer' and self:IsA('RemoteFunction')) then
-                        return function(_, ...)
-                            local _args = {...}
-                            if _is_valid(_args) and not _reverted[self] then
-                                _reverted[self] = _args
+            local ok = pcall(function()
+                if not _reverted[remote] and not _original[getrawmetatable(remote)] then
+                    _original[getrawmetatable(remote)] = true
+                    local _meta = getrawmetatable(remote)
+                    setreadonly(_meta, false)
+                    local _old = _meta.__index
+                    _meta.__index = function(self, key)
+                        if (key == 'FireServer' and self:IsA('RemoteEvent')) 
+                            or (key == 'InvokeServer' and self:IsA('RemoteFunction')) then
+                            return function(_, ...)
+                                local _args = {...}
+                                if _is_valid(_args) and not _reverted[self] then
+                                    _reverted[self] = _args
+                                end
+                                return _old(self, key)(_, unpack(_args))
                             end
-                            return _old(self, key)(_, unpack(_args))
                         end
+                        return _old(self, key)
                     end
-                    return _old(self, key)
+                    setreadonly(_meta, true)
                 end
-                setreadonly(_meta, true)
-            end
+            end)
         end
 
         for _, r in pairs(RS:GetDescendants()) do
@@ -211,6 +259,9 @@ task.spawn(function()
 
         print("[Slax Hub] Hooks: " .. tostring(#_reverted))
 
+        -- ═══════════════════════════════════════════════
+        -- 🔥 FIRE PARRY
+        -- ═══════════════════════════════════════════════
         local _parryRemote = nil
         local _parryArgs = nil
 
@@ -244,19 +295,21 @@ task.spawn(function()
             return ok
         end
 
+        -- ═══════════════════════════════════════════════
+        -- 🛡️ HELPERS
+        -- ═══════════════════════════════════════════════
         local function IsAlive()
             local char = LocalPlayer.Character
             if not char then return false end
             local humanoid = char:FindFirstChildOfClass("Humanoid")
             if not humanoid then return false end
             if humanoid.Health <= 0 then return false end
-            if humanoid:GetState() == Enum.HumanoidStateType.Dead then return false end
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if not hrp then return false end
             return true, char, hrp
         end
 
-        local function GetClosestEnemyDistance(playerPos)
+        local function GetClosestEnemy(playerPos)
             local closest = math.huge
             for _, p in ipairs(Players:GetPlayers()) do
                 if p ~= LocalPlayer then
@@ -273,61 +326,57 @@ task.spawn(function()
             return closest
         end
 
-        -- Cleanup
+        -- Cleanup locks
         task.spawn(function()
             while task.wait(0.3) do
                 local now = tick()
                 for ball, t in pairs(ballLocks) do
                     if not ball.Parent or now >= t then ballLocks[ball] = nil end
                 end
-                for ball, t in pairs(triggerLocks) do
-                    if not ball.Parent or now >= t then triggerLocks[ball] = nil end
-                end
             end
         end)
 
-        -- ═══ AUTO PARRY (No Ping, Close Combat Fix) ═══
+        -- ═══════════════════════════════════════════════
+        -- 🔥🔥🔥 BEAST MODE AUTO PARRY
+        -- ═══════════════════════════════════════════════
         local lastParryTime = 0
-        local GLOBAL_COOLDOWN = 0.08
-        local BALL_LOCK_TIME = 0.6
 
         RunService.Heartbeat:Connect(function()
             if not AutoParryEnabled then return end
             
             local now = tick()
-            if (now - lastParryTime) < GLOBAL_COOLDOWN then return end
+            -- Anti-double parry: cooldown 40ms
+            if (now - lastParryTime) < 0.04 then return end
             
+            -- Anti post-death: check alive
             local alive, char, hrp = IsAlive()
             if not alive then return end
             
             local playerPos = hrp.Position
+            local playerVel = hrp.AssemblyLinearVelocity
+            local playerSpeed = playerVel.Magnitude
+            
             local ballsFolder = WS:FindFirstChild("Balls")
             if not ballsFolder then return end
             
-            -- 🎯 Accuracy mapping (بدون Ping)
-            local baseDist = 10 + (Accuracy / 100) * 60
+            -- 🎯 Base Distance from Accuracy
+            local baseDist = 15 + (Accuracy / 100) * 60
             
-            -- 🔥 Close Combat Fix
-            local enemyDist = GetClosestEnemyDistance(playerPos)
-            local parryDist = baseDist
-            local dotThreshold = 0.3
-            local cooldown = GLOBAL_COOLDOWN
+            -- 🔥 Close Combat Boost
+            local closeBoost = 0
+            local enemyDist = GetClosestEnemy(playerPos)
+            if enemyDist < 15 then closeBoost = 25
+            elseif enemyDist < 25 then closeBoost = 18
+            elseif enemyDist < 40 then closeBoost = 10
+            elseif enemyDist < 60 then closeBoost = 5 end
             
-            if enemyDist < 15 then
-                parryDist = baseDist + 25
-                dotThreshold = 0.1
-                cooldown = 0.05
-            elseif enemyDist < 30 then
-                parryDist = baseDist + 15
-                dotThreshold = 0.2
-                cooldown = 0.06
-            elseif enemyDist < 50 then
-                parryDist = baseDist + 8
-                dotThreshold = 0.25
-                cooldown = 0.07
-            end
+            -- 🏃 Movement Boost
+            local moveBoost = 0
+            if playerSpeed > 15 then moveBoost = 15
+            elseif playerSpeed > 8 then moveBoost = 8
+            elseif playerSpeed > 4 then moveBoost = 4 end
             
-            if (now - lastParryTime) < cooldown then return end
+            local finalDist = baseDist + closeBoost + moveBoost
             
             local bestBall = nil
             local bestDistance = math.huge
@@ -342,12 +391,37 @@ task.spawn(function()
                 local speed = velocity.Magnitude
                 if speed < 5 then continue end
                 
-                local toPlayer = (playerPos - ballPos).Unit
-                local dot = velocity.Unit:Dot(toPlayer)
-                if dot <= dotThreshold then continue end
+                -- 🏃 Relative Velocity (Handles Movement)
+                local relVel = velocity - playerVel
+                local relSpeed = relVel.Magnitude
+                if relSpeed < 5 then relSpeed = speed end
                 
-                local distance = (playerPos - ballPos).Magnitude
-                if distance > parryDist then continue end
+                local toPlayer = playerPos - ballPos
+                local toPlayerUnit = toPlayer.Unit
+                
+                -- 🎯 Dynamic Dot Threshold
+                local minDot = 0.2
+                if enemyDist < 20 then minDot = 0.1 end
+                if enemyDist < 10 then minDot = 0.05 end
+                
+                local dot = relVel.Unit:Dot(toPlayerUnit)
+                if dot <= minDot then continue end
+                
+                local distance = toPlayer.Magnitude
+                local effectiveDist = finalDist
+                
+                -- 🚀 Speed Boost (for fast balls)
+                if relSpeed >= 250 then
+                    effectiveDist = effectiveDist + 35
+                elseif relSpeed >= 200 then
+                    effectiveDist = effectiveDist + 25
+                elseif relSpeed >= 150 then
+                    effectiveDist = effectiveDist + 18
+                elseif relSpeed >= 100 then
+                    effectiveDist = effectiveDist + 10
+                end
+                
+                if distance > effectiveDist then continue end
                 
                 if distance < bestDistance then
                     bestDistance = distance
@@ -355,17 +429,20 @@ task.spawn(function()
                 end
             end
             
+            -- 🚀 FIRE
             if bestBall then
                 lastParryTime = now
-                ballLocks[bestBall] = now + BALL_LOCK_TIME
+                ballLocks[bestBall] = now + 0.5
                 FireParry()
             end
         end)
 
-        -- 🎯 TRIGGERBOT (No Ping)
+        -- ═══════════════════════════════════════════════
+        -- 🎯 TRIGGERBOT
+        -- ═══════════════════════════════════════════════
         local lastTriggerTime = 0
         RunService.Heartbeat:Connect(function()
-            if not TriggerbotEnabled then return end
+            if not TriggerbotActive then return end
             
             local now = tick()
             if (now - lastTriggerTime) < (1 / math.max(TriggerCPS, 1)) then return end
@@ -374,19 +451,19 @@ task.spawn(function()
             if not alive then return end
             
             local playerPos = hrp.Position
+            local playerVel = hrp.AssemblyLinearVelocity
             local ballsFolder = WS:FindFirstChild("Balls")
             if not ballsFolder then return end
             
-            local enemyDist = GetClosestEnemyDistance(playerPos)
-            local dotThreshold = 0.3
+            local enemyDist = GetClosestEnemy(playerPos)
+            local dotMin = 0.2
             local distBoost = 0
-            
             if enemyDist < 20 then
-                dotThreshold = 0.15
-                distBoost = 10
+                dotMin = 0.1
+                distBoost = 15
             elseif enemyDist < 40 then
-                dotThreshold = 0.25
-                distBoost = 5
+                dotMin = 0.15
+                distBoost = 8
             end
             
             local bestBall = nil
@@ -395,19 +472,20 @@ task.spawn(function()
             for _, ball in ipairs(ballsFolder:GetChildren()) do
                 if not ball:IsA("BasePart") then continue end
                 if ball:GetAttribute("realBall") == false then continue end
-                if triggerLocks[ball] then continue end
+                if ballLocks[ball] then continue end
                 
                 local ballPos = ball.Position
                 local velocity = ball.AssemblyLinearVelocity
                 local speed = velocity.Magnitude
                 if speed < 5 then continue end
                 
+                local relVel = velocity - playerVel
+                local toPlayer = (playerPos - ballPos).Unit
+                local dot = relVel.Unit:Dot(toPlayer)
+                if dot <= dotMin then continue end
+                
                 local distance = (playerPos - ballPos).Magnitude
                 if distance > (TriggerDistance + distBoost) then continue end
-                
-                local toPlayer = (playerPos - ballPos).Unit
-                local dot = velocity.Dot(toPlayer)
-                if dot <= dotThreshold then continue end
                 
                 if distance < bestDistance then
                     bestDistance = distance
@@ -417,12 +495,14 @@ task.spawn(function()
             
             if bestBall then
                 lastTriggerTime = now
-                triggerLocks[bestBall] = now + 0.3
+                ballLocks[bestBall] = now + 0.4
                 FireParry()
             end
         end)
 
+        -- ═══════════════════════════════════════════════
         -- ⚡ AUTO SPAM
+        -- ═══════════════════════════════════════════════
         local lastSpamTime = 0
         RunService.Heartbeat:Connect(function()
             if not AutoSpamEnabled then return end
@@ -467,10 +547,12 @@ task.spawn(function()
             end
         end)
 
-        -- 🖐️ MANUAL SPAM (فقط عند التفعيل)
+        -- ═══════════════════════════════════════════════
+        -- 🖐️ MANUAL SPAM
+        -- ═══════════════════════════════════════════════
         local lastManualSpamTime = 0
         RunService.Heartbeat:Connect(function()
-            if not ManualSpamEnabled then return end
+            if not ManualSpamActive then return end
             local now = tick()
             if (now - lastManualSpamTime) < 0.008 then return end
             lastManualSpamTime = now
@@ -489,9 +571,11 @@ task.spawn(function()
             end
         end)
 
-        print("[Slax Hub] ✅ Systems ready")
+        print("[Slax Hub] ✅ BEAST MODE Ready")
 
-        -- GUI Parent
+        -- ═══════════════════════════════════════════════
+        -- GUI PARENT
+        -- ═══════════════════════════════════════════════
         local function GetGuiParent()
             local ok, hui = pcall(gethui)
             if ok and hui then return hui end
@@ -500,14 +584,16 @@ task.spawn(function()
             return CoreGui
         end
 
-        -- 🌸 SPAM Button (Hidden by default)
+        -- ═══════════════════════════════════════════════
+        -- 🌸 PINK SPAM BUTTON (Fixed)
+        -- ═══════════════════════════════════════════════
         local ManualGui = Instance.new("ScreenGui")
         ManualGui.Name = "SlaxManualSpam_" .. math.random(1, 99999)
         ManualGui.Parent = GetGuiParent()
         ManualGui.ResetOnSpawn = false
         ManualGui.IgnoreGuiInset = true
         ManualGui.DisplayOrder = 99999
-        ManualGui.Enabled = false  -- 🔒 مخفي افتراضياً
+        ManualGui.Enabled = false
 
         local ManualBtn = Instance.new("TextButton")
         ManualBtn.Parent = ManualGui
@@ -517,8 +603,8 @@ task.spawn(function()
         ManualBtn.Position = UDim2.new(0.05, 0, 0.4, 0)
         ManualBtn.Size = UDim2.new(0, 130, 0, 50)
         ManualBtn.Font = Enum.Font.GothamBold
-        ManualBtn.Text = "SPAM"
-        ManualBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
+        ManualBtn.Text = "SPAM: ON"
+        ManualBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
         ManualBtn.TextSize = 15
         ManualBtn.AutoButtonColor = false
         ManualBtn.Active = true
@@ -546,9 +632,27 @@ task.spawn(function()
         BgGradient.Parent = ManualBtn
         BgGradient.Rotation = 45
         BgGradient.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(35, 20, 50)),
-            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
+            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(20, 60, 50)),
+            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(30, 80, 60))
         })
+
+        local function UpdateManualBtnVisual()
+            if ManualSpamActive then
+                ManualBtn.Text = "SPAM: ON"
+                ManualBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
+                BgGradient.Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(20, 60, 50)),
+                    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(30, 80, 60))
+                })
+            else
+                ManualBtn.Text = "SPAM: OFF"
+                ManualBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
+                BgGradient.Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(35, 20, 50)),
+                    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
+                })
+            end
+        end
 
         local dragging, dragStart, startPos, dragMoved
         local lastTap = 0
@@ -584,22 +688,8 @@ task.spawn(function()
             local now = tick()
             if now - lastTap > 0.3 then
                 lastTap = now
-                ManualSpamEnabled = not ManualSpamEnabled
-                if ManualSpamEnabled then
-                    ManualBtn.Text = "SPAM: ON"
-                    ManualBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
-                    BgGradient.Color = ColorSequence.new({
-                        ColorSequenceKeypoint.new(0.00, Color3.fromRGB(20, 60, 50)),
-                        ColorSequenceKeypoint.new(1.00, Color3.fromRGB(30, 80, 60))
-                    })
-                else
-                    ManualBtn.Text = "SPAM"
-                    ManualBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
-                    BgGradient.Color = ColorSequence.new({
-                        ColorSequenceKeypoint.new(0.00, Color3.fromRGB(35, 20, 50)),
-                        ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
-                    })
-                end
+                ManualSpamActive = not ManualSpamActive
+                UpdateManualBtnVisual()
             end
         end)
 
@@ -607,25 +697,23 @@ task.spawn(function()
             local now = tick()
             if now - lastTap > 0.3 then
                 lastTap = now
-                ManualSpamEnabled = not ManualSpamEnabled
-                if ManualSpamEnabled then
-                    ManualBtn.Text = "SPAM: ON"
-                    ManualBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
-                else
-                    ManualBtn.Text = "SPAM"
-                    ManualBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
-                end
+                ManualSpamActive = not ManualSpamActive
+                UpdateManualBtnVisual()
             end
         end)
 
-        -- 🎯 TRIGGER Button (Hidden by default)
+        UpdateManualBtnVisual()
+
+        -- ═══════════════════════════════════════════════
+        -- 🎯 PINK TRIGGER BUTTON (Fixed)
+        -- ═══════════════════════════════════════════════
         local TriggerGui = Instance.new("ScreenGui")
         TriggerGui.Name = "SlaxTrigger_" .. math.random(1, 99999)
         TriggerGui.Parent = GetGuiParent()
         TriggerGui.ResetOnSpawn = false
         TriggerGui.IgnoreGuiInset = true
         TriggerGui.DisplayOrder = 99999
-        TriggerGui.Enabled = false  -- 🔒 مخفي افتراضياً
+        TriggerGui.Enabled = false
 
         local TriggerBtn = Instance.new("TextButton")
         TriggerBtn.Parent = TriggerGui
@@ -635,8 +723,8 @@ task.spawn(function()
         TriggerBtn.Position = UDim2.new(0.05, 0, 0.52, 0)
         TriggerBtn.Size = UDim2.new(0, 130, 0, 50)
         TriggerBtn.Font = Enum.Font.GothamBold
-        TriggerBtn.Text = "TRIGGER"
-        TriggerBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
+        TriggerBtn.Text = "TRIGGER: ON"
+        TriggerBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
         TriggerBtn.TextSize = 15
         TriggerBtn.AutoButtonColor = false
         TriggerBtn.Active = true
@@ -664,9 +752,27 @@ task.spawn(function()
         TBgGradient.Parent = TriggerBtn
         TBgGradient.Rotation = 45
         TBgGradient.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(35, 20, 50)),
-            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
+            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(20, 60, 50)),
+            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(30, 80, 60))
         })
+
+        local function UpdateTriggerBtnVisual()
+            if TriggerbotActive then
+                TriggerBtn.Text = "TRIGGER: ON"
+                TriggerBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
+                TBgGradient.Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(20, 60, 50)),
+                    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(30, 80, 60))
+                })
+            else
+                TriggerBtn.Text = "TRIGGER: OFF"
+                TriggerBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
+                TBgGradient.Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(35, 20, 50)),
+                    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
+                })
+            end
+        end
 
         local tDragging, tDragStart, tStartPos, tDragMoved
         local tLastTap = 0
@@ -702,14 +808,8 @@ task.spawn(function()
             local now = tick()
             if now - tLastTap > 0.3 then
                 tLastTap = now
-                TriggerbotEnabled = not TriggerbotEnabled
-                if TriggerbotEnabled then
-                    TriggerBtn.Text = "TRIGGER: ON"
-                    TriggerBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
-                else
-                    TriggerBtn.Text = "TRIGGER"
-                    TriggerBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
-                end
+                TriggerbotActive = not TriggerbotActive
+                UpdateTriggerBtnVisual()
             end
         end)
 
@@ -717,44 +817,41 @@ task.spawn(function()
             local now = tick()
             if now - tLastTap > 0.3 then
                 tLastTap = now
-                TriggerbotEnabled = not TriggerbotEnabled
-                if TriggerbotEnabled then
-                    TriggerBtn.Text = "TRIGGER: ON"
-                    TriggerBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
-                else
-                    TriggerBtn.Text = "TRIGGER"
-                    TriggerBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
-                end
+                TriggerbotActive = not TriggerbotActive
+                UpdateTriggerBtnVisual()
             end
         end)
 
-        -- 🔄 Watch toggles to show/hide buttons
+        UpdateTriggerBtnVisual()
+
+        -- 🔄 Watch visibility (لا يخفي الزر عند الضغط)
         task.spawn(function()
             while task.wait(0.2) do
                 pcall(function()
-                    -- Manual Spam Button visibility
-                    if ManualSpamEnabled and not ManualGui.Enabled then
+                    if ManualSpamVisible and not ManualGui.Enabled then
                         ManualGui.Enabled = true
-                    elseif not ManualSpamEnabled and ManualGui.Enabled then
+                    elseif not ManualSpamVisible and ManualGui.Enabled then
                         ManualGui.Enabled = false
                     end
                     
-                    -- Trigger Button visibility
-                    if TriggerbotEnabled and not TriggerGui.Enabled then
+                    if TriggerbotVisible and not TriggerGui.Enabled then
                         TriggerGui.Enabled = true
-                    elseif not TriggerbotEnabled and TriggerGui.Enabled then
+                    elseif not TriggerbotVisible and TriggerGui.Enabled then
                         TriggerGui.Enabled = false
                     end
                 end)
             end
         end)
 
+        -- ⌨️ Keyboard (للابتوب)
         UserInputService.InputBegan:Connect(function(input, gp)
             if gp then return end
             if input.KeyCode == Enum.KeyCode.E then
-                ManualSpamEnabled = not ManualSpamEnabled
+                ManualSpamActive = not ManualSpamActive
+                UpdateManualBtnVisual()
             elseif input.KeyCode == Enum.KeyCode.Q then
-                TriggerbotEnabled = not TriggerbotEnabled
+                TriggerbotActive = not TriggerbotActive
+                UpdateTriggerBtnVisual()
             end
         end)
     end)
@@ -765,9 +862,9 @@ task.spawn(function()
 end)
 
 WindUI:Notify({
-    Title = "Slax Hub ⚡",
-    Content = "Ultimate Auto Parry - No Ping, No Bugs",
+    Title = "Slax Hub 🔥",
+    Content = "BEAST MODE loaded - Works with all fixes!",
     Duration = 5
 })
 
-print("[Slax Hub] ✅ Loaded")
+print("[Slax Hub] ✅ Loaded Successfully")
