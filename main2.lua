@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════
--- Slax Hub - BEAST MODE Auto Parry + All Fixes
+-- Slax Hub - Smart Auto Parry (Self-Adaptive)
 -- Developed by yossef
 -- ═══════════════════════════════════════════════════════
 
@@ -26,13 +26,12 @@ Window:EditOpenButton({
     OnlyMobile = true,
 })
 
--- ═══════════════════════════════════════════════════════
--- TABS + SECTIONS
--- ═══════════════════════════════════════════════════════
+-- Tabs
 local ParryTab = Window:Tab({ Title = "Parry", Icon = "sword" })
 local SpamTab = Window:Tab({ Title = "Spam", Icon = "zap" })
 local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
 
+-- Sections
 local ParrySection = ParryTab:Section({ Title = "Auto Parry" })
 local SpamSection = SpamTab:Section({ Title = "Auto Spam" })
 local TriggerSection = SpamTab:Section({ Title = "Triggerbot" })
@@ -47,28 +46,20 @@ local ManualSpamVisible = false
 local ManualSpamActive = false
 local TriggerbotVisible = false
 local TriggerbotActive = false
-local Accuracy = 50
 local AutoSpamCPS = 350
 local SpamRange = 60
 local TriggerDistance = 25
 local TriggerCPS = 80
 
 -- ═══════════════════════════════════════════════════════
--- UI CONTROLS
+-- UI CONTROLS (بدون Accuracy)
 -- ═══════════════════════════════════════════════════════
 
 ParrySection:Toggle({
-    Title = "⚡ Auto Parry (BEAST MODE)",
-    Desc = "Extreme detection - parries everything",
+    Title = "⚡ Auto Parry (Smart)",
+    Desc = "Self-adaptive - handles fast/curved/close combat automatically",
     Value = false,
     Callback = function(Value) AutoParryEnabled = Value end
-})
-
-ParrySection:Slider({
-    Title = "Accuracy",
-    Desc = "100 = Very Early | 50 = Balanced | 1 = Late",
-    Value = { Min = 1, Max = 100, Default = 50 },
-    Callback = function(Value) Accuracy = Value end
 })
 
 SpamSection:Toggle({
@@ -143,13 +134,14 @@ task.spawn(function()
         local LocalPlayer = Players.LocalPlayer
 
         local ballLocks = {}
+        local ballHistory = {}  -- 🧠 لتتبع انحناء الكرة
 
         -- ═══════════════════════════════════════════════
-        -- 🔐 BYPASS - TOKEN RETRIEVAL (3 Methods)
+        -- 🔐 BYPASS - Token Retrieval
         -- ═══════════════════════════════════════════════
         local _token = nil
 
-        -- Method 1: Search by function name containing "PRY"
+        -- Method 1: by name
         for _, f in getgc(true) do
             if type(f) == 'function' then
                 local ok, name = pcall(function() return debug.info(f, 's') end)
@@ -168,7 +160,7 @@ task.spawn(function()
             end
         end
 
-        -- Method 2: Search in upvalues
+        -- Method 2: by upvalues
         if not _token then
             for _, f in getgc(true) do
                 if type(f) == 'function' then
@@ -210,7 +202,7 @@ task.spawn(function()
         end
 
         -- ═══════════════════════════════════════════════
-        -- 🎣 REMOTE HOOKING
+        -- 🎣 HOOK
         -- ═══════════════════════════════════════════════
         local _reverted = {}
         local _original = {}
@@ -227,7 +219,7 @@ task.spawn(function()
         end
 
         local function _hook(remote)
-            local ok = pcall(function()
+            pcall(function()
                 if not _reverted[remote] and not _original[getrawmetatable(remote)] then
                     _original[getrawmetatable(remote)] = true
                     local _meta = getrawmetatable(remote)
@@ -326,6 +318,44 @@ task.spawn(function()
             return closest
         end
 
+        -- 🧠 Curve Detection - track ball direction
+        local function TrackCurve(ball, ballPos)
+            local now = tick()
+            local history = ballHistory[ball]
+            
+            if not history then
+                ballHistory[ball] = {
+                    lastPos = ballPos,
+                    lastTime = now,
+                    curveScore = 0,
+                    direction = nil
+                }
+                return false
+            end
+            
+            local timeDiff = now - history.lastTime
+            if timeDiff > 0.01 then
+                local moveDir = (ballPos - history.lastPos)
+                if moveDir.Magnitude > 0.5 then
+                    local newDir = moveDir.Unit
+                    if history.direction then
+                        local dot = history.direction:Dot(newDir)
+                        local angle = math.deg(math.acos(math.clamp(dot, -1, 1)))
+                        if angle > 3 then
+                            history.curveScore = history.curveScore + angle * 0.1
+                        else
+                            history.curveScore = history.curveScore * 0.9
+                        end
+                    end
+                    history.direction = newDir
+                    history.lastPos = ballPos
+                    history.lastTime = now
+                end
+            end
+            
+            return history.curveScore > 3
+        end
+
         -- Cleanup locks
         task.spawn(function()
             while task.wait(0.3) do
@@ -333,11 +363,14 @@ task.spawn(function()
                 for ball, t in pairs(ballLocks) do
                     if not ball.Parent or now >= t then ballLocks[ball] = nil end
                 end
+                for ball in pairs(ballHistory) do
+                    if not ball.Parent then ballHistory[ball] = nil end
+                end
             end
         end)
 
         -- ═══════════════════════════════════════════════
-        -- 🔥🔥🔥 BEAST MODE AUTO PARRY
+        -- 🔥🔥🔥 SMART AUTO PARRY - NO ACCURACY NEEDED
         -- ═══════════════════════════════════════════════
         local lastParryTime = 0
 
@@ -345,10 +378,10 @@ task.spawn(function()
             if not AutoParryEnabled then return end
             
             local now = tick()
-            -- Anti-double parry: cooldown 40ms
-            if (now - lastParryTime) < 0.04 then return end
+            -- Anti-double parry: 35ms cooldown
+            if (now - lastParryTime) < 0.035 then return end
             
-            -- Anti post-death: check alive
+            -- Anti post-death
             local alive, char, hrp = IsAlive()
             if not alive then return end
             
@@ -359,27 +392,11 @@ task.spawn(function()
             local ballsFolder = WS:FindFirstChild("Balls")
             if not ballsFolder then return end
             
-            -- 🎯 Base Distance from Accuracy
-            local baseDist = 15 + (Accuracy / 100) * 60
-            
-            -- 🔥 Close Combat Boost
-            local closeBoost = 0
+            -- 🔍 Get context
             local enemyDist = GetClosestEnemy(playerPos)
-            if enemyDist < 15 then closeBoost = 25
-            elseif enemyDist < 25 then closeBoost = 18
-            elseif enemyDist < 40 then closeBoost = 10
-            elseif enemyDist < 60 then closeBoost = 5 end
-            
-            -- 🏃 Movement Boost
-            local moveBoost = 0
-            if playerSpeed > 15 then moveBoost = 15
-            elseif playerSpeed > 8 then moveBoost = 8
-            elseif playerSpeed > 4 then moveBoost = 4 end
-            
-            local finalDist = baseDist + closeBoost + moveBoost
             
             local bestBall = nil
-            local bestDistance = math.huge
+            local bestScore = -math.huge
             
             for _, ball in ipairs(ballsFolder:GetChildren()) do
                 if not ball:IsA("BasePart") then continue end
@@ -391,45 +408,87 @@ task.spawn(function()
                 local speed = velocity.Magnitude
                 if speed < 5 then continue end
                 
-                -- 🏃 Relative Velocity (Handles Movement)
+                -- 🧠 Curve detection
+                local isCurving = TrackCurve(ball, ballPos)
+                
+                -- 🏃 Relative velocity
                 local relVel = velocity - playerVel
                 local relSpeed = relVel.Magnitude
-                if relSpeed < 5 then relSpeed = speed end
+                if relSpeed < 3 then relSpeed = speed end
                 
                 local toPlayer = playerPos - ballPos
+                local distance = toPlayer.Magnitude
                 local toPlayerUnit = toPlayer.Unit
                 
-                -- 🎯 Dynamic Dot Threshold
-                local minDot = 0.2
-                if enemyDist < 20 then minDot = 0.1 end
-                if enemyDist < 10 then minDot = 0.05 end
+                -- 🎯 Direction check (Dynamic)
+                local minDot = 0.25  -- default
+                
+                -- إذا قريب من عدو → تسامح أكثر
+                if enemyDist < 15 then minDot = 0.05
+                elseif enemyDist < 25 then minDot = 0.1
+                elseif enemyDist < 40 then minDot = 0.15 end
+                
+                -- إذا الكرة سريعة → تسامح أكثر
+                if relSpeed > 200 then minDot = minDot - 0.1 end
+                if relSpeed > 150 then minDot = minDot - 0.05 end
+                
+                -- إذا الكرة منحنية → تسامح أكثر
+                if isCurving then minDot = minDot - 0.1 end
+                
+                minDot = math.max(minDot, 0)
                 
                 local dot = relVel.Unit:Dot(toPlayerUnit)
                 if dot <= minDot then continue end
                 
-                local distance = toPlayer.Magnitude
-                local effectiveDist = finalDist
+                -- ═══════════════════════════════════════
+                -- 🎯 SMART DISTANCE CALCULATION
+                -- ═══════════════════════════════════════
+                -- Base distance (ثابت ومناسب لكل الحالات)
+                local triggerDist = 35
                 
-                -- 🚀 Speed Boost (for fast balls)
-                if relSpeed >= 250 then
-                    effectiveDist = effectiveDist + 35
-                elseif relSpeed >= 200 then
-                    effectiveDist = effectiveDist + 25
-                elseif relSpeed >= 150 then
-                    effectiveDist = effectiveDist + 18
-                elseif relSpeed >= 100 then
-                    effectiveDist = effectiveDist + 10
-                end
+                -- 🚀 Speed adjustment
+                if relSpeed >= 300 then triggerDist = triggerDist + 40
+                elseif relSpeed >= 250 then triggerDist = triggerDist + 32
+                elseif relSpeed >= 200 then triggerDist = triggerDist + 25
+                elseif relSpeed >= 150 then triggerDist = triggerDist + 18
+                elseif relSpeed >= 100 then triggerDist = triggerDist + 10
+                elseif relSpeed >= 70 then triggerDist = triggerDist + 5 end
                 
-                if distance > effectiveDist then continue end
+                -- 🔥 Close Combat adjustment
+                if enemyDist < 10 then triggerDist = triggerDist + 25
+                elseif enemyDist < 15 then triggerDist = triggerDist + 20
+                elseif enemyDist < 25 then triggerDist = triggerDist + 15
+                elseif enemyDist < 40 then triggerDist = triggerDist + 8
+                elseif enemyDist < 60 then triggerDist = triggerDist + 3 end
                 
-                if distance < bestDistance then
-                    bestDistance = distance
+                -- 🏃 Movement adjustment
+                if playerSpeed > 15 then triggerDist = triggerDist + 15
+                elseif playerSpeed > 8 then triggerDist = triggerDist + 8
+                elseif playerSpeed > 4 then triggerDist = triggerDist + 4 end
+                
+                -- 🌀 Curve adjustment (يصد أبكر للكرة المنحنية)
+                if isCurving then triggerDist = triggerDist + 15 end
+                
+                -- 🎯 Distance check
+                if distance > triggerDist then continue end
+                
+                -- ═══════════════════════════════════════
+                -- 🎯 SCORE - choose best ball
+                -- ═══════════════════════════════════════
+                -- Ball closer = higher score
+                -- Ball heading at us more = higher score
+                local score = (1 / math.max(distance, 1)) * dot
+                
+                -- Bonus if very close
+                if distance < 15 then score = score * 2 end
+                
+                if score > bestScore then
+                    bestScore = score
                     bestBall = ball
                 end
             end
             
-            -- 🚀 FIRE
+            -- 🚀 FIRE!
             if bestBall then
                 lastParryTime = now
                 ballLocks[bestBall] = now + 0.5
@@ -438,7 +497,7 @@ task.spawn(function()
         end)
 
         -- ═══════════════════════════════════════════════
-        -- 🎯 TRIGGERBOT
+        -- 🎯 TRIGGERBOT (Smart)
         -- ═══════════════════════════════════════════════
         local lastTriggerTime = 0
         RunService.Heartbeat:Connect(function()
@@ -456,15 +515,6 @@ task.spawn(function()
             if not ballsFolder then return end
             
             local enemyDist = GetClosestEnemy(playerPos)
-            local dotMin = 0.2
-            local distBoost = 0
-            if enemyDist < 20 then
-                dotMin = 0.1
-                distBoost = 15
-            elseif enemyDist < 40 then
-                dotMin = 0.15
-                distBoost = 8
-            end
             
             local bestBall = nil
             local bestDistance = math.huge
@@ -480,12 +530,21 @@ task.spawn(function()
                 if speed < 5 then continue end
                 
                 local relVel = velocity - playerVel
+                
+                local dotMin = 0.2
+                if enemyDist < 20 then dotMin = 0.1
+                elseif enemyDist < 40 then dotMin = 0.15 end
+                
                 local toPlayer = (playerPos - ballPos).Unit
                 local dot = relVel.Unit:Dot(toPlayer)
                 if dot <= dotMin then continue end
                 
                 local distance = (playerPos - ballPos).Magnitude
-                if distance > (TriggerDistance + distBoost) then continue end
+                local maxDist = TriggerDistance
+                if enemyDist < 20 then maxDist = maxDist + 15
+                elseif enemyDist < 40 then maxDist = maxDist + 8 end
+                
+                if distance > maxDist then continue end
                 
                 if distance < bestDistance then
                     bestDistance = distance
@@ -571,7 +630,7 @@ task.spawn(function()
             end
         end)
 
-        print("[Slax Hub] ✅ BEAST MODE Ready")
+        print("[Slax Hub] ✅ SMART Mode Ready")
 
         -- ═══════════════════════════════════════════════
         -- GUI PARENT
@@ -584,9 +643,7 @@ task.spawn(function()
             return CoreGui
         end
 
-        -- ═══════════════════════════════════════════════
-        -- 🌸 PINK SPAM BUTTON (Fixed)
-        -- ═══════════════════════════════════════════════
+        -- 🌸 SPAM BUTTON
         local ManualGui = Instance.new("ScreenGui")
         ManualGui.Name = "SlaxManualSpam_" .. math.random(1, 99999)
         ManualGui.Parent = GetGuiParent()
@@ -704,9 +761,7 @@ task.spawn(function()
 
         UpdateManualBtnVisual()
 
-        -- ═══════════════════════════════════════════════
-        -- 🎯 PINK TRIGGER BUTTON (Fixed)
-        -- ═══════════════════════════════════════════════
+        -- 🎯 TRIGGER BUTTON
         local TriggerGui = Instance.new("ScreenGui")
         TriggerGui.Name = "SlaxTrigger_" .. math.random(1, 99999)
         TriggerGui.Parent = GetGuiParent()
@@ -824,7 +879,7 @@ task.spawn(function()
 
         UpdateTriggerBtnVisual()
 
-        -- 🔄 Watch visibility (لا يخفي الزر عند الضغط)
+        -- Watch visibility
         task.spawn(function()
             while task.wait(0.2) do
                 pcall(function()
@@ -843,7 +898,6 @@ task.spawn(function()
             end
         end)
 
-        -- ⌨️ Keyboard (للابتوب)
         UserInputService.InputBegan:Connect(function(input, gp)
             if gp then return end
             if input.KeyCode == Enum.KeyCode.E then
@@ -863,8 +917,8 @@ end)
 
 WindUI:Notify({
     Title = "Slax Hub 🔥",
-    Content = "BEAST MODE loaded - Works with all fixes!",
+    Content = "SMART Auto Parry - No Accuracy Needed!",
     Duration = 5
 })
 
-print("[Slax Hub] ✅ Loaded Successfully")
+print("[Slax Hub] ✅ SMART Mode Loaded")
