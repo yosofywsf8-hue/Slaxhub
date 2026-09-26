@@ -1,3 +1,8 @@
+-- ═══════════════════════════════════════════════════════
+-- EAGLE Hub X - Fixed Double Parry + Direction Check
+-- Original EAGLE + Fix
+-- ═══════════════════════════════════════════════════════
+
 task.spawn(function()
 
 local Fluent = loadstring(game:HttpGet("https://raw.githubusercontent.com/discoart/FluentPlus/refs/heads/main/Beta.lua"))()
@@ -128,7 +133,7 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- ========== TOKEN-BASED REMOTE FINDER ==========
+-- TOKEN-BASED REMOTE FINDER
 -- ============================================================
 
 local replicated_storage = cloneref(game:GetService('ReplicatedStorage'))
@@ -141,7 +146,6 @@ for _, Function in getgc(true) do
     if type(Function) ~= 'function' or not debug.info(Function, 's'):find('PRY', 1, true) then
         continue
     end
-
     for _, value in debug.getupvalues(Function) do
         if type(value) == 'function' then
             print('found.')
@@ -150,10 +154,7 @@ for _, Function in getgc(true) do
             break
         end
     end
-
-    if _token then
-        break
-    end
+    if _token then break end
 end
 
 if not _tokenFound then
@@ -165,14 +166,12 @@ function _tokenize(_remote_uid)
     local time = tostring(math.floor(workspace:GetServerTimeNow() * 100))
     local key = _token(_remote_uid, 'TIME')
     local characters = table.create(#time)
-
     for index = 1, #time do
         characters[index] = string.char(bit32.bxor(
             (string.byte(time, index ) + index) % 256,
             string.byte(key, (index - 1) % #key + 1)
         ))
     end
-
     return table.concat(characters)
 end
 
@@ -205,10 +204,7 @@ function _hook(remote)
                 if _is_valid(_arguments) then
                     if not _reverted[self] then
                         _reverted[self] = _arguments
-                        _captured = {
-                            remote = self,
-                            args = _arguments
-                        }
+                        _captured = {remote = self, args = _arguments}
                         _capturedRemote = self
                         _capturedArgs = _arguments
                         print("Remote captured! Name:", self.Name)
@@ -684,12 +680,8 @@ function ThunderDash:Enable()
     local function removeCooldowns(ability)
         local success, module = pcall(require, ability)
         if success and module then
-            if module.cooldown ~= nil then
-                module.cooldown = 0
-            end
-            if module.cooldownReductionPerUpgrade ~= nil then
-                module.cooldownReductionPerUpgrade = 0
-            end
+            if module.cooldown ~= nil then module.cooldown = 0 end
+            if module.cooldownReductionPerUpgrade ~= nil then module.cooldownReductionPerUpgrade = 0 end
         end
     end
     for _, ability in ipairs(Abilities:GetChildren()) do
@@ -704,9 +696,7 @@ function ThunderDash:Disable()
     local function restoreCooldowns(ability)
         local success, module = pcall(require, ability)
         if success and module then
-            if module._originalCooldown ~= nil then
-                module.cooldown = module._originalCooldown
-            end
+            if module._originalCooldown ~= nil then module.cooldown = module._originalCooldown end
         end
     end
     for _, ability in ipairs(Abilities:GetChildren()) do
@@ -738,9 +728,7 @@ function System.triggerbot.trigger(ball)
     
     task.delay(0.2,function()
         triggerbotCooldown = false
-        if System.__triggerbot.__parries > 0 then 
-            System.__triggerbot.__parries=System.__triggerbot.__parries-1 
-        end
+        if System.__triggerbot.__parries > 0 then System.__triggerbot.__parries=System.__triggerbot.__parries-1 end
     end)
     
     task.spawn(function()
@@ -827,12 +815,12 @@ RunService.Heartbeat:Connect(function(dt)
     end
 end)
 
--- ============================================================
--- 🔥 AUTO PARRY - FIXED (Direction Check + No Double Parry)
--- ============================================================
+-- ═══════════════════════════════════════════════════════
+-- 🔥 AUTO PARRY (FIXED - No Double Parry + Direction Check)
+-- ═══════════════════════════════════════════════════════
 System.autoparry = {}
 
--- 🎯 Table لتتبع الكرات المصدودة (يُمنع الصد المزدوج)
+-- 🎯 Table لتتبع الكرات المصدودة
 local parriedBalls = {}
 
 function System.autoparry.start()
@@ -842,7 +830,6 @@ function System.autoparry.start()
     System.__properties.__connections.__autoparry=RunService.PreSimulation:Connect(function()
         if not System.__properties.__autoparry_enabled or not LocalPlayer.Character or
            not LocalPlayer.Character.PrimaryPart then return end
-        
         local balls=System.ball.get_all(); local one_ball=System.ball.get()
         local training_ball=nil
         if Workspace:FindFirstChild("TrainingBalls") then
@@ -857,8 +844,7 @@ function System.autoparry.start()
         end
         
         local char = LocalPlayer.Character
-        local hrp = char.PrimaryPart
-        local playerPos = hrp.Position
+        local playerPos = char.PrimaryPart.Position
         
         for _,ball in pairs(balls) do
             if System.__triggerbot.__enabled then return end
@@ -866,19 +852,19 @@ function System.autoparry.start()
             if not ball then continue end
             local zoomies=ball:FindFirstChild('zoomies'); if not zoomies then continue end
             
-            -- 🎯 FIX #1: تجاهل الكرة إذا مصدودة
+            -- 🎯 FIX: تجاهل الكرة إذا مصدودة
             if parriedBalls[ball] then continue end
             
             local ball_target=ball:GetAttribute('target')
             
-            -- 🎯 FIX #2: لازم target == LocalPlayer
+            -- 🎯 FIX: لازم الكرة مستهدفة لك
             if ball_target ~= LocalPlayer.Name then continue end
             
             local velocity=zoomies.VectorVelocity
             local speed=velocity.Magnitude
             if speed < 5 then continue end
             
-            -- 🎯 FIX #3: Direction Check - الكرة لازم جاية نحوي!
+            -- 🎯 FIX: Direction Check - الكرة لازم جاية نحوي!
             local directionToPlayer = (playerPos - ball.Position).Unit
             local dot = velocity.Unit:Dot(directionToPlayer)
             if dot <= 0.3 then continue end
@@ -904,6 +890,7 @@ function System.autoparry.start()
             if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then continue end
             if System.__config.__detections.__timehole and System.__properties.__timehole_active then continue end
             if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then continue end
+            
             if ball_target==LocalPlayer.Name and distance <= parry_accuracy then
                 if getgenv().AutoAbility then
                     local AbilityCD=LocalPlayer.PlayerGui.Hotbar.Ability.UIGradient
@@ -926,11 +913,12 @@ function System.autoparry.start()
                     end
                 end
             end
+            
             if ball_target==LocalPlayer.Name and distance <= parry_accuracy then
                 if getgenv().AutoParryMode=="Keypress" then System.parry.keypress()
                 else System.parry.execute_action() end
                 
-                -- 🎯 FIX #4: قفل الكرة (يمنع الصد المزدوج)
+                -- 🎯 FIX: قفل الكرة (يمنع الصد المزدوج)
                 parriedBalls[ball] = true
                 task.delay(0.8, function()
                     if parriedBalls[ball] then parriedBalls[ball] = nil end
@@ -939,6 +927,7 @@ function System.autoparry.start()
                 break
             end
         end
+        
         if training_ball then
             local zoomies=training_ball:FindFirstChild('zoomies')
             if zoomies then
@@ -1066,7 +1055,6 @@ local function create_mobile_ui_button()
     if mobile_ui_button then
         mobile_ui_button.gui:Destroy()
     end
-    
     local gui = Instance.new('ScreenGui')
     gui.Name = 'EagleHubMobileUIButton'
     gui.ResetOnSpawn = false
@@ -1115,7 +1103,6 @@ local function create_mobile_ui_button()
     return mobile_ui_button
 end
 
--- ========== Mobile Buttonlar ==========
 local function create_mobile_button(name, position_y, color, toggleName)
     local gui = Instance.new('ScreenGui')
     gui.Name = 'EagleHub_' .. name .. '_Mobile'
@@ -1229,4 +1216,8 @@ task.spawn(function()
     end
     local function refreshSlashName()
         local fxName = getgenv().swordFX ~= "" and getgenv().swordFX or getgenv().swordModel
-        if fxName ~= "" then getgenv().slashName
+        if fxName ~= "" then getgenv().slashName = getSlashName(fxName)
+        else getgenv().slashName = "SlashEffect" end
+    end
+    refreshSlashName()
+    local func
