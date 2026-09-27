@@ -713,4 +713,356 @@ RunService.PreSimulation:Connect(function()
                         if S.cooldownProtect then
                             local pg = LP:FindFirstChild("PlayerGui")
                             local hotbar = pg and pg:FindFirstChild("Hotbar")
-                            local block
+                            local block = hotbar and hotbar:FindFirstChild("Block")
+                            local grad = block and block:FindFirstChild("UIGradient")
+                            if grad and grad.Offset.Y < 0.4 then
+                                RS.Remotes.AbilityButtonPress:Fire()
+                            else
+                                Fire_Parry()
+                                CAP.parriedIDs[bID] = true
+                            end
+                        else
+                            Fire_Parry()
+                            CAP.parriedIDs[bID] = true
+                        end
+                        task.spawn(function()
+                            ball:GetAttributeChangedSignal("target"):Wait()
+                            CAP.parriedIDs[bID] = nil
+                        end)
+                        task.delay(3, function() CAP.parriedIDs[bID] = nil end)
+                    end
+                end
+            end
+        end
+    end
+
+    -- TRIGGERBOT
+    if S.triggerbot and is_my_target(ball) then
+        local bID = ball:GetDebugId()
+        if not CAP.parriedIDs[bID] then
+            Fire_Parry()
+            CAP.parriedIDs[bID] = true
+            task.delay(0.4, function() CAP.parriedIDs[bID] = nil end)
+        end
+    end
+
+    -- AUTO SPAM
+    if S.autoSpam then
+        local closest = Closest_Player()
+        if closest and closest.PrimaryPart then
+            local ping = Get_Ping() / 100
+            local threshold = math.clamp(ping, 1, 16) + math.min(speed / 6, 255)
+            local dist_ent = LP:DistanceFromCharacter(closest.PrimaryPart.Position)
+            if (dist <= threshold or dist_ent <= threshold) and is_my_target(ball) then
+                if not CAP.cachedHrp.Parent:GetAttribute("Pulsed") then
+                    local bID = ball:GetDebugId()
+                    if not CAP.parriedIDs[bID] then
+                        Fire_Parry()
+                        CAP.parriedIDs[bID] = true
+                        task.delay(0.1, function() CAP.parriedIDs[bID] = nil end)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- MANUAL SPAM
+-- ═══════════════════════════════════════════════════════════════════════════
+RunService.Heartbeat:Connect(function()
+    if not S.manualSpam then return end
+    local now = tick()
+    local interval = 1 / math.max(S.spamRate, 1)
+    if now - CAP.globalLock < interval then return end
+    CAP.globalLock = now
+    Fire_Parry()
+end)
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- LOBBY AUTO PARRY
+-- ═══════════════════════════════════════════════════════════════════════════
+RunService.Heartbeat:Connect(function()
+    if not S.lobbyAP then return end
+    local tb = Get_Training_Ball()
+    if not tb then return end
+    local z = tb:FindFirstChild("zoomies")
+    if not z then return end
+    if tb:GetAttribute("target") ~= LP.Name then return end
+    local speed = z.VectorVelocity.Magnitude
+    local dist = LP:DistanceFromCharacter(tb.Position)
+    local ping = Get_Ping() / 1000
+    local timeToReach = speed > 0 and (dist / speed - ping) or math.huge
+    if timeToReach <= 0.15 and timeToReach >= 0 then
+        Fire_Parry()
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- KEYBINDS
+-- ═══════════════════════════════════════════════════════════════════════════
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if curveKeys[input.KeyCode] then
+        S.curveMethod = curveKeys[input.KeyCode]
+        print("[AP-ULT] Curve:", S.curveMethod)
+    end
+    if input.KeyCode == Enum.KeyCode.E then
+        S.enabled = not S.enabled
+        print("[AP-ULT] AutoParry:", S.enabled and "ON" or "OFF")
+    elseif input.KeyCode == Enum.KeyCode.Q then
+        S.manualSpam = not S.manualSpam
+        print("[AP-ULT] ManualSpam:", S.manualSpam and "ON" or "OFF")
+    elseif input.KeyCode == Enum.KeyCode.End then
+        S.enabled = false; S.autoSpam = false; S.triggerbot = false; S.manualSpam = false
+        print("[AP-ULT] PANIC")
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- UI — WindUI v2
+-- ═══════════════════════════════════════════════════════════════════════════
+local ok_w, WindUI = pcall(function()
+    return loadstring(game:HttpGet(
+        "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+end)
+if not ok_w or not WindUI then
+    warn("[AP-ULT] WindUI load fail — headless mode")
+    return
+end
+
+local Window = WindUI:CreateWindow({
+    Title = "Auto Parry ULTIMATE",
+    Icon = "solar:crown-bold",
+    Author = "ALPHA XK",
+    Folder = "APUltimate",
+    Size = UDim2.fromOffset(560, 500),
+    Transparent = true,
+    Theme = "Dark",
+    SideBarWidth = 150,
+})
+
+local TabMain  = Window:Tab({ Title = "Auto Parry", Icon = "solar:sword-bold" })
+local TabMode  = Window:Tab({ Title = "Modes", Icon = "solar:play-bold" })
+local TabDet   = Window:Tab({ Title = "Detection", Icon = "solar:shield-bold" })
+local TabTune  = Window:Tab({ Title = "Tuning", Icon = "solar:tuning-bold" })
+local TabCurve = Window:Tab({ Title = "Curve", Icon = "solar:activity-bold" })
+local TabInfo  = Window:Tab({ Title = "Info", Icon = "solar:info-circle-bold" })
+
+-- ═══ AUTO PARRY ═══
+local SecMain = TabMain:Section({ Title = "Auto Parry — Master" })
+
+SecMain:Toggle({
+    Title = "Auto Parry",
+    Desc = "Master switch — predictive + multi-signal curve detect",
+    Value = false,
+    Callback = function(v)
+        S.enabled = v
+        WindUI:Notify({ Title = "Auto Parry", Content = v and "ON" or "OFF", Duration = 2 })
+    end,
+})
+
+SecMain:Toggle({
+    Title = "Animation Fix",
+    Desc = "Play GrabParry anim (stealth)",
+    Value = true,
+    Callback = function(v) S.animFix = v end,
+})
+
+SecMain:Toggle({
+    Title = "Cooldown Protection",
+    Desc = "Fire ability kalau parry cooldown aktif",
+    Value = false,
+    Callback = function(v) S.cooldownProtect = v end,
+})
+
+SecMain:Toggle({
+    Title = "Auto Ability",
+    Desc = "Fire ability saat clash",
+    Value = false,
+    Callback = function(v) S.autoAbility = v end,
+})
+
+SecMain:Toggle({
+    Title = "Random Accuracy (Humanizer)",
+    Desc = "Random accuracy per ball — susah di-detect",
+    Value = false,
+    Callback = function(v) S.randomAccuracy = v end,
+})
+
+-- ═══ MODES ═══
+local SecMode = TabMode:Section({ Title = "Parry Modes" })
+
+SecMode:Toggle({
+    Title = "Auto Spam",
+    Desc = "Spam parry di dekat player",
+    Value = false,
+    Callback = function(v) S.autoSpam = v end,
+})
+
+SecMode:Toggle({
+    Title = "Trigger Bot",
+    Desc = "Instant parry saat target = lo",
+    Value = false,
+    Callback = function(v) S.triggerbot = v end,
+})
+
+SecMode:Toggle({
+    Title = "Manual Spam",
+    Desc = "Spam parry terus-terusan (toggle Q)",
+    Value = false,
+    Callback = function(v) S.manualSpam = v end,
+})
+
+SecMode:Slider({
+    Title = "Manual Spam Rate",
+    Desc = "CPS (60-5000)",
+    Value = { Min = 60, Max = 5000, Default = 240, Rounding = 0 },
+    Callback = function(v) S.spamRate = v end,
+})
+
+SecMode:Toggle({
+    Title = "Lobby Auto Parry",
+    Desc = "Auto parry di training ball (lobby)",
+    Value = false,
+    Callback = function(v) S.lobbyAP = v end,
+})
+
+-- ═══ DETECTION SKIP ═══
+local SecDet = TabDet:Section({ Title = "Skip Parry Saat Ability Ini Aktif" })
+
+SecDet:Toggle({ Title = "Infinity Ball", Value = true, Callback = function(v) S.skipInfinity = v end })
+SecDet:Toggle({ Title = "Death Slash",   Value = true, Callback = function(v) S.skipDeathSlash = v end })
+SecDet:Toggle({ Title = "Time Hole",     Value = true, Callback = function(v) S.skipTimeHole = v end })
+SecDet:Toggle({ Title = "Slashes of Fury", Value = true, Callback = function(v) S.skipSoF = v end })
+SecDet:Toggle({ Title = "Anti-Phantom",  Value = true, Callback = function(v) S.skipPhantom = v end })
+SecDet:Toggle({ Title = "ComboCounter skip", Value = true, Callback = function(v) S.skipComboCount = v end })
+
+-- ═══ TUNING ═══
+local SecTune = TabTune:Section({ Title = "Formula Presets" })
+
+SecTune:Toggle({
+    Title = "Ailon Formula (default)",
+    Desc = "ping_thresh + max(speed/divisor, 9.5)",
+    Value = true,
+    Callback = function(v)
+        if v then
+            S.useAilonFormula = true
+            S.useZytheraFormula = false
+            S.useSsinFormula = false
+        end
+    end,
+})
+
+SecTune:Toggle({
+    Title = "Zythera Formula",
+    Desc = "ping * 0.7 + min(speed/(E*1.2), 80)",
+    Value = false,
+    Callback = function(v)
+        if v then
+            S.useAilonFormula = false
+            S.useZytheraFormula = true
+            S.useSsinFormula = false
+        end
+    end,
+})
+
+SecTune:Toggle({
+    Title = "Ssin Formula",
+    Desc = "speed * (ping + 0.016) * 3.44",
+    Value = false,
+    Callback = function(v)
+        if v then
+            S.useAilonFormula = false
+            S.useZytheraFormula = false
+            S.useSsinFormula = true
+        end
+    end,
+})
+
+SecTune:Toggle({
+    Title = "Use PerformanceStats Ping",
+    Desc = "Ping dari RobloxGui.PerformanceStats (Zythera style)",
+    Value = false,
+    Callback = function(v) S.usePerfStats = v end,
+})
+
+local SecTune2 = TabTune:Section({ Title = "Tuning Values" })
+
+SecTune2:Slider({
+    Title = "Accuracy (base)",
+    Desc = "1-100",
+    Value = { Min = 1, Max = 100, Default = 100, Rounding = 0 },
+    Callback = function(v) S.accuracy = v end,
+})
+
+SecTune2:Slider({
+    Title = "Random Accuracy Min",
+    Desc = "Batas bawah random (kalau humanizer on)",
+    Value = { Min = 1, Max = 100, Default = 30, Rounding = 0 },
+    Callback = function(v) S.accuracyMin = v end,
+})
+
+SecTune2:Slider({
+    Title = "Random Accuracy Max",
+    Desc = "Batas atas random",
+    Value = { Min = 1, Max = 100, Default = 70, Rounding = 0 },
+    Callback = function(v) S.accuracyMax = v end,
+})
+
+-- ═══ CURVE ═══
+local SecCurve = TabCurve:Section({ Title = "Curve Method" })
+
+SecCurve:Dropdown({
+    Title = "Curve",
+    Values = {"camera","straight","dot","backwards","slowball","random","high","left","right","accelerated"},
+    Value = "camera",
+    Callback = function(v) S.curveMethod = v end,
+})
+
+SecCurve:Paragraph({
+    Title = "Hotkeys",
+    Desc = "1=camera 2=straight 3=backwards 4=slowball 5=random\n6=high 7=left 8=right 9=dot 0=accelerated",
+})
+
+-- ═══ INFO ═══
+local SecInfo = TabInfo:Section({ Title = "Runtime" })
+local infoPara = SecInfo:Paragraph({ Title = "Status", Desc = "init..." })
+
+task.spawn(function()
+    while getgenv()._ap_ultimate do
+        pcall(function()
+            local mode = "normal"
+            if CAP.infinity_active then mode = "INF" end
+            if CAP.deathslash_active then mode = "DS" end
+            if CAP.timehole_active then mode = "TH" end
+            infoPara:Set(string.format(
+                "Hook: %s | Capture: %s\nRemote count: %d\nToken: %s\nParry count: %d\nPing: %d ms | Active: %s",
+                CAP.oldIndex and "OK" or "FAIL",
+                CAP.captureDone and "DONE" or "waiting",
+                CAP.remoteCount,
+                CAP.tokenFn and "OK" or "FAIL",
+                (function() local n=0 for _ in pairs(CAP.parriedIDs) do n=n+1 end return n end)(),
+                Get_Ping(),
+                mode
+            ))
+        end)
+        task.wait(1)
+    end
+end)
+
+Window:SelectTab(1)
+
+WindUI:Notify({
+    Title = "Auto Parry ULTIMATE",
+    Content = "Parry manual sekali untuk capture remote",
+    Duration = 6,
+})
+
+print("[AP-ULT] loaded")
+print("[AP-ULT] E=AutoParry | Q=ManualSpam | END=Panic | 1-0=Curve")
+
+_G.ap_ultimate_unload = function()
+    getgenv()._ap_ultimate = nil
+    pcall(function() Window:Destroy() end)
+end
