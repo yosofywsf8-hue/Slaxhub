@@ -1,57 +1,60 @@
--- Blade Ball Script - Auto Parry MAX v13.1
--- Base by yossef | Multi-Target Real + Anti-Double + Long Range by ALPHA XK
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Slax V8.1 MOBILE — Blade Ball Auto Parry
+-- Author: ALPHA XK | For: Redz
+-- UI: WindUI v2 Modern | Core: V8 (token regen + multi-target)
+-- ═══════════════════════════════════════════════════════════════════════════
 
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+if getgenv()._slax_mobile_loaded then
+    pcall(function() if _G.slax_mobile_unload then _G.slax_mobile_unload() end end)
+    getgenv()._slax_mobile_loaded = nil
+    task.wait(0.15)
+end
+getgenv()._slax_mobile_loaded = true
 
-local Window = Fluent:CreateWindow({
-    Title = "Blade Ball - Slax Hub",
-    SubTitle = "v13.1 (Multi-Target MAX)",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 500),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
-})
+-- == Services =============================================================
+local Players       = game:GetService("Players")
+local RS            = game:GetService("ReplicatedStorage")
+local WS            = game:GetService("Workspace")
+local RunService    = game:GetService("RunService")
+local UIS           = game:GetService("UserInputService")
+local Stats         = game:GetService("Stats")
+local LP            = Players.LocalPlayer
 
-local Tabs = {
-    Main = Window:AddTab({ Title = "Main Auto", Icon = "swords" }),
-    Tune = Window:AddTab({ Title = "Tuning", Icon = "sliders" }),
-    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+-- == Config ===============================================================
+local Config = {
+    enabled         = true,
+    accuracy        = 100,
+    curveMethod     = "camera",
+    autoSpam        = false,
+    autoSpamCPS     = 200,
+    triggerBot      = false,
+    invisEnabled    = false,
+    toggleKey       = "E",
+    panicKey        = "END",
+    maxPerFrame     = 6,
+    lockDuration    = 0.7,
+    maxDist         = 150,
 }
 
-local RS = cloneref(game:GetService('ReplicatedStorage'))
-local WS = cloneref(game:GetService('Workspace'))
-local Stats = cloneref(game:GetService('Stats'))
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+-- == State ================================================================
+local State = {
+    running         = true,
+    parried         = setmetatable({}, { __mode = "k" }),
+    ballLastFire    = setmetatable({}, { __mode = "k" }),
+    parryCount      = 0,
+    lastParry       = 0,
+    lastSpam        = 0,
+    ping            = 0.06,
+    pingSmooth      = 60,
+    curveState      = setmetatable({}, { __mode = "k" }),
+    parryCDUntil    = 0,
+    parriedMain     = false,
+    currentCurve    = "camera",
+}
 
--- ═══════════════════════════════════════════
--- STATE
--- ═══════════════════════════════════════════
-local AutoParryEnabled = false
-local ParryTiming      = 30
-local MaxPerFrame      = 8          -- lebih tinggi = lebih banyak bola per frame
-local BurstMode        = true
-local AdaptiveMode     = true
-local PingCompensate   = true
-
--- ═══════════════════════════════════════════
--- TUNABLES
--- ═══════════════════════════════════════════
-local MAX_PARRY_DISTANCE   = 400          -- RANGE JAUH
-local MAX_PARRY_ANGLE      = 110          -- SUDUT LEBAR
-local PREDICTION_TIME_MIN  = 0.01
-local PREDICTION_TIME_MAX  = 0.50
-local BALL_LOCK_DURATION   = 0.80         -- ANTI-DOUBLE (naik dari 0.35)
-local REACTIVE_MARGIN      = 0.03
-local EFFECTIVE_RADIUS     = 12           -- radius parry efektif (naik dari 6)
-local GLOBAL_COOLDOWN_MIN  = 0.015        -- cooldown global minimal
-
--- ═══════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════════
 -- TOKEN
--- ═══════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════════
 local _token = nil
 for _, f in getgc(true) do
     if type(f) == 'function' then
@@ -69,7 +72,7 @@ for _, f in getgc(true) do
 end
 
 local function _tokenize(uid)
-    if not _token then return "" end
+    if not _token then return nil end
     local ok, res = pcall(function()
         local t = tostring(math.floor(WS:GetServerTimeNow() * 100))
         local k = _token(uid, 'TIME')
@@ -82,395 +85,677 @@ local function _tokenize(uid)
         end
         return table.concat(chars)
     end)
-    return ok and res or ""
+    return ok and res or nil
 end
 
--- ═══════════════════════════════════════════
+print('[V8.1M] Token:', _token and 'OK' or 'FAIL')
+
+-- ═══════════════════════════════════════════════════════════════════════════
 -- HOOK
--- ═══════════════════════════════════════════
-local _reverted = {}
-local _original = {}
+-- ═══════════════════════════════════════════════════════════════════════════
+local Captured = { remote = nil, method = nil, args = nil, done = false }
 
-local function _is_valid(args)
-    return #args == 8
-        and type(args[2]) == "string"
-        and type(args[3]) == "string"
-        and type(args[4]) == "number"
-        and typeof(args[5]) == "CFrame"
-        and type(args[6]) == "table"
-        and type(args[7]) == "table"
-        and type(args[8]) == "boolean"
-end
-
-local function _hook(remote)
-    if not _reverted[remote] and not _original[getrawmetatable(remote)] then
-        _original[getrawmetatable(remote)] = true
-        local _meta = getrawmetatable(remote)
-        setreadonly(_meta, false)
-        local _old = _meta.__index
-        _meta.__index = function(self, key)
-            if (key == 'FireServer' and self:IsA('RemoteEvent'))
-            or (key == 'InvokeServer' and self:IsA('RemoteFunction')) then
-                return function(_, ...)
-                    local _arguments = {...}
-                    if _is_valid(_arguments) and not _reverted[self] then
-                        _reverted[self] = _arguments
-                        print("[Slax Hub] Remote captured:", self.Name)
-                    end
-                    return _old(self, key)(_, unpack(_arguments))
-                end
-            end
-            return _old(self, key)
-        end
-        setreadonly(_meta, true)
-    end
-end
-
-for _, r in pairs(RS:GetDescendants()) do
+local _hookedMT = {}
+for _, r in ipairs(RS:GetDescendants()) do
     if r:IsA('RemoteEvent') or r:IsA('RemoteFunction') then
-        _hook(r)
-    end
-end
-
-print("[Slax Hub v13.1] Hooks installed — parry manual sekali")
-
--- ═══════════════════════════════════════════
--- FIRE (per-target burst)
--- ═══════════════════════════════════════════
-local function FireParryBypass(burstCount)
-    burstCount = burstCount or 1
-    local fired = false
-    for _remote, _origArgs in pairs(_reverted) do
-        for _ = 1, burstCount do
-            local _packet = {
-                _origArgs[1],
-                _origArgs[2],
-                _tokenize(_origArgs[2]),
-                0.5,
-                WS.CurrentCamera.CFrame,
-                {},
-                {0, 0},
-                false
-            }
-            local ok = pcall(function()
-                if _remote:IsA('RemoteEvent') then
-                    _remote:FireServer(unpack(_packet))
-                elseif _remote:IsA('RemoteFunction') then
-                    _remote:InvokeServer(unpack(_packet))
-                end
-            end)
-            if ok then fired = true end
-        end
-    end
-    return fired
-end
-
--- ═══════════════════════════════════════════
--- PING
--- ═══════════════════════════════════════════
-local function GetPing()
-    local ok, v = pcall(function()
-        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-    end)
-    if not ok or not v then return 0.1 end
-    return math.clamp(v, 0.02, 0.5)
-end
-
--- ═══════════════════════════════════════════
--- PREDICTION (linear, cukup buat blade ball)
--- ═══════════════════════════════════════════
-local function GetPredictedPosition(ball, dt)
-    return ball.Position + ball.AssemblyLinearVelocity * dt
-end
-
--- ═══════════════════════════════════════════
--- ANGLE + TARGET
--- ═══════════════════════════════════════════
-local function IsWithinAngle(playerPos, ballPos, ballVel)
-    if ballVel.Magnitude < 0.1 then return true end
-    local toPlayer = playerPos - ballPos
-    if toPlayer.Magnitude < 0.1 then return true end
-    local dot = ballVel.Unit:Dot(toPlayer.Unit)
-    local angle = math.deg(math.acos(math.clamp(dot, -1, 1)))
-    return angle <= MAX_PARRY_ANGLE
-end
-
-local function IsTargetingPlayer(ball, hrp)
-    -- sinyal 1: attribute
-    if ball:GetAttribute("target") == LocalPlayer.Name then return true end
-
-    -- sinyal 2: velocity toward player + dekat
-    local vel = ball.AssemblyLinearVelocity
-    local toPlayer = hrp.Position - ball.Position
-    if vel.Magnitude > 3 and toPlayer.Magnitude > 0.1 then
-        local approach = vel.Unit:Dot(toPlayer.Unit)
-        if approach > 0.85 and toPlayer.Magnitude < MAX_PARRY_DISTANCE then
-            return true
-        end
-    end
-
-    -- sinyal 3: sudah dalam radius parry meski tidak jelas target
-    if toPlayer.Magnitude < EFFECTIVE_RADIUS * 3 then
-        return true
-    end
-
-    return false
-end
-
--- ═══════════════════════════════════════════
--- AUTO PARRY LOOP — MULTI-TARGET REAL + ANTI-DOUBLE
--- ═══════════════════════════════════════════
-task.spawn(function()
-    local lastFireTime = 0
-    local ballLocks = {}        -- [ball] = unlockTime
-    local ballLastFired = {}    -- [ball] = lastFireTime (anti-double)
-
-    local adaptive = {
-        leadBonus   = 0.0,
-        cooldownAdj = 1.0,
-        attempts    = 0,
-        success     = 0,
-        lastEval    = tick(),
-    }
-
-    while task.wait() do
-        if not AutoParryEnabled then
-            ballLocks = {}
-            ballLastFired = {}
-            lastFireTime = 0
-            adaptive.leadBonus = 0.0
-            adaptive.cooldownAdj = 1.0
-            adaptive.attempts = 0
-            adaptive.success = 0
-            continue
-        end
-
-        local now = tick()
-        local ping = GetPing()
-
-        -- adaptive eval
-        if AdaptiveMode and (now - adaptive.lastEval >= 5) then
-            adaptive.lastEval = now
-            local rate = (adaptive.attempts > 0)
-                and (adaptive.success / adaptive.attempts) or 0.5
-            if rate < 0.7 then
-                adaptive.leadBonus = math.min(adaptive.leadBonus + 0.010, 0.08)
-                adaptive.cooldownAdj = math.max(adaptive.cooldownAdj - 0.05, 0.7)
-            elseif rate > 0.95 then
-                adaptive.leadBonus = math.max(adaptive.leadBonus - 0.005, -0.02)
-                adaptive.cooldownAdj = math.min(adaptive.cooldownAdj + 0.05, 1.5)
-            end
-            adaptive.attempts = 0
-            adaptive.success = 0
-        end
-
-        -- cleanup locks + anti-double history
-        for ball, unlock in pairs(ballLocks) do
-            if not ball.Parent or now >= unlock then ballLocks[ball] = nil end
-        end
-        for ball, t in pairs(ballLastFired) do
-            if not ball.Parent or (now - t) > 1.0 then ballLastFired[ball] = nil end
-        end
-
-        -- GLOBAL cooldown (minimal biar nggak flood)
-        local cooldown = math.max(GLOBAL_COOLDOWN_MIN, ping * 0.3) * adaptive.cooldownAdj
-        if (now - lastFireTime) < cooldown then continue end
-
-        local char = LocalPlayer.Character
-        if not char then continue end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then continue end
-        local playerPos = hrp.Position
-
-        local ballsFolder = WS:FindFirstChild("Balls")
-        if not ballsFolder then continue end
-
-        -- lead time
-        local slider_offset = ((ParryTiming - 50) / 100) * 0.20
-        local ping_lead = PingCompensate and (ping * 0.9) or 0.0
-        local lead = math.clamp(
-            ping_lead + slider_offset + adaptive.leadBonus + REACTIVE_MARGIN,
-            PREDICTION_TIME_MIN,
-            PREDICTION_TIME_MAX
-        )
-
-        -- kumpulin SEMUA kandidat
-        local candidates = {}
-
-        for _, ball in ipairs(ballsFolder:GetChildren()) do
-            if not ball:IsA("BasePart") then continue end
-            if ball:GetAttribute("realBall") == false then continue end
-            if ballLocks[ball] then continue end
-
-            -- ANTI-DOUBLE: skip kalau baru di-fire dalam 0.8s
-            local lastFired = ballLastFired[ball]
-            if lastFired and (now - lastFired) < BALL_LOCK_DURATION then
-                continue
-            end
-
-            local vel = ball.AssemblyLinearVelocity
-            local speed = vel.Magnitude
-            if speed < 3 then continue end
-
-            if not IsTargetingPlayer(ball, hrp) then continue end
-
-            local predictedPos = GetPredictedPosition(ball, lead)
-            local predictedDistance = (playerPos - predictedPos).Magnitude
-
-            if predictedDistance > MAX_PARRY_DISTANCE then continue end
-            if not IsWithinAngle(playerPos, predictedPos, vel) then continue end
-
-            local etc = (predictedDistance - EFFECTIVE_RADIUS) / math.max(speed, 1)
-            if etc < 0 then etc = 0 end
-
-            -- fire kalau etc <= lead (dan etc >= 0)
-            if etc <= lead then
-                table.insert(candidates, {
-                    ball = ball,
-                    etc = etc,
-                    dist = predictedDistance,
-                    speed = speed,
-                })
-            end
-        end
-
-        -- fire SEMUA kandidat (sorted urgent dulu)
-        if #candidates > 0 then
-            table.sort(candidates, function(a, b) return a.etc < b.etc end)
-
-            local fireN = math.min(#candidates, MaxPerFrame)
-            lastFireTime = now
-
-            for i = 1, fireN do
-                local ball = candidates[i].ball
-                ballLocks[ball] = now + BALL_LOCK_DURATION
-                ballLastFired[ball] = now
-            end
-
-            -- burst fire (2x per round kalau enabled)
-            local burst = BurstMode and 2 or 1
-            local fired = FireParryBypass(burst)
-            if fired then
-                adaptive.attempts = adaptive.attempts + fireN
-
-                for i = 1, fireN do
-                    local ball = candidates[i].ball
-                    task.spawn(function()
-                        local checkStart = tick()
-                        while tick() - checkStart < 0.35 do
-                            task.wait(0.03)
-                            if not ball.Parent then
-                                adaptive.success = adaptive.success + 1
-                                return
-                            end
-                            local v = ball.AssemblyLinearVelocity
-                            if v.Magnitude > 1 then
-                                local toPlayer = playerPos - ball.Position
-                                if toPlayer.Magnitude > 0.1
-                                and v.Unit:Dot(toPlayer.Unit) < 0.3 then
-                                    adaptive.success = adaptive.success + 1
-                                    return
-                                end
-                            end
+        local ok, mt = pcall(getrawmetatable, r)
+        if ok and mt and not _hookedMT[mt] then
+            _hookedMT[mt] = true
+            pcall(setreadonly, mt, false)
+            local old = mt.__index
+            mt.__index = function(self, key)
+                if key == 'FireServer' or key == 'InvokeServer' then
+                    return function(_, ...)
+                        local args = { ... }
+                        if not Captured.remote and #args >= 6
+                        and type(args[2]) == 'string'
+                        and type(args[3]) == 'string'
+                        and typeof(args[5]) == 'CFrame' then
+                            Captured.remote = self
+                            Captured.method = key
+                            Captured.args = args
+                            Captured.done = true
+                            print('[V8.1M] Captured:', self.Name, '#args=' .. #args)
                         end
-                    end)
+                        return old(self, key)(_, ...)
+                    end
                 end
+                return old(self, key)
             end
+            pcall(setreadonly, mt, true)
         end
+    end
+end
+
+print('[V8.1M] Remotes hooked')
+
+-- == Character ============================================================
+local function isAlive()
+    local char = LP.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    if hrp:FindFirstChild("SingularityCape") then return false end
+    return true, char, hrp
+end
+
+-- == Ping =================================================================
+task.spawn(function()
+    while State.running do
+        pcall(function()
+            local raw = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+            State.ping = raw / 1000
+            State.pingSmooth = State.pingSmooth * 0.6 + raw * 0.4
+        end)
+        task.wait(1)
     end
 end)
 
--- ═══════════════════════════════════════════
--- UI
--- ═══════════════════════════════════════════
+-- == Curve ================================================================
+local function getCurveCFrame(myPos)
+    local cam = WS.CurrentCamera
+    if not cam then return CFrame.new(myPos) end
 
-local Toggle = Tabs.Main:AddToggle("AutoParry", {
-    Title = "⚔️ Auto Parry MAX",
-    Default = false
+    local targetPos = myPos + cam.CFrame.LookVector * 1000
+    local aliveFolder = WS:FindFirstChild("Alive")
+    if aliveFolder then
+        local bestDot, bestPos = -math.huge, nil
+        for _, e in ipairs(aliveFolder:GetChildren()) do
+            local hrp = e:FindFirstChild("HumanoidRootPart")
+            if hrp and e ~= LP.Character then
+                local dir = (hrp.Position - cam.CFrame.Position).Unit
+                local dot = cam.CFrame.LookVector:Dot(dir)
+                if dot > bestDot then bestDot, bestPos = dot, hrp.Position end
+            end
+        end
+        if bestPos then targetPos = bestPos end
+    end
+
+    local m = State.currentCurve
+    if m == "dot" then
+        return CFrame.lookAt(myPos, targetPos + Vector3.new(0, 1.75, 0))
+    elseif m == "backwards" then
+        return CFrame.new(myPos, myPos + (myPos - targetPos).Unit * 1000)
+    elseif m == "high" then
+        return CFrame.new(myPos, targetPos + Vector3.new(0, 9e18, 0))
+    elseif m == "slow" then
+        return CFrame.new(myPos, myPos + Vector3.new(0, -350, 0))
+    elseif m == "random" then
+        local rnd = Vector3.new(math.random(-3000,3000), math.random(-3000,3000), math.random(-3000,3000))
+        return CFrame.new(myPos, targetPos + rnd)
+    elseif m == "accelerated" then
+        return CFrame.new(myPos, targetPos + Vector3.new(0, 5, 0))
+    else
+        return cam.CFrame
+    end
+end
+
+local function isCurved(ball, myPos)
+    local z = ball:FindFirstChild("zoomies")
+    if not z then return false end
+    local vel = z.VectorVelocity
+    local spd = vel.Magnitude
+    if spd < 5 then return false end
+    local dir = (myPos - ball.Position).Unit
+    local dot = dir:Dot(vel.Unit)
+    if dot < -0.1 then return true end
+    local lat = (vel - (vel:Dot(dir) * dir)).Magnitude
+    if lat / spd > 0.35 then return true end
+    return false
+end
+
+local function computeWindow(speed)
+    local ping = State.pingSmooth or State.ping * 1000
+    local pingThr = math.clamp(ping / 80, 4, 25)
+    local mult = 0.7 + (math.clamp(Config.accuracy, 1, 100) - 1) * 0.0035353535353535
+    local divisor = (2.2 + 0.9 * math.log(1 + speed / 80)) * mult
+    local sf = 1
+    if speed > 200 then sf = 1 + math.min((speed - 200) / 1000, 0.3) end
+    return pingThr + math.max(speed / divisor, 9.5) * sf
+end
+
+-- == Fire =================================================================
+local cachedAim = {0, 0}
+local cachedEvents = {}
+local _camUpdateAcc = 0
+
+RunService.RenderStepped:Connect(function(dt)
+    _camUpdateAcc = _camUpdateAcc + dt
+    if _camUpdateAcc < 0.05 then return end
+    _camUpdateAcc = 0
+
+    local cam = WS.CurrentCamera
+    if not cam then return end
+    local vp = cam.ViewportSize
+    if UIS.TouchEnabled and not UIS.KeyboardEnabled then
+        cachedAim = {vp.X / 2, vp.Y / 2}
+    else
+        local ok, mouse = pcall(UIS.GetMouseLocation, UIS)
+        cachedAim = ok and {mouse.X, mouse.Y} or {vp.X / 2, vp.Y / 2}
+    end
+
+    local aliveFolder = WS:FindFirstChild("Alive")
+    if aliveFolder then
+        local data = {}
+        for _, e in ipairs(aliveFolder:GetChildren()) do
+            local pp = e.PrimaryPart
+            if pp then
+                local ok2, sp = pcall(cam.WorldToScreenPoint, cam, pp.Position)
+                if ok2 then data[e.Name] = sp end
+            end
+        end
+        cachedEvents = data
+    end
+end)
+
+local function fireParry(aim)
+    if not Captured.remote or not Captured.args then return false end
+    local cam = WS.CurrentCamera
+    if not cam then return false end
+    local char = LP.Character
+    if not char or not char.PrimaryPart then return false end
+
+    aim = aim or cachedAim
+    local curveCF = getCurveCFrame(char.PrimaryPart.Position)
+
+    local uid = Captured.args[2]
+    local tok = _tokenize(uid) or Captured.args[3]
+
+    local pkt = {
+        Captured.args[1],
+        uid,
+        tok,
+        0.5,
+        curveCF,
+        cachedEvents,
+        aim,
+        false
+    }
+
+    if #Captured.args > 8 then
+        pkt[6] = Captured.args[6] or cachedEvents
+        pkt[7] = Captured.args[7] or aim
+        pkt[8] = Captured.args[8] or false
+    end
+
+    local ok = pcall(function()
+        if Captured.method == 'FireServer' then
+            Captured.remote:FireServer(unpack(pkt))
+        else
+            Captured.remote:InvokeServer(unpack(pkt))
+        end
+    end)
+    if ok then State.parryCount = State.parryCount + 1 end
+    return ok
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- MAIN LOOP
+-- ═══════════════════════════════════════════════════════════════════════════
+local lastFrame = tick()
+
+RunService.PreSimulation:Connect(function()
+    if not Config.enabled then return end
+    local now = tick()
+    lastFrame = now
+
+    local alive, char, hrp = isAlive()
+    if not alive then return end
+
+    local folder = WS:FindFirstChild("Balls")
+    if not folder then return end
+
+    local myPos = hrp.Position
+    local myName = LP.Name
+
+    if not State._ballCache or now - (State._ballCacheTime or 0) > 0.1 then
+        State._ballCache = folder:GetChildren()
+        State._ballCacheTime = now
+    end
+
+    for ball, t in pairs(State.ballLastFire) do
+        if not ball.Parent or (now - t) > Config.lockDuration then
+            State.ballLastFire[ball] = nil
+        end
+    end
+
+    local candidates = {}
+
+    for _, ball in ipairs(State._ballCache) do
+        if not ball.Parent then continue end
+        if not ball:IsA("BasePart") then continue end
+        if ball:GetAttribute("realBall") == false then continue end
+        if ball:FindFirstChild("ComboCounter") then continue end
+
+        local lastFired = State.ballLastFire[ball]
+        if lastFired and (now - lastFired) < Config.lockDuration then continue end
+
+        local z = ball:FindFirstChild("zoomies")
+        if not z then continue end
+        local vel = z.VectorVelocity
+        local speed = vel.Magnitude
+        if speed < 5 then continue end
+
+        local rawDist = (myPos - ball.Position).Magnitude
+        if rawDist > Config.maxDist then continue end
+
+        local targetAttr = ball:GetAttribute("target")
+        local isTargeted = (targetAttr == myName)
+        if not isTargeted then
+            local toPlayer = myPos - ball.Position
+            if toPlayer.Magnitude > 0.1 then
+                local approach = vel.Unit:Dot(toPlayer.Unit)
+                if approach > 0.85 then isTargeted = true end
+            end
+        end
+        if not isTargeted then continue end
+
+        local t = State.ping / 2
+        local predPos = ball.Position + vel * t
+        local dist = (myPos - predPos).Magnitude
+
+        local curved = isCurved(ball, myPos)
+        local window = computeWindow(speed)
+        if curved then window = window * 0.7 end
+
+        if dist <= window then
+            local score = dist - speed * 0.05
+            table.insert(candidates, {
+                ball = ball,
+                score = score,
+                speed = speed,
+                z = z,
+            })
+        end
+    end
+
+    if #candidates > 0 then
+        table.sort(candidates, function(a, b) return a.score < b.score end)
+        local fireN = math.min(#candidates, Config.maxPerFrame)
+
+        for i = 1, fireN do
+            State.ballLastFire[candidates[i].ball] = now
+        end
+
+        local best = candidates[1].ball
+        local cam = WS.CurrentCamera
+        local aim
+        if cam then
+            local sp = cam:WorldToScreenPoint(best.Position + candidates[1].z.VectorVelocity * 0.05)
+            if sp then aim = {math.floor(sp.X), math.floor(sp.Y)} end
+        end
+
+        for i = 1, fireN do
+            fireParry(aim)
+        end
+
+        State.lastParry = now
+        State.parriedMain = true
+        State.parryCDUntil = now + 0.1
+    end
+end)
+
+-- == Auto Spam ============================================================
+local autoSpamConn = nil
+local function startAutoSpam()
+    if autoSpamConn then autoSpamConn:Disconnect() end
+    autoSpamConn = RunService.PreSimulation:Connect(function()
+        if not Config.autoSpam then return end
+        local alive = isAlive()
+        if not alive then return end
+        local now = tick()
+        if now - State.lastSpam < (1 / Config.autoSpamCPS) then return end
+        State.lastSpam = now
+        local folder = WS:FindFirstChild("Balls")
+        if not folder then return end
+        for _, ball in ipairs(folder:GetChildren()) do
+            if ball:GetAttribute("target") == LP.Name then
+                fireParry()
+                return
+            end
+        end
+    end)
+end
+
+-- == Trigger Bot ==========================================================
+local triggerConn = nil
+local triggerBusy = false
+local function startTriggerBot()
+    if triggerConn then triggerConn:Disconnect() end
+    triggerConn = RunService.Heartbeat:Connect(function()
+        if not Config.triggerBot then return end
+        if triggerBusy then return end
+        local alive = isAlive()
+        if not alive then return end
+        local folder = WS:FindFirstChild("Balls")
+        if not folder then return end
+        for _, ball in ipairs(folder:GetChildren()) do
+            if ball:IsA("BasePart") and ball:GetAttribute("target") == LP.Name then
+                triggerBusy = true
+                fireParry()
+                task.delay(0.5, function() triggerBusy = false end)
+                break
+            end
+        end
+    end)
+end
+
+-- == Invis ================================================================
+local InvisState = { enabled = false, conn = nil, desync = {} }
+local function performInvis()
+    if not InvisState.enabled then return end
+    local char = LP.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local alive = WS:FindFirstChild("Alive")
+    if not alive or char.Parent ~= alive then return end
+    InvisState.desync[1] = hrp.CFrame
+    InvisState.desync[2] = hrp.AssemblyLinearVelocity
+    local angle = math.random() * math.pi * 2
+    hrp.CFrame = CFrame.new(
+        hrp.Position.X + math.cos(angle) * 25,
+        hrp.Position.Y + 15,
+        hrp.Position.Z + math.sin(angle) * 25
+    )
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    RunService.RenderStepped:Wait()
+    hrp.CFrame = InvisState.desync[1]
+    hrp.AssemblyLinearVelocity = InvisState.desync[2]
+end
+local function toggleInvis(enabled)
+    InvisState.enabled = enabled
+    if enabled then
+        if not InvisState.conn then
+            InvisState.conn = RunService.Heartbeat:Connect(performInvis)
+        end
+    else
+        if InvisState.conn then
+            InvisState.conn:Disconnect()
+            InvisState.conn = nil
+        end
+    end
+end
+
+-- == Keybinds =============================================================
+local curveKeyMap = {
+    [Enum.KeyCode.One]   = "camera",
+    [Enum.KeyCode.Two]   = "dot",
+    [Enum.KeyCode.Three] = "backwards",
+    [Enum.KeyCode.Four]  = "slow",
+    [Enum.KeyCode.Five]  = "random",
+    [Enum.KeyCode.Six]   = "accelerated",
+    [Enum.KeyCode.Seven] = "high",
+}
+
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if curveKeyMap[input.KeyCode] then
+        State.currentCurve = curveKeyMap[input.KeyCode]
+        print("[V8.1M] Curve:", State.currentCurve)
+    end
+    if input.KeyCode == Enum.KeyCode[Config.toggleKey] then
+        Config.enabled = not Config.enabled
+        print("[V8.1M]", Config.enabled and "ON" or "OFF")
+    elseif input.KeyCode == Enum.KeyCode[Config.panicKey] then
+        Config.enabled = false
+        Config.autoSpam = false
+        Config.triggerBot = false
+        toggleInvis(false)
+        print("[V8.1M] PANIC")
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- UI — WINDUI v2 MODERN
+-- ═══════════════════════════════════════════════════════════════════════════
+local WindUI = loadstring(game:HttpGet(
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
+))()
+
+local Window = WindUI:CreateWindow({
+    Title       = "Slax Hub",
+    Icon        = "solar:crown-bold",
+    Author      = "ALPHA XK",
+    Folder      = "SlaxV8",
+    Size        = UDim2.fromOffset(560, 440),
+    Transparent = true,
+    Theme       = "Dark",
+    SideBarWidth= 150,
+    HasOutline  = true,
 })
-Toggle:OnChanged(function(v) AutoParryEnabled = v end)
 
-Tabs.Main:AddSlider("ParryTiming", {
-    Title = "Parry Timing",
-    Description = "1 = late | 50 = balanced | 100 = early",
-    Default = 30,
-    Min = 1,
-    Max = 100,
-    Rounding = 0,
-    Callback = function(v) ParryTiming = v end
+Window:EditOpenButton({
+    Title        = "Slax V8",
+    Icon         = "solar:crown-bold",
+    CornerRadius = UDim.new(0, 16),
+    StrokeThickness = 2,
+    Color        = ColorSequence.new(
+        Color3.fromRGB(120, 100, 255),
+        Color3.fromRGB(255, 100, 200)
+    ),
+    OnlyMobile   = true,
 })
 
-Tabs.Main:AddSlider("MaxPerFrame", {
-    Title = "Max Parry / Frame",
-    Description = "Banyak bola per frame — 8 = agresif",
-    Default = 8,
-    Min = 1,
-    Max = 12,
-    Rounding = 0,
-    Callback = function(v) MaxPerFrame = v end
+-- Tabs
+local TabCombat = Window:Tab({ Title = "Combat", Icon = "solar:sword-bold" })
+local TabCurve  = Window:Tab({ Title = "Curve",  Icon = "solar:activity-bold" })
+local TabExtra  = Window:Tab({ Title = "Extra",  Icon = "solar:zap-bold" })
+local TabInfo   = Window:Tab({ Title = "Info",   Icon = "solar:info-circle-bold" })
+
+-- ─── COMBAT ───
+local SecMain = TabCombat:Section({ Title = "Auto Parry" })
+
+SecMain:Toggle({
+    Title    = "Auto Parry",
+    Desc     = "Master switch — predictive multi-target",
+    Value    = Config.enabled,
+    Callback = function(v)
+        Config.enabled = v
+        WindUI:Notify({
+            Title = "Auto Parry",
+            Content = v and "Enabled" or "Disabled",
+            Duration = 2,
+        })
+    end,
 })
 
-Tabs.Tune:AddToggle("BurstMode", {
-    Title = "Burst Fire",
-    Desc = "2x fire per round — redundancy",
-    Default = true,
-})
-:OnChanged(function(v) BurstMode = v end)
-
-Tabs.Tune:AddToggle("AdaptiveMode", {
-    Title = "Adaptive Mode",
-    Desc = "Auto-adjust lead + cooldown",
-    Default = true,
-})
-:OnChanged(function(v) AdaptiveMode = v end)
-
-Tabs.Tune:AddToggle("PingCompensate", {
-    Title = "Ping Compensate",
-    Desc = "Fire lebih awal berdasar ping",
-    Default = true,
-})
-:OnChanged(function(v) PingCompensate = v end)
-
-Tabs.Tune:AddSlider("MaxDist", {
-    Title = "Max Parry Distance",
-    Description = "Radius deteksi bola (studs)",
-    Default = 400,
-    Min = 100,
-    Max = 800,
-    Rounding = 0,
-    Callback = function(v) MAX_PARRY_DISTANCE = v end
+SecMain:Slider({
+    Title    = "Accuracy",
+    Desc     = "1 = late | 100 = early",
+    Value    = { Min = 1, Max = 100, Default = Config.accuracy, Rounding = 0 },
+    Callback = function(v) Config.accuracy = v end,
 })
 
-Tabs.Tune:AddSlider("LockDur", {
-    Title = "Ball Lock Duration",
-    Description = "Anti-double protection (detik)",
-    Default = 0.8,
-    Min = 0.3,
-    Max = 2.0,
-    Rounding = 2,
-    Callback = function(v) BALL_LOCK_DURATION = v end
+SecMain:Slider({
+    Title    = "Max Parry / Frame",
+    Desc     = "Banyak bola per frame — 6 = safe, 10 = aggressive",
+    Value    = { Min = 1, Max = 12, Default = Config.maxPerFrame, Rounding = 0 },
+    Callback = function(v) Config.maxPerFrame = v end,
 })
 
-Tabs.Tune:AddSlider("Angle", {
-    Title = "Max Parry Angle",
-    Description = "Sudut maksimal deteksi bola (derajat)",
-    Default = 110,
-    Min = 60,
-    Max = 180,
-    Rounding = 0,
-    Callback = function(v) MAX_PARRY_ANGLE = v end
+SecMain:Slider({
+    Title    = "Anti-Double Lock (s)",
+    Desc     = "Skip bola yang baru di-fire N detik",
+    Value    = { Min = 0.3, Max = 2.0, Default = Config.lockDuration, Rounding = 2 },
+    Callback = function(v) Config.lockDuration = v end,
 })
 
-InterfaceManager:SetLibrary(Fluent)
-SaveManager:SetLibrary(Fluent)
-SaveManager:IgnoreThemeSettings()
-InterfaceManager:BuildInterfaceSection(Tabs.Settings)
-SaveManager:BuildConfigSection(Tabs.Settings)
+SecMain:Slider({
+    Title    = "Max Distance",
+    Desc     = "Radius deteksi bola (studs)",
+    Value    = { Min = 50, Max = 400, Default = Config.maxDist, Rounding = 0 },
+    Callback = function(v) Config.maxDist = v end,
+})
+
+local SecSpam = TabCombat:Section({ Title = "Auto Spam" })
+
+SecSpam:Toggle({
+    Title    = "Auto Spam",
+    Desc     = "Spam parry di dekat player",
+    Value    = Config.autoSpam,
+    Callback = function(v)
+        Config.autoSpam = v
+        if v then startAutoSpam() end
+    end,
+})
+
+SecSpam:Slider({
+    Title    = "Spam CPS",
+    Desc     = "Clicks per second (50-1000)",
+    Value    = { Min = 50, Max = 1000, Default = Config.autoSpamCPS, Rounding = 0 },
+    Callback = function(v) Config.autoSpamCPS = v end,
+})
+
+local SecTrigger = TabCombat:Section({ Title = "Triggerbot" })
+
+SecTrigger:Toggle({
+    Title    = "Trigger Bot",
+    Desc     = "Fire saat target = lo",
+    Value    = Config.triggerBot,
+    Callback = function(v)
+        Config.triggerBot = v
+        if v then startTriggerBot() end
+    end,
+})
+
+-- ─── CURVE ───
+local SecCurve = TabCurve:Section({ Title = "Curve Method" })
+
+SecCurve:Dropdown({
+    Title    = "Curve",
+    Values   = {"camera", "dot", "backwards", "slow", "random", "accelerated", "high"},
+    Value    = Config.curveMethod,
+    Callback = function(v)
+        Config.curveMethod = v
+        State.currentCurve = v
+    end,
+})
+
+SecCurve:Paragraph({
+    Title = "Hotkeys",
+    Desc  = "1=camera  2=dot  3=backwards\n4=slow  5=random  6=accelerated  7=high",
+})
+
+-- ─── EXTRA ───
+local SecInvis = TabExtra:Section({ Title = "Extras" })
+
+SecInvis:Toggle({
+    Title    = "Invisibility",
+    Desc     = "HRP desync — hati-hati, bisa lag di server",
+    Value    = Config.invisEnabled,
+    Callback = function(v)
+        Config.invisEnabled = v
+        toggleInvis(v)
+    end,
+})
+
+SecInvis:Button({
+    Title    = "Force Re-Hook",
+    Desc     = "Re-scan remotes + reset capture",
+    Callback = function()
+        Captured.remote = nil
+        Captured.args = nil
+        Captured.done = false
+        _hookedMT = {}
+        for _, r in ipairs(RS:GetDescendants()) do
+            if r:IsA('RemoteEvent') or r:IsA('RemoteFunction') then
+                local ok, mt = pcall(getrawmetatable, r)
+                if ok and mt and not _hookedMT[mt] then
+                    _hookedMT[mt] = true
+                    pcall(setreadonly, mt, false)
+                    local old = mt.__index
+                    mt.__index = function(self, key)
+                        if key == 'FireServer' or key == 'InvokeServer' then
+                            return function(_, ...)
+                                local args = { ... }
+                                if not Captured.remote and #args >= 6
+                                and type(args[2]) == 'string'
+                                and type(args[3]) == 'string'
+                                and typeof(args[5]) == 'CFrame' then
+                                    Captured.remote = self
+                                    Captured.method = key
+                                    Captured.args = args
+                                    Captured.done = true
+                                end
+                                return old(self, key)(_, ...)
+                            end
+                        end
+                        return old(self, key)
+                    end
+                    pcall(setreadonly, mt, true)
+                end
+            end
+        end
+        WindUI:Notify({
+            Title = "Re-Hook",
+            Content = "Parry manual sekali lagi",
+            Duration = 3,
+        })
+    end,
+})
+
+SecInvis:Button({
+    Title    = "Unload Script",
+    Desc     = "Stop semua loop + hapus UI",
+    Callback = function()
+        pcall(function() _G.slax_mobile_unload() end)
+        pcall(function() Window:Destroy() end)
+    end,
+})
+
+-- ─── INFO ───
+local SecInfo = TabInfo:Section({ Title = "Status" })
+
+local infoPara = SecInfo:Paragraph({
+    Title = "Runtime",
+    Desc  = "init...",
+})
+
+task.spawn(function()
+    while State.running do
+        pcall(function()
+            infoPara:Set(string.format(
+                "Token: %s\nRemote: %s\nParry count: %d\nPing: %d ms",
+                _token and "OK" or "FAIL",
+                Captured.remote and Captured.remote.Name or "not captured",
+                State.parryCount,
+                math.floor(State.pingSmooth or 0)
+            ))
+        end)
+        task.wait(1)
+    end
+end)
+
+-- == Init =================================================================
+task.spawn(function()
+    local deadline = tick() + 30
+    while not Captured.done and tick() < deadline do task.wait(0.5) end
+    if Captured.done then
+        print("[V8.1M] Remote captured: " .. tostring(Captured.remote.Name))
+    else
+        print("[V8.1M] Remote not captured — parry manual 1-3x")
+    end
+end)
 
 Window:SelectTab(1)
 
-Fluent:Notify({
-    Title = "Slax Hub v13.1 👑",
-    Content = "Multi-Target MAX — long range + anti-double",
-    Duration = 6
+WindUI:Notify({
+    Title = "Slax V8.1",
+    Content = "Auto Parry loaded — parry manual sekali",
+    Duration = 5,
 })
+
+print("[V8.1M] Slax V8.1 Mobile loaded")
+print("[V8.1M] Toggle: E | Panic: END | Curves: 1-7")
+
+-- == Unload ===============================================================
+_G.slax_mobile_unload = function()
+    State.running = false
+    if autoSpamConn then autoSpamConn:Disconnect() end
+    if triggerConn then triggerConn:Disconnect() end
+    if InvisState.conn then InvisState.conn:Disconnect() end
+    getgenv()._slax_mobile_loaded = nil
+end
