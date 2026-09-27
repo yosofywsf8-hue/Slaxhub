@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- Slax V8.1 MOBILE — Blade Ball Auto Parry
+-- Slax V8.3 MOBILE — Blade Ball Auto Parry
 -- Author: ALPHA XK | For: Redz
--- UI: WindUI v2 Modern | Core: V8 (token regen + multi-target)
+-- UI: WindUI v2 | Only Accuracy slider, sisanya locked
 -- ═══════════════════════════════════════════════════════════════════════════
 
 if getgenv()._slax_mobile_loaded then
@@ -11,7 +11,6 @@ if getgenv()._slax_mobile_loaded then
 end
 getgenv()._slax_mobile_loaded = true
 
--- == Services =============================================================
 local Players       = game:GetService("Players")
 local RS            = game:GetService("ReplicatedStorage")
 local WS            = game:GetService("Workspace")
@@ -20,10 +19,23 @@ local UIS           = game:GetService("UserInputService")
 local Stats         = game:GetService("Stats")
 local LP            = Players.LocalPlayer
 
--- == Config ===============================================================
+-- ═══════════════════════════════════════════════════════════════════════════
+-- CONFIG
+-- ═══════════════════════════════════════════════════════════════════════════
 local Config = {
     enabled         = true,
-    accuracy        = 100,
+
+    -- AUTO PARRY
+    accuracy        = 100,      -- satu-satunya yang bisa diubah dari UI
+    maxPerFrame     = 8,
+    lockDuration    = 1.2,
+    maxDist         = 250,
+    pingCompFactor  = 0.85,
+    curveOnCurved   = 0.75,
+    predictAhead    = 0.06,
+    angleMax        = 120,
+
+    -- UI
     curveMethod     = "camera",
     autoSpam        = false,
     autoSpamCPS     = 200,
@@ -31,24 +43,19 @@ local Config = {
     invisEnabled    = false,
     toggleKey       = "E",
     panicKey        = "END",
-    maxPerFrame     = 6,
-    lockDuration    = 0.7,
-    maxDist         = 150,
 }
 
--- == State ================================================================
 local State = {
     running         = true,
     parried         = setmetatable({}, { __mode = "k" }),
     ballLastFire    = setmetatable({}, { __mode = "k" }),
     parryCount      = 0,
+    parrySuccess    = 0,
     lastParry       = 0,
     lastSpam        = 0,
     ping            = 0.06,
     pingSmooth      = 60,
     curveState      = setmetatable({}, { __mode = "k" }),
-    parryCDUntil    = 0,
-    parriedMain     = false,
     currentCurve    = "camera",
 }
 
@@ -88,12 +95,37 @@ local function _tokenize(uid)
     return ok and res or nil
 end
 
-print('[V8.1M] Token:', _token and 'OK' or 'FAIL')
+print('[V8.3M] Token:', _token and 'OK' or 'FAIL')
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- HOOK
 -- ═══════════════════════════════════════════════════════════════════════════
 local Captured = { remote = nil, method = nil, args = nil, done = false }
+
+local function _attach_hook(self, mt)
+    pcall(setreadonly, mt, false)
+    local old = mt.__index
+    mt.__index = function(inst, key)
+        if key == 'FireServer' or key == 'InvokeServer' then
+            return function(_, ...)
+                local args = { ... }
+                if not Captured.remote and #args >= 6
+                and type(args[2]) == 'string'
+                and type(args[3]) == 'string'
+                and typeof(args[5]) == 'CFrame' then
+                    Captured.remote = inst
+                    Captured.method = key
+                    Captured.args = args
+                    Captured.done = true
+                    print('[V8.3M] Captured:', inst.Name, '#args=' .. #args)
+                end
+                return old(inst, key)(_, ...)
+            end
+        end
+        return old(inst, key)
+    end
+    pcall(setreadonly, mt, true)
+end
 
 local _hookedMT = {}
 for _, r in ipairs(RS:GetDescendants()) do
@@ -101,33 +133,12 @@ for _, r in ipairs(RS:GetDescendants()) do
         local ok, mt = pcall(getrawmetatable, r)
         if ok and mt and not _hookedMT[mt] then
             _hookedMT[mt] = true
-            pcall(setreadonly, mt, false)
-            local old = mt.__index
-            mt.__index = function(self, key)
-                if key == 'FireServer' or key == 'InvokeServer' then
-                    return function(_, ...)
-                        local args = { ... }
-                        if not Captured.remote and #args >= 6
-                        and type(args[2]) == 'string'
-                        and type(args[3]) == 'string'
-                        and typeof(args[5]) == 'CFrame' then
-                            Captured.remote = self
-                            Captured.method = key
-                            Captured.args = args
-                            Captured.done = true
-                            print('[V8.1M] Captured:', self.Name, '#args=' .. #args)
-                        end
-                        return old(self, key)(_, ...)
-                    end
-                end
-                return old(self, key)
-            end
-            pcall(setreadonly, mt, true)
+            _attach_hook(r, mt)
         end
     end
 end
 
-print('[V8.1M] Remotes hooked')
+print('[V8.3M] Remotes hooked')
 
 -- == Character ============================================================
 local function isAlive()
@@ -157,7 +168,6 @@ end)
 local function getCurveCFrame(myPos)
     local cam = WS.CurrentCamera
     if not cam then return CFrame.new(myPos) end
-
     local targetPos = myPos + cam.CFrame.LookVector * 1000
     local aliveFolder = WS:FindFirstChild("Alive")
     if aliveFolder then
@@ -206,9 +216,12 @@ local function isCurved(ball, myPos)
     return false
 end
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- FIRE WINDOW
+-- ═══════════════════════════════════════════════════════════════════════════
 local function computeWindow(speed)
     local ping = State.pingSmooth or State.ping * 1000
-    local pingThr = math.clamp(ping / 80, 4, 25)
+    local pingThr = math.clamp((ping / 80) * Config.pingCompFactor * 1.2, 4, 25)
     local mult = 0.7 + (math.clamp(Config.accuracy, 1, 100) - 1) * 0.0035353535353535
     local divisor = (2.2 + 0.9 * math.log(1 + speed / 80)) * mult
     local sf = 1
@@ -216,7 +229,9 @@ local function computeWindow(speed)
     return pingThr + math.max(speed / divisor, 9.5) * sf
 end
 
--- == Fire =================================================================
+-- ═══════════════════════════════════════════════════════════════════════════
+-- FIRE
+-- ═══════════════════════════════════════════════════════════════════════════
 local cachedAim = {0, 0}
 local cachedEvents = {}
 local _camUpdateAcc = 0
@@ -225,7 +240,6 @@ RunService.RenderStepped:Connect(function(dt)
     _camUpdateAcc = _camUpdateAcc + dt
     if _camUpdateAcc < 0.05 then return end
     _camUpdateAcc = 0
-
     local cam = WS.CurrentCamera
     if not cam then return end
     local vp = cam.ViewportSize
@@ -235,7 +249,6 @@ RunService.RenderStepped:Connect(function(dt)
         local ok, mouse = pcall(UIS.GetMouseLocation, UIS)
         cachedAim = ok and {mouse.X, mouse.Y} or {vp.X / 2, vp.Y / 2}
     end
-
     local aliveFolder = WS:FindFirstChild("Alive")
     if aliveFolder then
         local data = {}
@@ -273,7 +286,6 @@ local function fireParry(aim)
         aim,
         false
     }
-
     if #Captured.args > 8 then
         pkt[6] = Captured.args[6] or cachedEvents
         pkt[7] = Captured.args[7] or aim
@@ -294,12 +306,9 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════
 -- MAIN LOOP
 -- ═══════════════════════════════════════════════════════════════════════════
-local lastFrame = tick()
-
 RunService.PreSimulation:Connect(function()
     if not Config.enabled then return end
     local now = tick()
-    lastFrame = now
 
     local alive, char, hrp = isAlive()
     if not alive then return end
@@ -310,7 +319,7 @@ RunService.PreSimulation:Connect(function()
     local myPos = hrp.Position
     local myName = LP.Name
 
-    if not State._ballCache or now - (State._ballCacheTime or 0) > 0.1 then
+    if not State._ballCache or now - (State._ballCacheTime or 0) > 0.08 then
         State._ballCache = folder:GetChildren()
         State._ballCacheTime = now
     end
@@ -341,10 +350,16 @@ RunService.PreSimulation:Connect(function()
         local rawDist = (myPos - ball.Position).Magnitude
         if rawDist > Config.maxDist then continue end
 
+        local toPlayer = myPos - ball.Position
+        if toPlayer.Magnitude > 0.1 then
+            local dot = vel.Unit:Dot(toPlayer.Unit)
+            local angle = math.deg(math.acos(math.clamp(dot, -1, 1)))
+            if angle > Config.angleMax then continue end
+        end
+
         local targetAttr = ball:GetAttribute("target")
         local isTargeted = (targetAttr == myName)
         if not isTargeted then
-            local toPlayer = myPos - ball.Position
             if toPlayer.Magnitude > 0.1 then
                 local approach = vel.Unit:Dot(toPlayer.Unit)
                 if approach > 0.85 then isTargeted = true end
@@ -352,13 +367,13 @@ RunService.PreSimulation:Connect(function()
         end
         if not isTargeted then continue end
 
-        local t = State.ping / 2
-        local predPos = ball.Position + vel * t
+        local t_total = (State.ping / 2) + Config.predictAhead
+        local predPos = ball.Position + vel * t_total
         local dist = (myPos - predPos).Magnitude
 
         local curved = isCurved(ball, myPos)
         local window = computeWindow(speed)
-        if curved then window = window * 0.7 end
+        if curved then window = window * Config.curveOnCurved end
 
         if dist <= window then
             local score = dist - speed * 0.05
@@ -392,8 +407,6 @@ RunService.PreSimulation:Connect(function()
         end
 
         State.lastParry = now
-        State.parriedMain = true
-        State.parryCDUntil = now + 0.1
     end
 end)
 
@@ -494,22 +507,22 @@ UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
     if curveKeyMap[input.KeyCode] then
         State.currentCurve = curveKeyMap[input.KeyCode]
-        print("[V8.1M] Curve:", State.currentCurve)
+        print("[V8.3M] Curve:", State.currentCurve)
     end
     if input.KeyCode == Enum.KeyCode[Config.toggleKey] then
         Config.enabled = not Config.enabled
-        print("[V8.1M]", Config.enabled and "ON" or "OFF")
+        print("[V8.3M]", Config.enabled and "ON" or "OFF")
     elseif input.KeyCode == Enum.KeyCode[Config.panicKey] then
         Config.enabled = false
         Config.autoSpam = false
         Config.triggerBot = false
         toggleInvis(false)
-        print("[V8.1M] PANIC")
+        print("[V8.3M] PANIC")
     end
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- UI — WINDUI v2 MODERN
+-- UI — WINDUI v2
 -- ═══════════════════════════════════════════════════════════════════════════
 local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
@@ -539,7 +552,6 @@ Window:EditOpenButton({
     OnlyMobile   = true,
 })
 
--- Tabs
 local TabCombat = Window:Tab({ Title = "Combat", Icon = "solar:sword-bold" })
 local TabCurve  = Window:Tab({ Title = "Curve",  Icon = "solar:activity-bold" })
 local TabExtra  = Window:Tab({ Title = "Extra",  Icon = "solar:zap-bold" })
@@ -550,7 +562,7 @@ local SecMain = TabCombat:Section({ Title = "Auto Parry" })
 
 SecMain:Toggle({
     Title    = "Auto Parry",
-    Desc     = "Master switch — predictive multi-target",
+    Desc     = "Pro tuned — multi-target, anti-double, ping-comp",
     Value    = Config.enabled,
     Callback = function(v)
         Config.enabled = v
@@ -564,30 +576,11 @@ SecMain:Toggle({
 
 SecMain:Slider({
     Title    = "Accuracy",
-    Desc     = "1 = late | 100 = early",
+    Desc     = "1 = late | 50 = balanced | 100 = early",
     Value    = { Min = 1, Max = 100, Default = Config.accuracy, Rounding = 0 },
-    Callback = function(v) Config.accuracy = v end,
-})
-
-SecMain:Slider({
-    Title    = "Max Parry / Frame",
-    Desc     = "Banyak bola per frame — 6 = safe, 10 = aggressive",
-    Value    = { Min = 1, Max = 12, Default = Config.maxPerFrame, Rounding = 0 },
-    Callback = function(v) Config.maxPerFrame = v end,
-})
-
-SecMain:Slider({
-    Title    = "Anti-Double Lock (s)",
-    Desc     = "Skip bola yang baru di-fire N detik",
-    Value    = { Min = 0.3, Max = 2.0, Default = Config.lockDuration, Rounding = 2 },
-    Callback = function(v) Config.lockDuration = v end,
-})
-
-SecMain:Slider({
-    Title    = "Max Distance",
-    Desc     = "Radius deteksi bola (studs)",
-    Value    = { Min = 50, Max = 400, Default = Config.maxDist, Rounding = 0 },
-    Callback = function(v) Config.maxDist = v end,
+    Callback = function(v)
+        Config.accuracy = v
+    end,
 })
 
 local SecSpam = TabCombat:Section({ Title = "Auto Spam" })
@@ -659,36 +652,6 @@ SecInvis:Button({
         Captured.remote = nil
         Captured.args = nil
         Captured.done = false
-        _hookedMT = {}
-        for _, r in ipairs(RS:GetDescendants()) do
-            if r:IsA('RemoteEvent') or r:IsA('RemoteFunction') then
-                local ok, mt = pcall(getrawmetatable, r)
-                if ok and mt and not _hookedMT[mt] then
-                    _hookedMT[mt] = true
-                    pcall(setreadonly, mt, false)
-                    local old = mt.__index
-                    mt.__index = function(self, key)
-                        if key == 'FireServer' or key == 'InvokeServer' then
-                            return function(_, ...)
-                                local args = { ... }
-                                if not Captured.remote and #args >= 6
-                                and type(args[2]) == 'string'
-                                and type(args[3]) == 'string'
-                                and typeof(args[5]) == 'CFrame' then
-                                    Captured.remote = self
-                                    Captured.method = key
-                                    Captured.args = args
-                                    Captured.done = true
-                                end
-                                return old(self, key)(_, ...)
-                            end
-                        end
-                        return old(self, key)
-                    end
-                    pcall(setreadonly, mt, true)
-                end
-            end
-        end
         WindUI:Notify({
             Title = "Re-Hook",
             Content = "Parry manual sekali lagi",
@@ -734,22 +697,22 @@ task.spawn(function()
     local deadline = tick() + 30
     while not Captured.done and tick() < deadline do task.wait(0.5) end
     if Captured.done then
-        print("[V8.1M] Remote captured: " .. tostring(Captured.remote.Name))
+        print("[V8.3M] Remote captured: " .. tostring(Captured.remote.Name))
     else
-        print("[V8.1M] Remote not captured — parry manual 1-3x")
+        print("[V8.3M] Remote not captured — parry manual 1-3x")
     end
 end)
 
 Window:SelectTab(1)
 
 WindUI:Notify({
-    Title = "Slax V8.1",
-    Content = "Auto Parry loaded — parry manual sekali",
+    Title = "Slax V8.3",
+    Content = "Accuracy-only control — parry manual sekali",
     Duration = 5,
 })
 
-print("[V8.1M] Slax V8.1 Mobile loaded")
-print("[V8.1M] Toggle: E | Panic: END | Curves: 1-7")
+print("[V8.3M] Slax V8.3 loaded")
+print("[V8.3M] Toggle: E | Panic: END | Curves: 1-7")
 
 -- == Unload ===============================================================
 _G.slax_mobile_unload = function()
