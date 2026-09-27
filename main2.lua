@@ -1,5 +1,5 @@
--- Blade Ball Script - Bypass & Fluent UI (Auto Parry MAX)
--- Slax Hub v13.0 - Base by yossef | Physics Prediction + Reactive Window by ALPHA XK
+-- Blade Ball Script - Auto Parry MAX v13.1
+-- Base by yossef | Multi-Target Real + Anti-Double + Long Range by ALPHA XK
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
@@ -7,7 +7,7 @@ local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.
 
 local Window = Fluent:CreateWindow({
     Title = "Blade Ball - Slax Hub",
-    SubTitle = "v13.0 (Auto Parry MAX)",
+    SubTitle = "v13.1 (Multi-Target MAX)",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 500),
     Acrylic = true,
@@ -21,35 +21,33 @@ local Tabs = {
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
-local replicated_storage = cloneref(game:GetService('ReplicatedStorage'))
-local workspace = cloneref(game:GetService('Workspace'))
+local RS = cloneref(game:GetService('ReplicatedStorage'))
+local WS = cloneref(game:GetService('Workspace'))
 local Stats = cloneref(game:GetService('Stats'))
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui")
-local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ═══════════════════════════════════════════
 -- STATE
 -- ═══════════════════════════════════════════
 local AutoParryEnabled = false
-local ParryTiming      = 30      -- 1=late, 100=early
-local MaxPerFrame      = 6
-local BurstMode        = true    -- 2x fire per target
+local ParryTiming      = 30
+local MaxPerFrame      = 8          -- lebih tinggi = lebih banyak bola per frame
+local BurstMode        = true
 local AdaptiveMode     = true
 local PingCompensate   = true
 
 -- ═══════════════════════════════════════════
--- TUNABLES (advanced)
+-- TUNABLES
 -- ═══════════════════════════════════════════
-local MAX_PARRY_DISTANCE   = 200
-local MAX_PARRY_ANGLE      = 90
-local PREDICTION_TIME_MIN  = 0.03
-local PREDICTION_TIME_MAX  = 0.35
-local BALL_LOCK_DURATION   = 0.35
-local REACTIVE_MARGIN      = 0.02
-local CURVE_TRACK_FRAMES   = 2
+local MAX_PARRY_DISTANCE   = 400          -- RANGE JAUH
+local MAX_PARRY_ANGLE      = 110          -- SUDUT LEBAR
+local PREDICTION_TIME_MIN  = 0.01
+local PREDICTION_TIME_MAX  = 0.50
+local BALL_LOCK_DURATION   = 0.80         -- ANTI-DOUBLE (naik dari 0.35)
+local REACTIVE_MARGIN      = 0.03
+local EFFECTIVE_RADIUS     = 12           -- radius parry efektif (naik dari 6)
+local GLOBAL_COOLDOWN_MIN  = 0.015        -- cooldown global minimal
 
 -- ═══════════════════════════════════════════
 -- TOKEN
@@ -62,10 +60,7 @@ for _, f in getgc(true) do
             local ok2, ups = pcall(function() return debug.getupvalues(f) end)
             if ok2 and ups then
                 for _, v in pairs(ups) do
-                    if type(v) == 'function' then
-                        _token = v
-                        break
-                    end
+                    if type(v) == 'function' then _token = v; break end
                 end
             end
             if _token then break end
@@ -76,7 +71,7 @@ end
 local function _tokenize(uid)
     if not _token then return "" end
     local ok, res = pcall(function()
-        local t = tostring(math.floor(workspace:GetServerTimeNow() * 100))
+        local t = tostring(math.floor(WS:GetServerTimeNow() * 100))
         local k = _token(uid, 'TIME')
         local chars = table.create(#t)
         for i = 1, #t do
@@ -131,16 +126,16 @@ local function _hook(remote)
     end
 end
 
-for _, r in pairs(replicated_storage:GetDescendants()) do
+for _, r in pairs(RS:GetDescendants()) do
     if r:IsA('RemoteEvent') or r:IsA('RemoteFunction') then
         _hook(r)
     end
 end
 
-print("[Slax Hub v13.0] Hooks installed — parry manual sekali")
+print("[Slax Hub v13.1] Hooks installed — parry manual sekali")
 
 -- ═══════════════════════════════════════════
--- FIRE (multi-remote, multi-burst)
+-- FIRE (per-target burst)
 -- ═══════════════════════════════════════════
 local function FireParryBypass(burstCount)
     burstCount = burstCount or 1
@@ -152,7 +147,7 @@ local function FireParryBypass(burstCount)
                 _origArgs[2],
                 _tokenize(_origArgs[2]),
                 0.5,
-                workspace.CurrentCamera.CFrame,
+                WS.CurrentCamera.CFrame,
                 {},
                 {0, 0},
                 false
@@ -182,39 +177,14 @@ local function GetPing()
 end
 
 -- ═══════════════════════════════════════════
--- 🧠 PHYSICS PREDICTION (linear + curve-aware)
+-- PREDICTION (linear, cukup buat blade ball)
 -- ═══════════════════════════════════════════
--- untuk tiap bola, track 2 velocity terakhir untuk estimasi akselerasi (curve)
-local ballHistory = {}   -- [ball] = {pos, vel, t}
-
 local function GetPredictedPosition(ball, dt)
-    local now = tick()
-    local h = ballHistory[ball]
-
-    local pos = ball.Position
-    local vel = ball.AssemblyLinearVelocity
-
-    if h then
-        local dvel = (vel - h.vel) / math.max(now - h.t, 1e-3)
-        -- kurangi noise: kalau akselerasi > threshold, masih pakai linear
-        if dvel.Magnitude < 500 then
-            return pos + vel * dt + 0.5 * dvel * dt * dt
-        end
-    end
-    return pos + vel * dt
-end
-
-local function UpdateBallHistory(ball)
-    local now = tick()
-    ballHistory[ball] = {
-        pos = ball.Position,
-        vel = ball.AssemblyLinearVelocity,
-        t = now,
-    }
+    return ball.Position + ball.AssemblyLinearVelocity * dt
 end
 
 -- ═══════════════════════════════════════════
--- 📐 ANGLE + MULTI-SIGNAL TARGET
+-- ANGLE + TARGET
 -- ═══════════════════════════════════════════
 local function IsWithinAngle(playerPos, ballPos, ballVel)
     if ballVel.Magnitude < 0.1 then return true end
@@ -225,65 +195,64 @@ local function IsWithinAngle(playerPos, ballPos, ballVel)
     return angle <= MAX_PARRY_ANGLE
 end
 
--- target detection: 3 sinyal
 local function IsTargetingPlayer(ball, hrp)
-    -- sinyal 1: attribute resmi
-    local targetAttr = ball:GetAttribute("target")
-    if targetAttr == LocalPlayer.Name then return true end
+    -- sinyal 1: attribute
+    if ball:GetAttribute("target") == LocalPlayer.Name then return true end
 
-    -- sinyal 2: velocity toward player
+    -- sinyal 2: velocity toward player + dekat
     local vel = ball.AssemblyLinearVelocity
     local toPlayer = hrp.Position - ball.Position
     if vel.Magnitude > 3 and toPlayer.Magnitude > 0.1 then
         local approach = vel.Unit:Dot(toPlayer.Unit)
-        if approach > 0.9 then
-            -- cek jarak: kalau sangat dekat, kredibel target
-            if toPlayer.Magnitude < MAX_PARRY_DISTANCE then
-                return true
-            end
+        if approach > 0.85 and toPlayer.Magnitude < MAX_PARRY_DISTANCE then
+            return true
         end
+    end
+
+    -- sinyal 3: sudah dalam radius parry meski tidak jelas target
+    if toPlayer.Magnitude < EFFECTIVE_RADIUS * 3 then
+        return true
     end
 
     return false
 end
 
 -- ═══════════════════════════════════════════
--- ⚔️ AUTO PARRY LOOP v13.0 — MULTI-TARGET + REACTIVE
+-- AUTO PARRY LOOP — MULTI-TARGET REAL + ANTI-DOUBLE
 -- ═══════════════════════════════════════════
 task.spawn(function()
     local lastFireTime = 0
-    local ballLocks = {}
+    local ballLocks = {}        -- [ball] = unlockTime
+    local ballLastFired = {}    -- [ball] = lastFireTime (anti-double)
 
     local adaptive = {
         leadBonus   = 0.0,
         cooldownAdj = 1.0,
         attempts    = 0,
         success     = 0,
-        reject      = 0,
         lastEval    = tick(),
     }
 
     while task.wait() do
         if not AutoParryEnabled then
             ballLocks = {}
+            ballLastFired = {}
             lastFireTime = 0
             adaptive.leadBonus = 0.0
             adaptive.cooldownAdj = 1.0
             adaptive.attempts = 0
             adaptive.success = 0
-            adaptive.reject = 0
             continue
         end
 
         local now = tick()
         local ping = GetPing()
 
-        -- ═══ adaptive eval tiap 5s ═══
+        -- adaptive eval
         if AdaptiveMode and (now - adaptive.lastEval >= 5) then
             adaptive.lastEval = now
             local rate = (adaptive.attempts > 0)
-                and (adaptive.success / adaptive.attempts)
-                or 0.5
+                and (adaptive.success / adaptive.attempts) or 0.5
             if rate < 0.7 then
                 adaptive.leadBonus = math.min(adaptive.leadBonus + 0.010, 0.08)
                 adaptive.cooldownAdj = math.max(adaptive.cooldownAdj - 0.05, 0.7)
@@ -293,23 +262,18 @@ task.spawn(function()
             end
             adaptive.attempts = 0
             adaptive.success = 0
-            adaptive.reject = 0
         end
 
-        -- ═══ cleanup ═══
+        -- cleanup locks + anti-double history
         for ball, unlock in pairs(ballLocks) do
-            if not ball.Parent or now >= unlock then
-                ballLocks[ball] = nil
-            end
+            if not ball.Parent or now >= unlock then ballLocks[ball] = nil end
         end
-        for ball, _ in pairs(ballHistory) do
-            if not ball.Parent then ballHistory[ball] = nil end
+        for ball, t in pairs(ballLastFired) do
+            if not ball.Parent or (now - t) > 1.0 then ballLastFired[ball] = nil end
         end
 
-        -- ═══ cooldown ═══
-        local base_cd = 0.025
-        local ping_cd = ping * 0.4
-        local cooldown = (base_cd + ping_cd) * adaptive.cooldownAdj
+        -- GLOBAL cooldown (minimal biar nggak flood)
+        local cooldown = math.max(GLOBAL_COOLDOWN_MIN, ping * 0.3) * adaptive.cooldownAdj
         if (now - lastFireTime) < cooldown then continue end
 
         local char = LocalPlayer.Character
@@ -318,12 +282,11 @@ task.spawn(function()
         if not hrp then continue end
         local playerPos = hrp.Position
 
-        local ballsFolder = workspace:FindFirstChild("Balls")
+        local ballsFolder = WS:FindFirstChild("Balls")
         if not ballsFolder then continue end
 
-        -- ═══ lead time (ping + adaptive + timing slider) ═══
+        -- lead time
         local slider_offset = ((ParryTiming - 50) / 100) * 0.20
-        -- slider 0 → -0.10s (late), slider 100 → +0.10s (early)
         local ping_lead = PingCompensate and (ping * 0.9) or 0.0
         local lead = math.clamp(
             ping_lead + slider_offset + adaptive.leadBonus + REACTIVE_MARGIN,
@@ -331,7 +294,7 @@ task.spawn(function()
             PREDICTION_TIME_MAX
         )
 
-        -- ═══ kumpulin kandidat ═══
+        -- kumpulin SEMUA kandidat
         local candidates = {}
 
         for _, ball in ipairs(ballsFolder:GetChildren()) do
@@ -339,29 +302,28 @@ task.spawn(function()
             if ball:GetAttribute("realBall") == false then continue end
             if ballLocks[ball] then continue end
 
+            -- ANTI-DOUBLE: skip kalau baru di-fire dalam 0.8s
+            local lastFired = ballLastFired[ball]
+            if lastFired and (now - lastFired) < BALL_LOCK_DURATION then
+                continue
+            end
+
             local vel = ball.AssemblyLinearVelocity
             local speed = vel.Magnitude
             if speed < 3 then continue end
 
-            -- update history untuk prediksi curve
-            UpdateBallHistory(ball)
-
-            -- target check (multi-signal)
             if not IsTargetingPlayer(ball, hrp) then continue end
 
-            -- prediksi posisi di masa depan (lead time)
             local predictedPos = GetPredictedPosition(ball, lead)
             local predictedDistance = (playerPos - predictedPos).Magnitude
 
             if predictedDistance > MAX_PARRY_DISTANCE then continue end
             if not IsWithinAngle(playerPos, predictedPos, vel) then continue end
 
-            -- waktu bola menyentuh player (approx, ball dianggap sphere kecil)
-            local effective_radius = 6   -- radius parry efektif
-            local etc = (predictedDistance - effective_radius) / math.max(speed, 1)
+            local etc = (predictedDistance - EFFECTIVE_RADIUS) / math.max(speed, 1)
             if etc < 0 then etc = 0 end
 
-            -- reactive condition: fire kalau etc < lead (bukan ==)
+            -- fire kalau etc <= lead (dan etc >= 0)
             if etc <= lead then
                 table.insert(candidates, {
                     ball = ball,
@@ -372,7 +334,7 @@ task.spawn(function()
             end
         end
 
-        -- ═══ fire semua kandidat (sorted urgent dulu) ═══
+        -- fire SEMUA kandidat (sorted urgent dulu)
         if #candidates > 0 then
             table.sort(candidates, function(a, b) return a.etc < b.etc end)
 
@@ -382,8 +344,10 @@ task.spawn(function()
             for i = 1, fireN do
                 local ball = candidates[i].ball
                 ballLocks[ball] = now + BALL_LOCK_DURATION
+                ballLastFired[ball] = now
             end
 
+            -- burst fire (2x per round kalau enabled)
             local burst = BurstMode and 2 or 1
             local fired = FireParryBypass(burst)
             if fired then
@@ -438,31 +402,31 @@ Tabs.Main:AddSlider("ParryTiming", {
 
 Tabs.Main:AddSlider("MaxPerFrame", {
     Title = "Max Parry / Frame",
-    Description = "4 = safe | 6 = aggressive | 8 = kick risk",
-    Default = 6,
+    Description = "Banyak bola per frame — 8 = agresif",
+    Default = 8,
     Min = 1,
-    Max = 8,
+    Max = 12,
     Rounding = 0,
     Callback = function(v) MaxPerFrame = v end
 })
 
 Tabs.Tune:AddToggle("BurstMode", {
     Title = "Burst Fire",
-    Desc = "2x fire per target — redundancy, lebih akurat",
+    Desc = "2x fire per round — redundancy",
     Default = true,
 })
 :OnChanged(function(v) BurstMode = v end)
 
 Tabs.Tune:AddToggle("AdaptiveMode", {
     Title = "Adaptive Mode",
-    Desc = "Auto-adjust lead + cooldown berdasar success rate",
+    Desc = "Auto-adjust lead + cooldown",
     Default = true,
 })
 :OnChanged(function(v) AdaptiveMode = v end)
 
 Tabs.Tune:AddToggle("PingCompensate", {
     Title = "Ping Compensate",
-    Desc = "Fire lebih awal berdasar ping — kompensasi latency",
+    Desc = "Fire lebih awal berdasar ping",
     Default = true,
 })
 :OnChanged(function(v) PingCompensate = v end)
@@ -470,26 +434,33 @@ Tabs.Tune:AddToggle("PingCompensate", {
 Tabs.Tune:AddSlider("MaxDist", {
     Title = "Max Parry Distance",
     Description = "Radius deteksi bola (studs)",
-    Default = 200,
-    Min = 80,
-    Max = 400,
+    Default = 400,
+    Min = 100,
+    Max = 800,
     Rounding = 0,
     Callback = function(v) MAX_PARRY_DISTANCE = v end
 })
 
 Tabs.Tune:AddSlider("LockDur", {
     Title = "Ball Lock Duration",
-    Description = "Berapa lama bola di-skip setelah fire (detik)",
-    Default = 0.35,
-    Min = 0.1,
-    Max = 1.0,
+    Description = "Anti-double protection (detik)",
+    Default = 0.8,
+    Min = 0.3,
+    Max = 2.0,
     Rounding = 2,
     Callback = function(v) BALL_LOCK_DURATION = v end
 })
 
--- ═══════════════════════════════════════════
--- Settings
--- ═══════════════════════════════════════════
+Tabs.Tune:AddSlider("Angle", {
+    Title = "Max Parry Angle",
+    Description = "Sudut maksimal deteksi bola (derajat)",
+    Default = 110,
+    Min = 60,
+    Max = 180,
+    Rounding = 0,
+    Callback = function(v) MAX_PARRY_ANGLE = v end
+})
+
 InterfaceManager:SetLibrary(Fluent)
 SaveManager:SetLibrary(Fluent)
 SaveManager:IgnoreThemeSettings()
@@ -499,7 +470,7 @@ SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 
 Fluent:Notify({
-    Title = "Slax Hub v13.0 👑",
-    Content = "Auto Parry MAX — physics prediction + reactive window",
+    Title = "Slax Hub v13.1 👑",
+    Content = "Multi-Target MAX — long range + anti-double",
     Duration = 6
 })
