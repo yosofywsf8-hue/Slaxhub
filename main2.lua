@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════
--- Slax Hub - EAGLE+ Auto Parry
--- Base by yossef | Auto Parry upgraded by ALPHA XK
+-- Slax Hub - EAGLE-Style Auto Parry
+-- Developed by yossef
 -- ═══════════════════════════════════════════════════════
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -8,7 +8,7 @@ local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/rel
 local Window = WindUI:CreateWindow({
     Title = "Slax Hub",
     Icon = "swords",
-    Author = "yossef | ALPHA XK",
+    Author = "yossef",
     Folder = "SlaxHub",
     Size = UDim2.fromOffset(560, 500),
     Transparent = true,
@@ -27,37 +27,37 @@ Window:EditOpenButton({
 })
 
 -- Tabs
-local ParryTab    = Window:Tab({ Title = "Parry",    Icon = "sword" })
-local SpamTab     = Window:Tab({ Title = "Spam",     Icon = "zap" })
+local ParryTab = Window:Tab({ Title = "Parry", Icon = "sword" })
+local SpamTab = Window:Tab({ Title = "Spam", Icon = "zap" })
 local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
 
 -- Sections
-local ParrySection    = ParryTab:Section({ Title = "Auto Parry" })
-local CurveSection    = ParryTab:Section({ Title = "Curve Mode" })
-local SpamSection     = SpamTab:Section({ Title = "Auto Spam" })
-local TriggerSection  = SpamTab:Section({ Title = "Triggerbot" })
-local ManualSection   = SpamTab:Section({ Title = "Manual Spam" })
+local ParrySection = ParryTab:Section({ Title = "Auto Parry" })
+local CurveSection = ParryTab:Section({ Title = "Curve Mode" })
+local SpamSection = SpamTab:Section({ Title = "Auto Spam" })
+local TriggerSection = SpamTab:Section({ Title = "Triggerbot" })
+local ManualSection = SpamTab:Section({ Title = "Manual Spam" })
 local SettingsSection = SettingsTab:Section({ Title = "Actions" })
 
 -- ═══════════════════════════════════════════════════════
 -- STATE
 -- ═══════════════════════════════════════════════════════
-local AutoParryEnabled   = false
-local AutoSpamEnabled    = false
-local ManualSpamVisible  = false
-local ManualSpamActive   = false
-local TriggerbotVisible  = false
-local TriggerbotActive   = false
-local Accuracy           = 50
-local DivisorMultiplier  = 1.1
-local RandomAccuracy     = false
-local CurrentCurve       = "Camera"
-local RandomCurve        = false
-local AutoSpamCPS        = 350
-local SpamRange          = 60
-local TriggerDistance    = 25
-local TriggerCPS         = 80
-local PlayAnim           = false
+local AutoParryEnabled = false
+local AutoSpamEnabled = false
+local ManualSpamVisible = false
+local ManualSpamActive = false
+local TriggerbotVisible = false
+local TriggerbotActive = false
+local Accuracy = 50
+local DivisorMultiplier = 1.1
+local RandomAccuracy = false
+local CurrentCurve = "Camera"
+local RandomCurve = false
+local AutoSpamCPS = 350
+local SpamRange = 60
+local TriggerDistance = 25
+local TriggerCPS = 80
+local PlayAnim = false
 
 local CURVE_NAMES = {"Camera", "Random", "Accelerated", "Backwards", "Slow", "High", "Normal", "Speed", "Down", "Left", "Right"}
 
@@ -66,8 +66,8 @@ local CURVE_NAMES = {"Camera", "Random", "Accelerated", "Backwards", "Slow", "Hi
 -- ═══════════════════════════════════════════════════════
 
 ParrySection:Toggle({
-    Title = "⚡ Auto Parry (EAGLE+)",
-    Desc = "Predictive target-based parry — only when ball targets YOU",
+    Title = "⚡ Auto Parry (EAGLE Style)",
+    Desc = "Target-based parry - only when ball targets YOU",
     Value = false,
     Callback = function(Value) AutoParryEnabled = Value end
 })
@@ -255,7 +255,7 @@ task.spawn(function()
                 setreadonly(_meta, false)
                 local _old = _meta.__index
                 _meta.__index = function(self, key)
-                    if (key == 'FireServer' and self:IsA('RemoteEvent'))
+                    if (key == 'FireServer' and self:IsA('RemoteEvent')) 
                         or (key == 'InvokeServer' and self:IsA('RemoteFunction')) then
                         return function(_, ...)
                             local _args = {...}
@@ -280,7 +280,7 @@ task.spawn(function()
             end
         end
 
-        print("[Slax Hub] Hooks installed, waiting for capture")
+        print("[Slax Hub] Hooks: " .. tostring(#_reverted))
 
         -- ═══════════════════════════════════════════════
         -- 🎨 CURVE SYSTEM
@@ -296,7 +296,7 @@ task.spawn(function()
             local targetPart = nil
             local bestDist = math.huge
             local centerScreen = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-
+            
             for _, p in ipairs(Players:GetPlayers()) do
                 if p ~= LocalPlayer and p.Character and p.Character.PrimaryPart then
                     local sp, onScreen = Camera:WorldToScreenPoint(p.Character.PrimaryPart.Position)
@@ -350,11 +350,11 @@ task.spawn(function()
         -- ═══════════════════════════════════════════════
         local function FireParry()
             if not _capturedRemote or not _capturedArgs then return false end
-
+            
             local Camera = WS.CurrentCamera
             local vp = Camera.ViewportSize
             local aimTarget = {math.floor(vp.X / 2), math.floor(vp.Y / 2)}
-
+            
             local eventData = {}
             local Alive = WS:FindFirstChild("Alive")
             if Alive then
@@ -365,7 +365,7 @@ task.spawn(function()
                     end
                 end
             end
-
+            
             local ok = pcall(function()
                 local packet = {
                     _capturedArgs[1],
@@ -398,7 +398,7 @@ task.spawn(function()
                 if not humanoid then return end
                 local animator = humanoid:FindFirstChildOfClass("Animator")
                 if not animator then return end
-
+                
                 local SwordAPI = RS:FindFirstChild("Shared") and RS.Shared:FindFirstChild("SwordAPI")
                 if not SwordAPI then return end
                 local collection = SwordAPI:FindFirstChild("Collection")
@@ -407,7 +407,7 @@ task.spawn(function()
                 if not default then return end
                 local anim = default:FindFirstChild("GrabParry")
                 if not anim then return end
-
+                
                 if animCache.track then
                     pcall(function() animCache.track:Stop() end)
                 end
@@ -430,16 +430,11 @@ task.spawn(function()
         end
 
         local function GetPing()
-            local ok, ping_str = pcall(function()
-                return Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
-            end)
-            if ok and ping_str then
-                return tonumber(ping_str:match("%d+")) or 0
-            end
-            return 0
+            local ping_str = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
+            return tonumber(ping_str:match("%d+")) or 0
         end
 
-        -- Cleanup ballLocks (buat spam/triggerbot yang pakai global lock)
+        -- Cleanup
         task.spawn(function()
             while task.wait(0.3) do
                 local now = tick()
@@ -450,176 +445,116 @@ task.spawn(function()
         end)
 
         -- ═══════════════════════════════════════════════
-        -- 🔥🔥🔥 EAGLE+ AUTO PARRY (predictive ETC)
+        -- 🔥🔥🔥 EAGLE-STYLE AUTO PARRY (PreSimulation!)
         -- ═══════════════════════════════════════════════
-        local parryStats = {
-            attempts   = 0,
-            success    = 0,
-            pingFactor = 1.0,
-            leadBonus  = 0.0,
-        }
-        local ballFireLock = {}
-
-        local function estimate_ETC(ball, hrp, parry_radius)
-            local ballPos = ball.Position
-            local vel = ball.AssemblyLinearVelocity
-            local rel = hrp.Position - ballPos
-            local a = vel:Dot(vel)
-            if a < 1e-3 then
-                return math.huge, rel.Magnitude
-            end
-            local b = 2 * rel:Dot(vel)
-            local c = rel:Dot(rel) - parry_radius * parry_radius
-            local disc = b * b - 4 * a * c
-            if disc < 0 then
-                return math.huge, rel.Magnitude
-            end
-            local sq = math.sqrt(disc)
-            local t1 = (-b - sq) / (2 * a)
-            local t2 = (-b + sq) / (2 * a)
-            local t = (t1 > 0 and t1) or (t2 > 0 and t2) or math.huge
-            return t, rel.Magnitude
-        end
-
-        local function collect_target_balls(ballsFolder, hrp)
-            local list = {}
-            for _, ball in ipairs(ballsFolder:GetChildren()) do
-                if not ball:IsA("BasePart") then continue end
-                if ball:GetAttribute("realBall") == false then continue end
-                if ball:FindFirstChild("ComboCounter") then continue end
-
-                local isTargeted = (ball:GetAttribute("target") == LocalPlayer.Name)
-                if not isTargeted then
-                    local vel = ball.AssemblyLinearVelocity
-                    local toPlayer = (hrp.Position - ball.Position)
-                    if vel.Magnitude > 5 and toPlayer.Magnitude > 0 then
-                        local approach = vel.Unit:Dot(toPlayer.Unit)
-                        if approach > 0.85 then
-                            isTargeted = true
-                        end
-                    end
-                end
-                if not isTargeted then continue end
-
-                local zoomies = ball:FindFirstChild("zoomies")
-                if not zoomies then continue end
-                local speed = zoomies.VectorVelocity.Magnitude
-                if speed < 1 then continue end
-
-                table.insert(list, {
-                    ball = ball,
-                    speed = speed,
-                    zoomies = zoomies,
-                })
-            end
-            return list
-        end
-
-        local function compute_lead(ping_ms, speed, distance)
-            local ping_lead = math.clamp(ping_ms / 1000, 0.015, 0.180)
-            local speed_bonus = math.clamp((speed - 100) / 500 * 0.04, 0, 0.05)
-            local dist_bonus = math.clamp(distance / 100 * 0.02, 0, 0.03)
-            local adapt = parryStats.leadBonus
-            return ping_lead + speed_bonus + dist_bonus + adapt
-        end
-
-        -- adaptive eval tiap 5 detik
-        task.spawn(function()
-            while task.wait(5) do
-                local total = parryStats.attempts
-                local wins = parryStats.success
-                local rate = (total > 0) and (wins / total) or 0.5
-                if rate < 0.75 then
-                    parryStats.leadBonus = math.min(parryStats.leadBonus + 0.008, 0.06)
-                elseif rate > 0.95 then
-                    parryStats.leadBonus = math.max(parryStats.leadBonus - 0.004, -0.02)
-                end
-                parryStats.attempts = 0
-                parryStats.success = 0
-            end
-        end)
+        local lastParryTime = 0
+        local parried = false
+        local targetUpdated = {}
 
         RunService.PreSimulation:Connect(function()
             if not AutoParryEnabled then return end
-
+            
+            -- Anti-death
             local alive, char, hrp = IsAlive()
             if not alive then return end
+            
+            -- Anti-SingularityCape
             if hrp:FindFirstChild("SingularityCape") then return end
-
+            
             local ballsFolder = WS:FindFirstChild("Balls")
             if not ballsFolder then return end
-
-            local candidates = collect_target_balls(ballsFolder, hrp)
-            if #candidates == 0 then return end
-
-            local ping_ms = GetPing()
-            local now = tick()
-            local toFire = {}
-
-            for _, c in ipairs(candidates) do
-                local ball = c.ball
-                local speed = c.speed
-
-                if ballFireLock[ball] and now < ballFireLock[ball] then
-                    continue
+            
+            -- Randomized accuracy (based on ping)
+            local effectiveAccuracy = Accuracy
+            if RandomAccuracy then
+                local pingMs = GetPing()
+                if pingMs >= 90 then effectiveAccuracy = 4
+                elseif pingMs <= 50 then effectiveAccuracy = math.random(70, 100)
                 end
-
-                local effective_radius = 8 + math.min(speed / 60, 12)
-                local etc, dist = estimate_ETC(ball, hrp, effective_radius)
-                if etc == math.huge then continue end
-
-                local lead = compute_lead(ping_ms, speed, dist)
-                if etc <= lead then
-                    table.insert(toFire, {
-                        ball = ball,
-                        etc = etc,
-                        lead = lead,
-                        dist = dist,
-                        speed = speed,
-                    })
-                end
+                DivisorMultiplier = 0.7 + (effectiveAccuracy - 1) * (0.9 / 99)
             end
-
-            if #toFire == 0 then return end
-
-            table.sort(toFire, function(a, b) return a.etc < b.etc end)
-
-            local target = toFire[1]
-            if target then
-                local ok = FireParry()
-                if ok then
-                    parryStats.attempts = parryStats.attempts + 1
+            
+            local ping = GetPing() / 10
+            local ping_threshold = math.clamp(ping / 10, 5, 17)
+            
+            for _, ball in ipairs(ballsFolder:GetChildren()) do
+                if not ball:IsA("BasePart") then continue end
+                if ball:GetAttribute("realBall") == false then continue end
+                if ballLocks[ball] then continue end
+                
+                -- 🎯 Target check (EAGLE style)
+                local ball_target = ball:GetAttribute('target')
+                
+                -- Reset parried when target changes
+                ball:GetAttributeChangedSignal('target'):Once(function()
+                    parried = false
+                end)
+                
+                if parried then continue end
+                if ball_target ~= LocalPlayer.Name then continue end
+                
+                -- Skip ComboCounter ball
+                if ball:FindFirstChild('ComboCounter') then continue end
+                
+                -- 🎯 Get velocity from zoomies (EAGLE style!)
+                local zoomies = ball:FindFirstChild('zoomies')
+                if not zoomies then continue end
+                local velocity = zoomies.VectorVelocity
+                local speed = velocity.Magnitude
+                if speed < 1 then continue end
+                
+                local ballPos = ball.Position
+                local distance = (hrp.Position - ballPos).Magnitude
+                
+                -- 🎯 EAGLE FORMULA
+                local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
+                local speed_divisor = (2.4 + capped_speed_diff * 0.002) * DivisorMultiplier
+                local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+                
+                -- Extra Boosts (Slax Hub features)
+                -- Close Combat
+                local closestEnemy = math.huge
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer and p.Character then
+                        local p_hrp = p.Character:FindFirstChild("HumanoidRootPart")
+                        if p_hrp then
+                            local d = (p_hrp.Position - hrp.Position).Magnitude
+                            if d < closestEnemy then closestEnemy = d end
+                        end
+                    end
+                end
+                if closestEnemy < 15 then parry_accuracy = parry_accuracy + 5
+                elseif closestEnemy < 30 then parry_accuracy = parry_accuracy + 3 end
+                
+                -- Movement
+                local playerSpeed = hrp.AssemblyLinearVelocity.Magnitude
+                if playerSpeed > 15 then parry_accuracy = parry_accuracy + 5
+                elseif playerSpeed > 8 then parry_accuracy = parry_accuracy + 3 end
+                
+                -- Fast ball
+                if speed >= 250 then parry_accuracy = parry_accuracy + 8
+                elseif speed >= 200 then parry_accuracy = parry_accuracy + 5 end
+                
+                -- 🚀 FIRE
+                if distance <= parry_accuracy then
+                    FireParry()
                     PlayParryAnim()
-                    ballFireLock[target.ball] = now + 0.35
-
-                    -- success heuristic
+                    parried = true
+                    ballLocks[ball] = tick() + 0.5
+                    
+                    -- Wait until target changes OR 1 second (EAGLE style anti-double)
+                    local startWait = tick()
                     task.spawn(function()
-                        local checkStart = tick()
-                        while tick() - checkStart < 0.3 do
-                            task.wait(0.05)
-                            if not target.ball.Parent then
-                                parryStats.success = parryStats.success + 1
+                        while parried and (tick() - startWait) < 1 do
+                            RunService.Stepped:Wait()
+                            if ball:GetAttribute('target') ~= LocalPlayer.Name then
+                                parried = false
                                 break
                             end
-                            local v = target.ball.AssemblyLinearVelocity
-                            if v.Magnitude > 1 then
-                                local toPlayer = (hrp.Position - target.ball.Position)
-                                if toPlayer.Magnitude > 0.1 and v.Unit:Dot(toPlayer.Unit) < 0.3 then
-                                    parryStats.success = parryStats.success + 1
-                                    break
-                                end
-                            end
                         end
+                        parried = false
                     end)
-                end
-            end
-
-            -- housekeeping ballFireLock
-            if math.random() < 0.02 then
-                for b, t in pairs(ballFireLock) do
-                    if now > t + 5 or not b.Parent then
-                        ballFireLock[b] = nil
-                    end
+                    return
                 end
             end
         end)
@@ -630,26 +565,26 @@ task.spawn(function()
         local lastTriggerTime = 0
         RunService.Heartbeat:Connect(function()
             if not TriggerbotActive then return end
-
+            
             local now = tick()
             if (now - lastTriggerTime) < (1 / math.max(TriggerCPS, 1)) then return end
-
+            
             local alive, char, hrp = IsAlive()
             if not alive then return end
-
+            
             local ballsFolder = WS:FindFirstChild("Balls")
             if not ballsFolder then return end
-
+            
             for _, ball in ipairs(ballsFolder:GetChildren()) do
                 if not ball:IsA("BasePart") then continue end
                 if ball:GetAttribute("realBall") == false then continue end
                 if ballLocks[ball] then continue end
                 if ball:GetAttribute('target') ~= LocalPlayer.Name then continue end
-
+                
                 local ballPos = ball.Position
                 local distance = (hrp.Position - ballPos).Magnitude
                 if distance > TriggerDistance then continue end
-
+                
                 lastTriggerTime = now
                 ballLocks[ball] = now + 0.4
                 FireParry()
@@ -665,13 +600,13 @@ task.spawn(function()
         RunService.Heartbeat:Connect(function()
             if not AutoSpamEnabled then return end
             local now = tick()
-
+            
             local alive, char, hrp = IsAlive()
             if not alive then return end
-
+            
             local playerPos = hrp.Position
             local nearPlayer = false
-
+            
             for _, p in ipairs(Players:GetPlayers()) do
                 if p ~= LocalPlayer and p.Character then
                     local p_hrp = p.Character:FindFirstChild("HumanoidRootPart")
@@ -681,11 +616,11 @@ task.spawn(function()
                     end
                 end
             end
-
+            
             if not nearPlayer then return end
             if (now - lastSpamTime) < (1 / math.max(AutoSpamCPS, 1)) then return end
             lastSpamTime = now
-
+            
             local burst = math.max(1, math.floor(AutoSpamCPS / 60))
             for _ = 1, burst do FireParry() end
         end)
@@ -702,7 +637,7 @@ task.spawn(function()
             for _ = 1, 8 do FireParry() end
         end)
 
-        print("[Slax Hub] ✅ EAGLE+ Auto Parry Ready")
+        print("[Slax Hub] ✅ EAGLE Auto Parry Ready")
 
         -- ═══════════════════════════════════════════════
         -- GUI PARENT
@@ -837,4 +772,154 @@ task.spawn(function()
         local TriggerGui = Instance.new("ScreenGui")
         TriggerGui.Name = "SlaxTrigger_" .. math.random(1, 99999)
         TriggerGui.Parent = GetGuiParent()
-        TriggerGui.Reset
+        TriggerGui.ResetOnSpawn = false
+        TriggerGui.IgnoreGuiInset = true
+        TriggerGui.DisplayOrder = 99999
+        TriggerGui.Enabled = false
+
+        local TriggerBtn = Instance.new("TextButton")
+        TriggerBtn.Parent = TriggerGui
+        TriggerBtn.BackgroundColor3 = Color3.fromRGB(18, 14, 28)
+        TriggerBtn.BackgroundTransparency = 0.15
+        TriggerBtn.BorderSizePixel = 0
+        TriggerBtn.Position = UDim2.new(0.05, 0, 0.52, 0)
+        TriggerBtn.Size = UDim2.new(0, 130, 0, 50)
+        TriggerBtn.Font = Enum.Font.GothamBold
+        TriggerBtn.Text = "TRIGGER: ON"
+        TriggerBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
+        TriggerBtn.TextSize = 15
+        TriggerBtn.AutoButtonColor = false
+        TriggerBtn.Active = true
+
+        local TriggerCorner = Instance.new("UICorner")
+        TriggerCorner.CornerRadius = UDim.new(0, 12)
+        TriggerCorner.Parent = TriggerBtn
+
+        local TriggerStroke = Instance.new("UIStroke")
+        TriggerStroke.Parent = TriggerBtn
+        TriggerStroke.Thickness = 2
+        TriggerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+        local TStrokeGradient = Instance.new("UIGradient")
+        TStrokeGradient.Parent = TriggerStroke
+        TStrokeGradient.Rotation = 45
+        TStrokeGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 100, 200)),
+            ColorSequenceKeypoint.new(0.33, Color3.fromRGB(230, 80, 230)),
+            ColorSequenceKeypoint.new(0.66, Color3.fromRGB(180, 90, 255)),
+            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(140, 100, 255))
+        })
+
+        local TBgGradient = Instance.new("UIGradient")
+        TBgGradient.Parent = TriggerBtn
+        TBgGradient.Rotation = 45
+        TBgGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, Color3.fromRGB(20, 60, 50)),
+            ColorSequenceKeypoint.new(1.00, Color3.fromRGB(30, 80, 60))
+        })
+
+        local function UpdateTriggerBtnVisual()
+            if TriggerbotActive then
+                TriggerBtn.Text = "TRIGGER: ON"
+                TriggerBtn.TextColor3 = Color3.fromRGB(80, 255, 180)
+                TBgGradient.Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(20, 60, 50)),
+                    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(30, 80, 60))
+                })
+            else
+                TriggerBtn.Text = "TRIGGER: OFF"
+                TriggerBtn.TextColor3 = Color3.fromRGB(255, 180, 230)
+                TBgGradient.Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(35, 20, 50)),
+                    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(50, 25, 60))
+                })
+            end
+        end
+
+        local tDragging, tDragStart, tStartPos, tDragMoved
+        local tLastTap = 0
+
+        TriggerBtn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+                tDragging = true
+                tDragMoved = false
+                tDragStart = input.Position
+                tStartPos = TriggerBtn.Position
+            end
+        end)
+
+        TriggerBtn.InputChanged:Connect(function(input)
+            if tDragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+                local delta = input.Position - tDragStart
+                if math.abs(delta.X) > 8 or math.abs(delta.Y) > 8 then tDragMoved = true end
+                TriggerBtn.Position = UDim2.new(
+                    tStartPos.X.Scale, tStartPos.X.Offset + delta.X,
+                    tStartPos.Y.Scale, tStartPos.Y.Offset + delta.Y
+                )
+            end
+        end)
+
+        TriggerBtn.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+                tDragging = false
+            end
+        end)
+
+        TriggerBtn.MouseButton1Click:Connect(function()
+            if tDragMoved then return end
+            local now = tick()
+            if now - tLastTap > 0.3 then
+                tLastTap = now
+                TriggerbotActive = not TriggerbotActive
+                UpdateTriggerBtnVisual()
+            end
+        end)
+
+        TriggerBtn.TouchTap:Connect(function()
+            local now = tick()
+            if now - tLastTap > 0.3 then
+                tLastTap = now
+                TriggerbotActive = not TriggerbotActive
+                UpdateTriggerBtnVisual()
+            end
+        end)
+
+        UpdateTriggerBtnVisual()
+
+        -- Visibility Watch
+        task.spawn(function()
+            while task.wait(0.2) do
+                pcall(function()
+                    if ManualSpamVisible and not ManualGui.Enabled then ManualGui.Enabled = true
+                    elseif not ManualSpamVisible and ManualGui.Enabled then ManualGui.Enabled = false end
+                    
+                    if TriggerbotVisible and not TriggerGui.Enabled then TriggerGui.Enabled = true
+                    elseif not TriggerbotVisible and TriggerGui.Enabled then TriggerGui.Enabled = false end
+                end)
+            end
+        end)
+
+        UserInputService.InputBegan:Connect(function(input, gp)
+            if gp then return end
+            if input.KeyCode == Enum.KeyCode.E then
+                ManualSpamActive = not ManualSpamActive
+                UpdateManualBtnVisual()
+            elseif input.KeyCode == Enum.KeyCode.Q then
+                TriggerbotActive = not TriggerbotActive
+                UpdateTriggerBtnVisual()
+            end
+        end)
+    end)
+
+    if not success then
+        warn("[Slax Hub] Logic Error: " .. tostring(err))
+    end
+end)
+
+WindUI:Notify({
+    Title = "Slax Hub ⚡",
+    Content = "EAGLE-Style Auto Parry loaded - PreSimulation + Ball.Physics!",
+    Duration = 6
+})
+
+print("[Slax Hub] ✅ Loaded")
