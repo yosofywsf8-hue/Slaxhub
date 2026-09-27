@@ -1,112 +1,111 @@
--- ═══════════════════════════════════════════════════════════════════════════
--- ███████╗██╗      █████╗ ██╗  ██╗    ██╗   ██╗██████╗ 
--- ██╔════╝██║     ██╔══██╗╚██╗██╔╝    ██║   ██║╚════██╗
--- ███████╗██║     ███████║ ╚███╔╝     ██║   ██║ █████╔╝
--- ╚════██║██║     ██╔══██║ ██╔██╗     ╚██╗ ██╔╝ ╚═══██╗
--- ███████║███████╗██║  ██║██╔╝ ██╗     ╚████╔╝ ██████╔╝
--- ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝      ╚═══╝  ╚═════╝ 
---
--- Slax V2 UI — Mobile-Optimized Auto Parry
--- Author: ALPHA XK | For: Redz
--- Core: Clean V2 (hook stops after capture, intercept solver)
--- UI: WindUI with mobile layout, floating button, live stats
--- ═══════════════════════════════════════════════════════════════════════════
+--[[
+================================================================================
+    BB-Pro + WindUI : Blade Ball AutoParry Pro
+    (c) ALPHA XK  — single-file build with WindUI
+    Requires: executor level 7+ (getgc, cloneref, getrawmetatable, setreadonly,
+              debug.info, debug.getupvalues, bit32, workspace:GetServerTimeNow,
+              game:HttpGet or request)
+    WindUI  : https://github.com/Footagesus/WindUI
+    Stop    : _G.BB_PRO_RUNNING = false
+================================================================================
+]]
 
-if getgenv()._slax_v2ui_loaded then
-    pcall(function() if _G.slax_v2ui_unload then _G.slax_v2ui_unload() end end)
-    getgenv()._slax_v2ui_loaded = nil
-    task.wait(0.2)
+-- ============================================================
+-- 0. GLOBALS + SAFE LOADERS
+-- ============================================================
+local cloneref = cloneref or function(o) return o end
+
+local RS      = cloneref(game:GetService("ReplicatedStorage"))
+local WS      = cloneref(game:GetService("Workspace"))
+local Players = cloneref(game:GetService("Players"))
+local RunSvc  = cloneref(game:GetService("RunService"))
+local CG      = cloneref(game:GetService("CoreGui"))
+local LP      = Players.LocalPlayer
+
+local _WINDUITY_URL = "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"
+
+-- ============================================================
+-- 1. LOAD WINDUITY
+-- ============================================================
+local WindUI
+do
+    local ok, res = pcall(function()
+        if _G.BB_WINDUITY_OVERRIDE then return _G.BB_WINDUITY_OVERRIDE end
+        return loadstring(game:HttpGet(_WINDUITY_URL))()
+    end)
+    if not ok or not res then
+        warn("[BB-Pro] WindUI load fail: " .. tostring(res) ..
+             " — pakai executor dengan HttpGet, atau set _G.BB_WINDUITY_OVERRIDE")
+        return
+    end
+    WindUI = res
+    print("[BB-Pro] WindUI loaded, version: " .. tostring(WindUI.Version or "?"))
 end
-getgenv()._slax_v2ui_loaded = true
 
--- == Services =============================================================
-local Players       = game:GetService("Players")
-local RS            = game:GetService("ReplicatedStorage")
-local WS            = game:GetService("Workspace")
-local RunService    = game:GetService("RunService")
-local Stats         = game:GetService("Stats")
-local UIS           = game:GetService("UserInputService")
-local LP            = Players.LocalPlayer
+-- ============================================================
+-- 2. LICENSE
+-- ============================================================
+local License = {}
+function License.check(user_key)
+    if user_key == nil or user_key == "TRIAL" then
+        return true, os.time() + 7 * 86400
+    end
+    return true, os.time() + 7 * 86400
+end
 
--- == Config ===============================================================
-local Config = {
-    enabled         = true,
-    accuracy        = 100,
-    parryCooldown   = 0.08,
-    maxRange        = 20,
-    pingComp        = 0.6,
-    humanize        = false,
-    humanizeJitter  = 0.015,
-    autoClash       = true,
-    clashRadius     = 22,
-    ballESP         = false,
-    toggleKey       = "E",
-    panicKey        = "END",
-    debugMode       = false,
+-- ============================================================
+-- 3. STATE
+-- ============================================================
+local state = {
+    enabled     = true,
+    smart       = true,
+    force       = false,
+    anti_kick   = true,
+    debug       = false,
+    lead        = 0.12,
+    parry_radius= 32,
+    max_rate    = 22,
 }
 
--- == State ===============================================================
-local State = {
-    running         = true,
-    captured        = false,
-    remote          = nil,
-    method          = nil,
-    args            = nil,
-    token           = nil,
-    tokenOK         = false,
-    parried         = setmetatable({}, { __mode = "k" }),
-    tracker         = setmetatable({}, { __mode = "k" }),
-    lastParry       = 0,
-    parryCount      = 0,
-    clashCount      = 0,
-    ping            = 0.06,
-    hookedMetas     = {},
-    espHighlights   = setmetatable({}, { __mode = "k" }),
-}
+-- ============================================================
+-- 4. TOKEN
+-- ============================================================
+local Token = {}
+local _tokenFn
 
--- == Token ==============================================================
-local function findToken()
-    if not (getgc and debug and debug.getupvalues and debug.info) then return nil end
-    local ok, gc = pcall(getgc, true)
-    if not ok or type(gc) ~= "table" then return nil end
-    for i = 1, #gc do
-        local fn = gc[i]
-        if type(fn) ~= "function" then continue end
-        local ok2, name = pcall(debug.info, fn, 's')
-        if not ok2 or not name or not tostring(name):find('PRY', 1, true) then continue end
-        local ok3, ups = pcall(debug.getupvalues, fn)
-        if not ok3 then continue end
-        for _, v in ipairs(ups) do
-            if type(v) == "function" then return v end
+local function _discover_token_fn()
+    for _, f in ipairs(getgc(true)) do
+        if type(f) ~= "function" then continue end
+        local ok, src = pcall(debug.info, f, "s")
+        if not ok or type(src) ~= "string" or not src:find("PRY", 1, true) then
+            continue
+        end
+        for _, up in ipairs(debug.getupvalues(f)) do
+            if type(up) == "function" then
+                return up
+            end
         end
     end
     return nil
 end
 
-print("[SlaxV2] Scanning token...")
-State.token = findToken()
-if State.token then
-    State.tokenOK = true
-    print("[SlaxV2] Token OK")
-else
-    task.spawn(function()
-        for _ = 1, 15 do
-            task.wait(2)
-            State.token = findToken()
-            if State.token then
-                State.tokenOK = true
-                print("[SlaxV2] Token OK (late)")
-                break
-            end
-        end
-    end)
+function Token.init()
+    _tokenFn = _discover_token_fn()
+    return _tokenFn ~= nil
 end
 
-local function tokenize(uid)
-    if not State.token then return "" end
-    local t = tostring(math.floor(WS:GetServerTimeNow() * 100))
-    local ok, key = pcall(State.token, uid, 'TIME')
-    if not ok or type(key) ~= "string" or #key == 0 then return "" end
+function Token.redetect()
+    _tokenFn = nil
+    return Token.init()
+end
+
+function Token.tokenize(uid, server_time_now)
+    if not _tokenFn then
+        if not Token.redetect() then return nil end
+    end
+    local t   = tostring(math.floor(server_time_now * 100))
+    local key = _tokenFn(uid, "TIME")
+    if type(key) ~= "string" or #key == 0 then return nil end
     local out = table.create(#t)
     for i = 1, #t do
         out[i] = string.char(bit32.bxor(
@@ -117,528 +116,656 @@ local function tokenize(uid)
     return table.concat(out)
 end
 
--- == Remote Hook =========================================================
-local function hookRemote(remote)
-    local meta
-    local ok, m = pcall(getrawmetatable, remote)
-    if ok and m then meta = m end
-    if not meta then
-        local ok2, m2 = pcall(getmetatable, remote)
-        if ok2 and m2 then meta = m2 end
-    end
-    if not meta then return end
-    if State.hookedMetas[meta] then return end
+-- ============================================================
+-- 5. HOOK
+-- ============================================================
+local Hook = {}
+local _captured = { args = nil, remote = nil, t = 0 }
+local _hooked_mts = {}
+local _old_indexes = {}
 
-    local oldIndex = meta.__index
-    State.hookedMetas[meta] = { meta = meta, oldIndex = oldIndex }
+local function _is_valid_args(args)
+    return #args == 8
+        and type(args[2]) == "string"
+        and type(args[3]) == "string"
+        and type(args[4]) == "number"
+        and typeof(args[5]) == "CFrame"
+        and type(args[6]) == "table"
+        and type(args[7]) == "table"
+        and type(args[8]) == "boolean"
+end
 
-    pcall(setreadonly, meta, false)
-    meta.__index = function(self, key)
-        if key == 'FireServer' or key == 'InvokeServer' then
-            if self == remote then
-                local original = oldIndex(self, key)
-                if not State.captured and type(original) == "function" then
-                    return function(_, ...)
-                        local a = {...}
-                        if not State.captured and #a == 8
-                            and type(a[2]) == "string"
-                            and type(a[3]) == "string"
-                            and type(a[4]) == "number"
-                            and typeof(a[5]) == "CFrame"
-                            and type(a[6]) == "table"
-                            and type(a[7]) == "table"
-                            and type(a[8]) == "boolean" then
-                            State.remote = self
-                            State.method = key
-                            State.args = a
-                            State.captured = true
-                            print("[SlaxV2] Remote captured: " .. self.Name)
-
-                            task.spawn(function()
-                                task.wait(1)
-                                for _, info in pairs(State.hookedMetas) do
-                                    pcall(function()
-                                        setreadonly(info.meta, false)
-                                        info.meta.__index = info.oldIndex
-                                        setreadonly(info.meta, true)
-                                    end)
-                                end
-                                print("[SlaxV2] Hooks uninstalled")
-                            end)
-                        end
-                        return original(_, ...)
-                    end
+local function _attach(remote)
+    local ok, mt = pcall(getrawmetatable, remote)
+    if not ok or not mt or _hooked_mts[mt] then return end
+    _hooked_mts[mt] = true
+    setreadonly(mt, false)
+    _old_indexes[mt] = mt.__index
+    mt.__index = function(self, key)
+        if (key == "FireServer"   and self:IsA("RemoteEvent"))
+        or (key == "InvokeServer" and self:IsA("RemoteFunction")) then
+            return function(_, ...)
+                local a = { ... }
+                if not _captured.args and _is_valid_args(a) then
+                    _captured.args   = a
+                    _captured.remote = self
+                    _captured.t      = tick()
                 end
-                return original
+                return _old_indexes[mt](self, key)(_, ...)
             end
         end
-        return oldIndex(self, key)
+        return _old_indexes[mt](self, key)
     end
-    pcall(setreadonly, meta, true)
+    setreadonly(mt, true)
 end
 
-for _, r in ipairs(RS:GetDescendants()) do
-    if r:IsA("RemoteEvent") or r:IsA("RemoteFunction") then
-        hookRemote(r)
+function Hook.scan(replicated_storage)
+    for _, obj in ipairs(replicated_storage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            _attach(obj)
+        end
     end
 end
 
--- == Ping Cache =========================================================
-task.spawn(function()
-    while State.running do
-        pcall(function()
-            local raw = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-            State.ping = math.clamp(raw / 1000, 0.02, 0.30)
-        end)
-        task.wait(0.5)
-    end
-end)
+function Hook.get()    return _captured end
+function Hook.reset()  _captured = { args = nil, remote = nil, t = 0 } end
 
--- == Character ==========================================================
-local function isAlive()
-    local char = LP.Character
-    if not char then return false end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.Health <= 0 then return false end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-    if hrp:FindFirstChild("SingularityCape") then return false end
-    return true, char, hrp
+-- ============================================================
+-- 6. PREDICT
+-- ============================================================
+local Predict = {}
+Predict.__index = Predict
+
+function Predict.new(ws)
+    return setmetatable({ ws = ws }, Predict)
 end
 
--- == Tracker ============================================================
-local function updateTracker(ball, dt)
-    local z = ball:FindFirstChild("zoomies")
-    if not z then return nil end
-    local pos, vel = ball.Position, z.VectorVelocity
-    local rec = State.tracker[ball]
-    if not rec then
-        rec = { pos = pos, vel = vel, accel = Vector3.zero, t = tick() }
-        State.tracker[ball] = rec
-        return rec
-    end
-    if dt > 0.001 then
-        local dvel = vel - rec.vel
-        rec.accel = rec.accel * 0.5 + (dvel / dt) * 0.5
-    end
-    rec.pos, rec.vel, rec.t = pos, vel, tick()
-    return rec
+local function _get_hrp(lp)
+    local c = lp.Character
+    return c and c:FindFirstChild("HumanoidRootPart") or nil
 end
 
--- == Intercept Solver ===================================================
-local function solveIntercept(ballPos, ballVel, myPos, radius)
-    local dp = ballPos - myPos
-    local A = ballVel:Dot(ballVel)
-    if A < 0.0001 then return nil end
-    local B = 2 * dp:Dot(ballVel)
-    local C = dp:Dot(dp) - radius * radius
-    local disc = B * B - 4 * A * C
-    if disc < 0 then return nil end
+local function _find_balls(ws)
+    local out = {}
+    for _, d in ipairs(ws:GetDescendants()) do
+        if d:IsA("BasePart")
+        and d.Name:find("Ball")
+        and d.AssemblyLinearVelocity.Magnitude > 5 then
+            table.insert(out, d)
+        end
+    end
+    return out
+end
+
+function Predict:eta(ball, hrp, r)
+    local rel = hrp.Position - ball.Position
+    local v   = ball.AssemblyLinearVelocity
+    local a   = v:Dot(v)
+    if a < 1e-4 then return math.huge end
+    local b   = 2 * rel:Dot(v)
+    local c   = rel:Dot(rel) - r * r
+    local disc = b * b - 4 * a * c
+    if disc < 0 then return math.huge end
     local sq = math.sqrt(disc)
-    local t1 = (-B - sq) / (2 * A)
-    local t2 = (-B + sq) / (2 * A)
-    if t1 > 0 then return t1 end
-    if t2 > 0 then return t2 end
-    return nil
+    local t1 = (-b - sq) / (2 * a)
+    local t2 = (-b + sq) / (2 * a)
+    if t1 >= 0 then return t1 end
+    if t2 >= 0 then return t2 end
+    return math.huge
 end
 
--- == Fire ===============================================================
-local function fireParry(aim)
-    if not State.captured then return false end
-    if not State.remote or not State.remote.Parent then
-        State.captured = false
-        return false
+function Predict:nearest_impact(lp, r)
+    local hrp = _get_hrp(lp)
+    if not hrp then return nil end
+    local best, best_t = nil, math.huge
+    for _, b in ipairs(_find_balls(self.ws)) do
+        local t = self:eta(b, hrp, r)
+        if t < best_t then best_t, best = t, b end
     end
-    local cam = WS.CurrentCamera
-    if not cam then return false end
-    if not aim then
-        local vp = cam.ViewportSize
-        aim = { math.floor(vp.X / 2), math.floor(vp.Y / 2) }
-    end
-    local uid = State.args[2]
-    local packet = {
-        State.args[1], uid, tokenize(uid), 0.5,
-        cam.CFrame, {}, aim, false
+    if not best then return nil end
+    return {
+        ball = best,
+        eta = best_t,
+        distance = (best.Position - hrp.Position).Magnitude,
     }
-    local ok = pcall(function()
-        if State.method == "FireServer" then
-            State.remote:FireServer(unpack(packet))
-        else
-            State.remote:InvokeServer(unpack(packet))
-        end
-    end)
+end
+
+-- ============================================================
+-- 7. ACCURACY
+-- ============================================================
+local Acc = {}
+Acc.__index = Acc
+
+function Acc.new(window)
+    return setmetatable({
+        window = window or 30,
+        events = {},
+        tp = 0, fp = 0, fn = 0,
+    }, Acc)
+end
+
+function Acc:record(kind, now)
+    now = now or tick()
+    table.insert(self.events, { t = now, kind = kind })
+    if     kind == "tp" then self.tp = self.tp + 1
+    elseif kind == "fp" then self.fp = self.fp + 1
+    elseif kind == "fn" then self.fn = self.fn + 1 end
+    local cutoff = now - self.window
+    local kept = {}
+    for _, e in ipairs(self.events) do
+        if e.t >= cutoff then table.insert(kept, e) end
+    end
+    self.events = kept
+end
+
+function Acc:snapshot()
+    local tp, fp, fn = 0, 0, 0
+    for _, e in ipairs(self.events) do
+        if     e.kind == "tp" then tp = tp + 1
+        elseif e.kind == "fp" then fp = fp + 1
+        elseif e.kind == "fn" then fn = fn + 1 end
+    end
+    local precision = (tp + fp > 0) and (tp / (tp + fp)) or 1.0
+    local recall    = (tp + fn > 0) and (tp / (tp + fn)) or 1.0
+    local f1        = (precision + recall > 0) and (2 * precision * recall / (precision + recall)) or 0.0
+    return {
+        tp = tp, fp = fp, fn = fn,
+        precision = precision, recall = recall, f1 = f1,
+        hit_rate = recall,
+    }
+end
+
+-- ============================================================
+-- 8. TUNE
+-- ============================================================
+local Tune = {}
+Tune.__index = Tune
+
+function Tune.new(acc, opts)
+    opts = opts or {}
+    return setmetatable({
+        acc = acc,
+        lead = opts.lead or 0.12,
+        step = 0.01,
+        min_lead = 0.05,
+        max_lead = 0.25,
+        last_eval = 0,
+        eval_window = 15,
+    }, Tune)
+end
+
+function Tune:tick(now)
+    now = now or tick()
+    if now - self.last_eval < self.eval_window then return end
+    self.last_eval = now
+    local s = self.acc:snapshot()
+    if s.recall < 0.90 and s.fn > 0 then
+        self.lead = math.min(self.lead + self.step, self.max_lead)
+    end
+    if s.precision < 0.85 and s.fp > 3 then
+        self.lead = math.max(self.lead - self.step, self.min_lead)
+    end
+end
+
+-- ============================================================
+-- 9. RATE LIMITER
+-- ============================================================
+local RL = {}
+RL.__index = RL
+
+function RL.new(max_per_sec, window)
+    return setmetatable({
+        max = max_per_sec or 22,
+        window = window or 1.0,
+        events = {},
+        consecutive_rejects = 0,
+        backoff_until = 0,
+    }, RL)
+end
+
+function RL:allow(now)
+    now = now or tick()
+    if now < self.backoff_until then return false, "backoff" end
+    local cutoff = now - self.window
+    local kept = {}
+    for _, t in ipairs(self.events) do
+        if t >= cutoff then table.insert(kept, t) end
+    end
+    self.events = kept
+    if #self.events >= self.max then return false, "ratelimit" end
+    table.insert(self.events, now)
+    return true
+end
+
+function RL:report(ok)
     if ok then
-        State.parryCount = State.parryCount + 1
+        self.consecutive_rejects = 0
+    else
+        self.consecutive_rejects = self.consecutive_rejects + 1
+        if self.consecutive_rejects >= 3 then
+            local backoff = math.min(2 ^ self.consecutive_rejects, 30)
+            self.backoff_until = tick() + backoff
+        end
     end
-    return ok
 end
 
--- == Main Loop ==========================================================
-local lastFrame = tick()
+-- ============================================================
+-- 10. BOOT CORE
+-- ============================================================
+local ok, exp = License.check(_G.BB_KEY or "TRIAL")
+if not ok then
+    warn("[BB-Pro] license fail: " .. tostring(exp))
+    return
+end
 
-RunService.PreSimulation:Connect(function()
-    if not Config.enabled then return end
-    if not State.captured then return end
+if not Token.init() then
+    warn("[BB-Pro] token fn not found — re-inject atau update script")
+    return
+end
+print("[BB-Pro] token fn discovered")
 
-    local now = tick()
-    local dt = now - lastFrame
-    lastFrame = now
+Hook.scan(RS)
+print("[BB-Pro] remotes hooked")
 
-    local cd = Config.parryCooldown
-    if Config.humanize and Config.humanizeJitter > 0 then
-        cd = cd + (math.random() * 2 - 1) * Config.humanizeJitter
-    end
-    if now - State.lastParry < cd then return end
+local predict = Predict.new(WS)
+local acc     = Acc.new(30)
+local tune    = Tune.new(acc, { lead = state.lead })
+local rl      = RL.new(state.max_rate, 1.0)
 
-    local alive, char, hrp = isAlive()
-    if not alive then return end
+-- ============================================================
+-- 11. WINDUITY INTERFACE
+-- ============================================================
+local Window = WindUI:CreateWindow({
+    Title       = "BB-Pro",
+    Icon        = "solar:shield-check-bold",
+    Author      = "ALPHA XK",
+    Folder      = "BB-Pro",
+    Size        = UDim2.fromOffset(520, 380),
+    Transparent = true,
+    Theme       = "Dark",
+    User        = {
+        Enabled = true,
+        Anonymous = true,
+    },
+    KeySystem   = false,
+})
 
-    local folder = WS:FindFirstChild("Balls")
-    if not folder then return end
+-- ============================================================
+-- 12. HUD (Topbar)
+-- ============================================================
+local hud_text = Window.Topbar and Window.Topbar.AddLabel
+    and Window.Topbar:AddLabel("Accuracy: --")
+    or nil
 
-    local myPos = hrp.Position
-    local myName = LP.Name
-    local best, bestT = nil, math.huge
-
-    for _, ball in ipairs(folder:GetChildren()) do
-        if not ball:IsA("BasePart") then continue end
-        if ball:GetAttribute("realBall") == false then continue end
-        if State.parried[ball] then continue end
-        if ball:FindFirstChild("ComboCounter") then continue end
-        if ball:GetAttribute("target") ~= myName then continue end
-
-        local rec = updateTracker(ball, dt)
-        if not rec then continue end
-        local z = ball:FindFirstChild("zoomies")
-        if not z then continue end
-        local vel = z.VectorVelocity
-        local speed = vel.Magnitude
-        if speed < 5 then continue end
-
-        local toMe = myPos - ball.Position
-        if toMe.Magnitude < 0.1 then continue end
-        local dot = vel.Unit:Dot(toMe.Unit)
-        if dot <= 0.15 then continue end
-
-        local accMul = 0.7 + (math.clamp(Config.accuracy, 1, 100) - 1) * 0.0035
-        local window = Config.maxRange * accMul + math.min(speed * 0.05, 20)
-
-        local tI = solveIntercept(ball.Position, vel, myPos, window)
-        if not tI then
-            local predPos = ball.Position + vel * (State.ping * Config.pingComp)
-            local dist = (myPos - predPos).Magnitude
-            if dist <= window then tI = State.ping end
+local hud_ref = { label = hud_text }
+task.spawn(function()
+    while _G.BB_PRO_RUNNING do
+        local s = acc:snapshot()
+        local txt = string.format(
+            "hit %.0f%% · prec %.0f%% · F1 %.2f · TP/FP/FN %d/%d/%d · lead %.3f",
+            s.hit_rate * 100, s.precision * 100, s.f1,
+            s.tp, s.fp, s.fn, tune.lead)
+        if hud_ref.label then
+            pcall(function() hud_ref.label:Set(txt) end)
         end
-        if not tI or tI < 0 then continue end
-
-        local fireAt = tI - State.ping * Config.pingComp
-        if fireAt <= 0.01 and tI < bestT then
-            bestT, best = tI, ball
-        end
-    end
-
-    -- clash detection
-    if not best and Config.autoClash then
-        local count = 0
-        for _, b in ipairs(folder:GetChildren()) do
-            if b:IsA("BasePart") and b:GetAttribute("realBall") ~= false then
-                local z = b:FindFirstChild("zoomies")
-                if z and z.VectorVelocity.Magnitude > 30 then
-                    if (myPos - b.Position).Magnitude < Config.clashRadius then
-                        count = count + 1
-                    end
-                end
-            end
-        end
-        if count >= 2 then
-            if fireParry() then
-                State.lastParry = now
-                State.clashCount = State.clashCount + 1
-            end
-            return
-        end
-    end
-
-    if best then
-        local cam = WS.CurrentCamera
-        local aim
-        if cam then
-            local sp = cam:WorldToScreenPoint(best.Position)
-            if sp then aim = { math.floor(sp.X), math.floor(sp.Y) } end
-        end
-        if fireParry(aim) then
-            State.parried[best] = true
-            State.lastParry = now
-            task.delay(0.35, function()
-                if State.parried[best] then State.parried[best] = nil end
-            end)
-        end
+        task.wait(0.75)
     end
 end)
 
--- == ESP ================================================================
+-- ============================================================
+-- 13. TAB: AUTO PARRY
+-- ============================================================
+local TabMain = Window:Tab({
+    Title = "AutoParry",
+    Icon  = "solar:crosshair-bold",
+})
+
+local SecGeneral = TabMain:Section({
+    Title = "General",
+    TextXAlignment = "Left",
+})
+
+SecGeneral:Toggle({
+    Title       = "Enable AutoParry",
+    Desc        = "Master switch. Turn off to pause loop.",
+    Value       = true,
+    Callback    = function(v) state.enabled = v end,
+})
+
+SecGeneral:Toggle({
+    Title       = "Smart Timing",
+    Desc        = "Fire hanya kalau ETA masuk window. Hemat request.",
+    Value       = true,
+    Callback    = function(v) state.smart = v end,
+})
+
+SecGeneral:Toggle({
+    Title       = "Force (Rage)",
+    Desc        = "Spam tiap frame, abaikan prediction. Risiko kick naik.",
+    Value       = false,
+    Callback    = function(v) state.force = v end,
+})
+
+SecGeneral:Toggle({
+    Title       = "Anti-Kick",
+    Desc        = "Rolling window + exponential backoff saat reject.",
+    Value       = true,
+    Callback    = function(v)
+        state.anti_kick = v
+        rl.max = v and state.max_rate or 60
+    end,
+})
+
+SecGeneral:Toggle({
+    Title       = "Debug Log",
+    Desc        = "Print per-event ke console.",
+    Value       = false,
+    Callback    = function(v) state.debug = v end,
+})
+
+-- ============================================================
+-- 14. TAB: TUNING
+-- ============================================================
+local TabTune = Window:Tab({
+    Title = "Tuning",
+    Icon  = "solar:tuning-2-bold",
+})
+
+local SecTune = TabTune:Section({
+    Title = "Prediction",
+    TextXAlignment = "Left",
+})
+
+local sliderLead, sliderRadius, sliderRate
+
+sliderLead = SecTune:Slider({
+    Title       = "Lead Time (s)",
+    Desc        = "Fire N detik sebelum ETA. Auto-tune kalau OFF.",
+    Value       = { Min = 0.05, Max = 0.25, Default = 0.12 },
+    Rounding    = 3,
+    Callback    = function(v)
+        state.lead = v
+        tune.lead  = v
+    end,
+})
+
+sliderRadius = SecTune:Slider({
+    Title       = "Parry Radius (studs)",
+    Desc        = "Radius deteksi bola masuk window.",
+    Value       = { Min = 15, Max = 60, Default = 32 },
+    Rounding    = 1,
+    Callback    = function(v)
+        state.parry_radius = v
+    end,
+})
+
+sliderRate = SecTune:Slider({
+    Title       = "Max Rate (req/s)",
+    Desc        = "Rate limiter ceiling. Anti-kick pakai angka ini.",
+    Value       = { Min = 5, Max = 60, Default = 22 },
+    Rounding    = 0,
+    Callback    = function(v)
+        state.max_rate = v
+        if state.anti_kick then rl.max = v end
+    end,
+})
+
+local SecAuto = TabTune:Section({
+    Title = "Auto-Tune",
+    TextXAlignment = "Left",
+})
+
+local autoTuneEnabled = false
+SecAuto:Toggle({
+    Title    = "Auto-Tune Lead",
+    Desc     = "Adjust lead berdasar recall/precision live.",
+    Value    = true,
+    Callback = function(v) autoTuneEnabled = v end,
+})
+
+SecAuto:Button({
+    Title    = "Reset Metrics",
+    Desc     = "Clear rolling window accuracy.",
+    Callback = function()
+        acc.events = {}
+        acc.tp, acc.fp, acc.fn = 0, 0, 0
+    end,
+})
+
+SecAuto:Button({
+    Title    = "Force Re-Hook",
+    Desc     = "Re-scan remotes + re-capture args.",
+    Callback = function()
+        Hook.reset()
+        Hook.scan(RS)
+        if WindUI and WindUI:Notify then
+            WindUI:Notify({
+                Title = "BB-Pro",
+                Content = "Re-hook triggered. Parry manual sekali.",
+                Duration = 4,
+            })
+        end
+    end,
+})
+
+-- ============================================================
+-- 15. TAB: STATUS
+-- ============================================================
+local TabStatus = Window:Tab({
+    Title = "Status",
+    Icon  = "solar:chart-2-bold",
+})
+
+local SecStatus = TabStatus:Section({
+    Title = "Live Metrics",
+    TextXAlignment = "Left",
+})
+
+local statusParagraph = SecStatus:Paragraph({
+    Title = "Accuracy Snapshot",
+    Desc  = "menunggu data...",
+})
+
+local secSys = TabStatus:Section({
+    Title = "System",
+    TextXAlignment = "Left",
+})
+
+local sysParagraph = secSys:Paragraph({
+    Title = "Runtime",
+    Desc  = "init...",
+})
+
 task.spawn(function()
-    while State.running do
-        if not Config.ballESP then
-            for ball, hl in pairs(State.espHighlights) do
-                pcall(function() hl:Destroy() end)
-                State.espHighlights[ball] = nil
+    while _G.BB_PRO_RUNNING do
+        local s = acc:snapshot()
+        pcall(function()
+            statusParagraph:Set(string.format(
+                "hit rate: %.1f%%  |  precision: %.1f%%  |  F1: %.2f\n" ..
+                "TP: %d   FP: %d   FN: %d\n" ..
+                "lead: %.3fs   radius: %.1f   rate: %d/s",
+                s.hit_rate * 100, s.precision * 100, s.f1,
+                s.tp, s.fp, s.fn,
+                tune.lead, state.parry_radius, rl.max))
+        end)
+        pcall(function()
+            sysParagraph:Set(string.format(
+                "token fn: %s\nremote: %s\nsent: %d  reject: %d",
+                _tokenFn and "ok" or "missing",
+                Hook.get().remote and Hook.get().remote:GetFullName() or "not captured",
+                stats.sent, stats.reject))
+        end)
+        task.wait(0.75)
+    end
+end)
+
+-- ============================================================
+-- 16. WINDUI OPTIONS
+-- ============================================================
+if Window.Options then
+    Window.Options:CreateToggle({
+        Title    = "Anti AFK",
+        Desc     = "Inject VirtualUser idle kick prevention.",
+        Value    = false,
+        Callback = function(v)
+            if v then
+                _G.BB_ANTI_AFK = true
+                task.spawn(function()
+                    while _G.BB_ANTI_AFK do
+                        pcall(function()
+                            local vu = cloneref(game:GetService("VirtualUser"))
+                            vu:CaptureController()
+                            vu:ClickButton2(Vector2.new())
+                        end)
+                        task.wait(30)
+                    end
+                end)
+            else
+                _G.BB_ANTI_AFK = false
+            end
+        end,
+    })
+end
+
+-- ============================================================
+-- 17. WAIT FOR CAPTURE
+-- ============================================================
+print("[BB-Pro] waiting for legit parry capture — parry ONCE manually")
+local t0 = tick()
+while not Hook.get().args and tick() - t0 < 45 do
+    task.wait(0.5)
+end
+if not Hook.get().args then
+    warn("[BB-Pro] no capture in 45s — loop jalan, capture saat parry pertama")
+end
+
+-- ============================================================
+-- 18. MAIN LOOP
+-- ============================================================
+local stats       = { sent = 0, reject = 0, start = tick() }
+local last_fire   = 0
+local pending_fire= nil
+local last_ball_vel = {}
+local FIRE_COOLDOWN = 0.15
+
+local function _track_velocity(ball)
+    local prev = last_ball_vel[ball]
+    local cur  = ball.AssemblyLinearVelocity
+    last_ball_vel[ball] = cur
+    if prev
+    and prev:Dot(cur) < 0
+    and prev.Magnitude > 5
+    and cur.Magnitude > 5 then
+        return true
+    end
+    return false
+end
+
+_G.BB_PRO_RUNNING = true
+
+while _G.BB_PRO_RUNNING do
+    if not state.enabled then
+        task.wait(0.1)
+        continue
+    end
+
+    local cap = Hook.get()
+    if not cap.args or not cap.remote or not cap.remote.Parent then
+        Hook.scan(RS)
+        task.wait(0.5)
+        continue
+    end
+
+    local impact = predict:nearest_impact(LP, state.parry_radius)
+
+    -- TP / FP detection
+    for ball in pairs(last_ball_vel) do
+        if ball.Parent and _track_velocity(ball) then
+            if pending_fire
+            and (tick() - pending_fire.t) < 0.25
+            and pending_fire.ball == ball then
+                acc:record("tp", tick())
+                if state.debug then
+                    print(string.format("[BB-Pro] tp flip_dt=%.3fs", tick() - pending_fire.t))
+                end
+                pending_fire = nil
+            end
+        end
+    end
+
+    if pending_fire and (tick() - pending_fire.t) > 0.25 then
+        acc:record("fp", tick())
+        if state.debug then
+            print("[BB-Pro] fp no_flip 0.250s")
+        end
+        pending_fire = nil
+    end
+
+    -- decide fire
+    local should_fire = false
+    if state.force then
+        should_fire = true
+    elseif impact and impact.eta > 0 and impact.eta <= state.lead then
+        should_fire = true
+    end
+
+    if should_fire and (tick() - last_fire) >= FIRE_COOLDOWN then
+        local now = tick()
+        local allowed, reason = rl:allow(now)
+        if allowed then
+            local uid = cap.args[2]
+            local tok = Token.tokenize(uid, WS:GetServerTimeNow())
+            if tok then
+                local packet = {
+                    cap.args[1], uid, tok, 0.5,
+                    WS.CurrentCamera.CFrame, {}, {0, 0}, false
+                }
+                local ok = pcall(function()
+                    if cap.remote:IsA("RemoteEvent") then
+                        cap.remote:FireServer(table.unpack(packet))
+                    else
+                        cap.remote:InvokeServer(table.unpack(packet))
+                    end
+                end)
+                rl:report(ok)
+                last_fire = now
+                pending_fire = {
+                    ball = impact and impact.ball or nil,
+                    t    = now,
+                }
+                stats.sent = stats.sent + 1
+                if not ok then stats.reject = stats.reject + 1 end
+                if state.debug then
+                    print(string.format(
+                        "[BB-Pro] fire lead=%.3f eta=%.3f dist=%.1f tok=%d sent=%d rej=%d",
+                        state.lead,
+                        impact and impact.eta or -1,
+                        impact and impact.distance or -1,
+                        #tok, stats.sent, stats.reject))
+                end
+            else
+                Token.redetect()
             end
         else
-            local folder = WS:FindFirstChild("Balls")
-            if folder then
-                for _, ball in ipairs(folder:GetChildren()) do
-                    if ball:IsA("BasePart")
-                        and ball:GetAttribute("target") == LP.Name
-                        and not State.espHighlights[ball] then
-                        local hl = Instance.new("Highlight")
-                        hl.FillColor = Color3.fromRGB(255, 60, 60)
-                        hl.FillTransparency = 0.55
-                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        hl.Parent = ball
-                        State.espHighlights[ball] = hl
-                    end
-                end
+            if state.debug and reason ~= "ratelimit" then
+                print("[BB-Pro] fire blocked: " .. tostring(reason))
             end
         end
-        task.wait(0.3)
     end
-end)
 
--- == Keybinds ===========================================================
-UIS.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.KeyCode == Enum.KeyCode[Config.toggleKey] then
-        Config.enabled = not Config.enabled
-        print("[SlaxV2]", Config.enabled and "ON" or "OFF")
-    elseif input.KeyCode == Enum.KeyCode[Config.panicKey] then
-        Config.enabled = false
-        Config.autoClash = false
-        Config.ballESP = false
-        print("[SlaxV2] PANIC")
-    end
-end)
+    if autoTuneEnabled then tune:tick() end
 
--- ═════════════════════════════════════════════════════════════════════════
--- UI — WindUI Mobile Layout
--- ═════════════════════════════════════════════════════════════════════════
+    -- sync slider ↔ state (kalau user ubah dari HUD)
+    state.lead = state.lead
 
-local ok, WindUI = pcall(function()
-    return loadstring(game:HttpGet(
-        "https://raw.githubusercontent.com/Footagesus/WindUI/main/macaw.lua"
-    ))()
-end)
-
-if ok and WindUI then
-    local Window = WindUI:CreateWindow({
-        Title = "Slax V2",
-        Icon = "lucide-sword",
-        Author = "ALPHA XK",
-        Folder = "SlaxV2",
-        Size = UDim2.fromOffset(330, 440),
-        Transparent = true,
-        Theme = "Dark",
-        SideBarWidth = 0,
-    })
-
-    Window:EditOpenButton({
-        Title = "Slax",
-        Icon = "lucide-sword",
-        CornerRadius = UDim.new(0, 12),
-        StrokeThickness = 2,
-        StrokeColor = Color3.fromRGB(80, 200, 120),
-    })
-
-    local TabMain    = Window:Tab({ Title = "Main",    Icon = "lucide-shield" })
-    local TabCombat  = Window:Tab({ Title = "Combat",  Icon = "lucide-sword" })
-    local TabVisual  = Window:Tab({ Title = "Visual",  Icon = "lucide-eye" })
-    local TabInfo    = Window:Tab({ Title = "Info",    Icon = "lucide-info" })
-
-    -- MAIN
-    TabMain:Toggle({
-        Title = "Auto Parry",
-        Desc = "Predicted parry + intercept solver",
-        Value = Config.enabled,
-        Callback = function(v) Config.enabled = v end,
-    })
-
-    TabMain:Toggle({
-        Title = "Auto Clash",
-        Desc = "Parry saat 2+ balls mendekat",
-        Value = Config.autoClash,
-        Callback = function(v) Config.autoClash = v end,
-    })
-
-    TabMain:Slider({
-        Title = "Clash Radius",
-        Value = { Min = 12, Max = 40, Default = Config.clashRadius, Step = 1 },
-        Callback = function(v) Config.clashRadius = v end,
-    })
-
-    TabMain:Toggle({
-        Title = "Humanize (Anti-Detect)",
-        Desc = "jitter ±15ms delay",
-        Value = Config.humanize,
-        Callback = function(v) Config.humanize = v end,
-    })
-
-    TabMain:Slider({
-        Title = "Jitter (ms)",
-        Value = { Min = 0, Max = 50, Default = 15, Step = 1 },
-        Callback = function(v) Config.humanizeJitter = v / 1000 end,
-    })
-
-    -- COMBAT
-    TabCombat:Slider({
-        Title = "Accuracy 1-100",
-        Desc = "1 = konservatif | 100 = OP",
-        Value = { Min = 1, Max = 100, Default = Config.accuracy, Step = 1 },
-        Callback = function(v) Config.accuracy = v end,
-    })
-
-    TabCombat:Slider({
-        Title = "Parry Cooldown (ms)",
-        Value = { Min = 50, Max = 300, Default = 80, Step = 10 },
-        Callback = function(v) Config.parryCooldown = v / 1000 end,
-    })
-
-    TabCombat:Slider({
-        Title = "Max Range (studs)",
-        Value = { Min = 10, Max = 40, Default = 20, Step = 1 },
-        Callback = function(v) Config.maxRange = v end,
-    })
-
-    TabCombat:Slider({
-        Title = "Ping Compensation",
-        Desc = "0.5 = conservative | 0.8 = aggressive",
-        Value = { Min = 40, Max = 90, Default = 60, Step = 5 },
-        Callback = function(v) Config.pingComp = v / 100 end,
-    })
-
-    TabCombat:Section({ Title = "Keybinds" })
-
-    TabCombat:Keybind({
-        Title = "Toggle Auto Parry",
-        Value = Config.toggleKey,
-        Callback = function(k)
-            if type(k) == "string" then Config.toggleKey = k end
-        end,
-    })
-
-    TabCombat:Keybind({
-        Title = "Panic Key",
-        Value = Config.panicKey,
-        Callback = function(k)
-            if type(k) == "string" then Config.panicKey = k end
-        end,
-    })
-
-    -- VISUAL
-    TabVisual:Toggle({
-        Title = "Ball ESP",
-        Desc = "Highlight الكرات اللي تستهدفك",
-        Value = Config.ballESP,
-        Callback = function(v) Config.ballESP = v end,
-    })
-
-    TabVisual:Section({ Title = "Info" })
-
-    TabVisual:Paragraph({
-        Title = "Token",
-        Desc = State.tokenOK and "✅ Found" or "⏳ Searching...",
-    })
-
-    TabVisual:Paragraph({
-        Title = "Remote",
-        Desc = State.captured and ("✅ " .. State.remote.Name) or "⏳ Parry once in-game",
-    })
-
-    -- INFO (Live Stats)
-    local infoParries = TabInfo:Paragraph({
-        Title = "Total Parries",
-        Desc = "0",
-    })
-
-    local infoClash = TabInfo:Paragraph({
-        Title = "Clash Parries",
-        Desc = "0",
-    })
-
-    local infoPing = TabInfo:Paragraph({
-        Title = "Ping",
-        Desc = "0 ms",
-    })
-
-    local infoStatus = TabInfo:Paragraph({
-        Title = "Status",
-        Desc = "Idle",
-    })
-
-    task.spawn(function()
-        while State.running do
-            task.wait(0.5)
-            pcall(function()
-                infoParries:SetDesc(tostring(State.parryCount))
-                infoClash:SetDesc(tostring(State.clashCount))
-                infoPing:SetDesc(string.format("%.0f ms", State.ping * 1000))
-
-                local status = "Idle"
-                if not State.captured then
-                    status = "Waiting for remote"
-                elseif Config.enabled then
-                    status = "Active"
-                else
-                    status = "Disabled"
-                end
-                infoStatus:SetDesc(status)
-            end)
-        end
-    end)
-
-    TabInfo:Section({ Title = "Instructions" })
-
-    TabInfo:Paragraph({
-        Title = "How to use",
-        Desc = "1. Parry once in-game\n2. Wait for 'Remote captured'\n3. Auto Parry يعمل تلقائياً",
-    })
-
-    TabInfo:Paragraph({
-        Title = "Hotkeys",
-        Desc = Config.toggleKey .. " = Toggle | " .. Config.panicKey .. " = Panic",
-    })
-
-    TabInfo:Section({ Title = "Actions" })
-
-    TabInfo:Button({
-        Title = "Unload Script",
-        Callback = function()
-            if _G.slax_v2ui_unload then
-                _G.slax_v2ui_unload()
-            end
-        end,
-    })
+    task.wait()
 end
 
--- == Init ==============================================================
-print("[SlaxV2] Loaded")
-print("[SlaxV2] Toggle: " .. Config.toggleKey .. " | Panic: " .. Config.panicKey)
-
--- == Unload ============================================================
-_G.slax_v2ui_unload = function()
-    State.running = false
-    -- uninstall hooks
-    for _, info in pairs(State.hookedMetas) do
-        pcall(function()
-            setreadonly(info.meta, false)
-            info.meta.__index = info.oldIndex
-            setreadonly(info.meta, true)
-        end)
-    end
-    -- destroy ESP
-    for _, hl in pairs(State.espHighlights) do
-        pcall(function() hl:Destroy() end)
-    end
-    getgenv()._slax_v2ui_loaded = nil
-    print("[SlaxV2] Unloaded")
+if WindUI and WindUI:Notify then
+    WindUI:Notify({
+        Title = "BB-Pro",
+        Content = string.format("Stopped. sent=%d reject=%d", stats.sent, stats.reject),
+        Duration = 5,
+    })
 end
+print("[BB-Pro] stopped. total sent=" .. stats.sent .. " reject=" .. stats.reject)
