@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- Slax V12 — Auto Parry (Zythera-Inspired)
--- Author: ALPHA XK | Learn-from: Zythera-X
--- Hookmetamethod + Parry Animation + Curve Detection + Spam Service
+-- Slax V12.1 — Auto Parry (Ailon/Zythera-Inspired Fix)
+-- Author: ALPHA XK
+-- Fixes: checkcaller guard, fast path hook, loose arg filter, token fallback
 -- ═══════════════════════════════════════════════════════════════════════════
 
 if getgenv()._v12_loaded then
@@ -31,21 +31,15 @@ local AnimFix           = true
 local InfinityDetect    = true
 local DeathSlashDetect  = true
 local TimeHoleDetect    = true
-local ParryType         = "Camera"
-local SpamThreshold     = 2.5
 local CurrentCurve      = "camera"
 
-local L5                = {}    -- [remote] = captured_args
-local Q5                = nil   -- original __index
+local L5                = {}       -- [remote] = captured args
+local Q5                = nil      -- original __index
+local _captureDone      = false    -- flag: stop hook work after 2 captures
 local capturedCount     = 0
 local parried_ids       = {}
-local lastSpamTime      = 0
+local lastParryTime     = 0
 local lastParryAnim     = 0
-local V5_count          = 0     -- spam throttle counter
-local A                 = 0.0   -- parry cooldown
-local m                 = 0     -- last parry time
-local y                 = false
-local M                 = 1
 
 local infinity_active   = false
 local deathslash_active = false
@@ -57,7 +51,6 @@ local lastCache         = 0
 local lastHrpCache      = 0
 
 local parryAnimTrack    = nil
-local curlAnimCache     = {}
 
 -- ═══ BALL / TARGET HELPERS ══════════════════════════════════════
 local function Get_Ball()
@@ -68,17 +61,6 @@ local function Get_Ball()
         end
     end
     return nil
-end
-
-local function Get_Balls()
-    local out = {}
-    local bc = WS:FindFirstChild("Balls")
-    if bc then
-        for _, b in pairs(bc:GetChildren()) do
-            if b:GetAttribute("realBall") then table.insert(out, b) end
-        end
-    end
-    return out
 end
 
 local function Closest_Player()
@@ -96,20 +78,22 @@ end
 
 -- ═══ TOKEN — scan getgc + getupvalues ═══════════════════════════
 local _token = nil
-for _, f in getgc(true) do
-    if type(f) == 'function' then
-        local ok, src = pcall(function() return debug.info(f, 's') end)
-        if ok and src and tostring(src):find('PRY', 1, true) then
-            local ok2, ups = pcall(function() return debug.getupvalues(f) end)
-            if ok2 and ups then
-                for _, v in pairs(ups) do
-                    if type(v) == 'function' then _token = v; break end
+pcall(function()
+    for _, f in getgc(true) do
+        if type(f) == 'function' then
+            local ok, src = pcall(function() return debug.info(f, 's') end)
+            if ok and src and tostring(src):find('PRY', 1, true) then
+                local ok2, ups = pcall(function() return debug.getupvalues(f) end)
+                if ok2 and ups then
+                    for _, v in pairs(ups) do
+                        if type(v) == 'function' then _token = v; break end
+                    end
                 end
+                if _token then break end
             end
-            if _token then break end
         end
     end
-end
+end)
 
 local function _tokenize(uid)
     if not _token then return nil end
@@ -128,52 +112,58 @@ local function _tokenize(uid)
     return ok and res or nil
 end
 
-print("[V12] token:", _token and "OK" or "FAIL")
+print("[V12.1] token:", _token and "OK" or "FAIL")
 
--- ═══ PARRY ANIMATION (Zythera-style) ════════════════════════════
+-- ═══ PARRY ANIMATION ════════════════════════════════════════════
 local function Play_Parry_Animation()
     if not AnimFix then return end
     local char = LP.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum or not hum.Animator then return end
+    if not hum then return end
+    local animator = hum:FindFirstChildOfClass("Animator")
+    if not animator then return end
 
     local swordName = char:GetAttribute("CurrentlyEquippedSword")
-    local anim = nil
+    local anim
 
-    -- default grab parry
-    local default = RS:FindFirstChild("Shared")
-        and RS.Shared:FindFirstChild("SwordAPI")
-        and RS.Shared.SwordAPI:FindFirstChild("Collection")
-        and RS.Shared.SwordAPI.Collection:FindFirstChild("Default")
-        and RS.Shared.SwordAPI.Collection.Default:FindFirstChild("GrabParry")
+    local shared = RS:FindFirstChild("Shared")
+    local swordAPI = shared and shared:FindFirstChild("SwordAPI")
+    local collection = swordAPI and swordAPI:FindFirstChild("Collection")
+    local default = collection and collection:FindFirstChild("Default")
 
-    if swordName then
-        local ok, swordData = pcall(function()
-            return RS.Shared.ReplicatedInstances.Swords.GetSword:Invoke(swordName)
-        end)
-        if ok and type(swordData) == "table" and swordData.AnimationType then
-            for _, obj in pairs(RS.Shared.SwordAPI.Collection:GetChildren()) do
-                if obj.Name == swordData.AnimationType then
-                    local a = obj:FindFirstChild("GrabParry") or obj:FindFirstChild("Grab")
-                    if a then anim = a end
+    if swordName and shared then
+        local repInst = shared:FindFirstChild("ReplicatedInstances")
+        local swords = repInst and repInst:FindFirstChild("Swords")
+        local getSword = swords and swords:FindFirstChild("GetSword")
+        if getSword then
+            local ok, swordData = pcall(function()
+                return getSword:Invoke(swordName)
+            end)
+            if ok and type(swordData) == "table" and swordData.AnimationType and collection then
+                for _, obj in pairs(collection:GetChildren()) do
+                    if obj.Name == swordData.AnimationType then
+                        local a = obj:FindFirstChild("GrabParry") or obj:FindFirstChild("Grab")
+                        if a then anim = a end
+                    end
                 end
             end
         end
     end
-    anim = anim or default
+    anim = anim or (default and default:FindFirstChild("GrabParry"))
     if not anim then return end
 
-    -- stop existing
-    for _, track in pairs(hum.Animator:GetPlayingAnimationTracks()) do
+    for _, track in pairs(animator:GetPlayingAnimationTracks()) do
         if track.Name == "GrabParry" or track.Name == "Grab" then
             pcall(function() track:Stop(0.1) end)
         end
     end
 
-    local track = hum.Animator:LoadAnimation(anim)
-    pcall(function() track:Play(0, 1, 1) end)
-    parryAnimTrack = track
+    local ok2, track = pcall(function() return animator:LoadAnimation(anim) end)
+    if ok2 and track then
+        pcall(function() track:Play(0, 1, 1) end)
+        parryAnimTrack = track
+    end
 end
 
 pcall(function()
@@ -182,125 +172,112 @@ pcall(function()
     end)
 end)
 
--- ═══ PING (Zythera-style — baca dari PerformanceStats) ══════════
+-- ═══ PING ═══════════════════════════════════════════════════════
 local function Get_Ping()
     local ok, res = pcall(function()
-        local rg = CoreGui:FindFirstChild("RobloxGui")
-        if rg then
-            local perf = rg:FindFirstChild("PerformanceStats")
-            if perf then
-                for _, d in perf:GetDescendants() do
-                    if d:IsA("TextLabel") then
-                        local ms = d.Text:match("(%d+)%s*ms")
-                        if ms then return tonumber(ms) or 50 end
-                    end
-                end
-            end
-        end
-        return 50
+        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
     end)
-    return ok and res or 50
+    return ok and res or 60
 end
 
--- ═══ CURVE DETECTION (Zythera-style — track 4 velocity) ═════════
-local vel_history = {}
-local last_curve_check = tick()
-local smooth_angle = 0
+-- ═══ DETECTION EVENTS ════════════════════════════════════════════
+pcall(function()
+    RS.Remotes.InfinityBall.OnClientEvent:Connect(function(_, active)
+        infinity_active = active or false
+    end)
+end)
+pcall(function()
+    RS.Remotes.DeathBall.OnClientEvent:Connect(function(_, active)
+        deathslash_active = active or false
+    end)
+end)
+pcall(function()
+    RS.Remotes.TimeHoleHoldBall.OnClientEvent:Connect(function(_, active)
+        timehole_active = active or false
+    end)
+end)
 
-local function Is_Curved(ball)
-    if not ball then return false end
-    local z = ball:FindFirstChild("zoomies")
-    if not z then return false end
-
-    local ping = Get_Ping()
-    local vel = z.VectorVelocity
-    local dir = vel.Unit
-    local myPos = LP.Character and LP.Character.PrimaryPart and LP.Character.PrimaryPart.Position
-    if not myPos then return false end
-
-    local toPlayer = (myPos - ball.Position).Unit
-    local dot = toPlayer:Dot(dir)
-
-    table.insert(vel_history, vel)
-    if #vel_history > 4 then table.remove(vel_history, 1) end
-
-    local speed = vel.Magnitude
-    if speed > 160 then
-        local distance = (myPos - ball.Position).Magnitude
-        local eta = distance / speed - ping / 1000
-        if eta > ping / 10 + 0.03 then
-            -- approaching fast, fire earlier
-            return true
-        end
-    end
-
-    if #vel_history == 4 then
-        for i = 1, 2 do
-            local d = (dir - vel_history[i].Unit).Unit
-            local proj = toPlayer:Dot(d)
-            if dot - proj < -ping / 1000 then return true end
-        end
-    end
-
-    return false
-end
-
--- ═══ HOOK — hookmetamethod(game, "__index") — ZYTHERA STYLE ═════
+-- ═══ HOOK — FIXED (checkcaller, fast path, pcall IsA) ═══════════
+-- Filter args: longgar (kayak Ailon — cuma 2 type check)
 local function is_valid_args(args)
-    return #args == 7
+    return #args >= 6
         and type(args[2]) == "string"
         and type(args[3]) == "number"
-        and typeof(args[4]) == "CFrame"
-        and type(args[5]) == "table"
-        and type(args[6]) == "table"
-        and type(args[7]) == "boolean"
 end
 
 if typeof(hookmetamethod) == "function" then
     Q5 = hookmetamethod(game, "__index", newcclosure(function(self, key)
-        if (key == "FireServer" and self:IsA("RemoteEvent"))
-        or (key == "InvokeServer" and self:IsA("RemoteFunction")) then
-            return function(_, ...)
-                local args = { ... }
-                if is_valid_args(args) then
-                    if not L5[self] then
-                        L5[self] = args
-                        capturedCount = capturedCount + 1
-                        print("[V12] captured:", self.Name or "?", "count=" .. capturedCount)
-                    end
-                end
-                return Q5(self, key)(_, ...)
-            end
+        -- FAST PATH 1: capture done, bail (zero work)
+        if _captureDone then
+            return Q5(self, key)
         end
-        return Q5(self, key)
+        -- FAST PATH 2: not FireServer/InvokeServer
+        if key ~= "FireServer" and key ~= "InvokeServer" then
+            return Q5(self, key)
+        end
+        -- FAST PATH 3: our own call
+        if checkcaller and checkcaller() then
+            return Q5(self, key)
+        end
+        -- SLOW PATH: safe IsA check via pcall
+        local isRemote = false
+        pcall(function()
+            if key == "FireServer" then
+                isRemote = self:IsA("RemoteEvent")
+            else
+                isRemote = self:IsA("RemoteFunction")
+            end
+        end)
+        if not isRemote then
+            return Q5(self, key)
+        end
+
+        return function(_, ...)
+            local args = { ... }
+            if not L5[self] and is_valid_args(args) then
+                L5[self] = args
+                capturedCount = capturedCount + 1
+                print("[V12.1] captured:", self.Name or "?", "#args="..#args, "count="..capturedCount)
+                if capturedCount >= 2 then _captureDone = true end
+            end
+            return Q5(self, key)(_, ...)
+        end
     end))
-    print("[V12] hookmetamethod installed")
+    print("[V12.1] hookmetamethod installed")
 else
-    warn("[V12] hookmetamethod not available")
+    warn("[V12.1] hookmetamethod not available")
 end
 
--- ═══ PARRY DATA (Zythera-style — build curve payload) ═══════════
+-- ═══ CURVE ══════════════════════════════════════════════════════
 local function build_parry_data()
     local cam = WS.CurrentCamera
+    if not cam then return nil end
     local vp = cam.ViewportSize
+
     local aim = {vp.X / 2, vp.Y / 2}
+    if UIS.TouchEnabled and not UIS.KeyboardEnabled then
+        aim = {vp.X / 2, vp.Y / 2}
+    else
+        local ok, m = pcall(function() return UIS:GetMouseLocation() end)
+        if ok and m then aim = {m.X, m.Y} end
+    end
 
     local events = {}
     local alive = WS:FindFirstChild("Alive")
     if alive then
         for _, e in pairs(alive:GetChildren()) do
             if e ~= LP.Character and e.PrimaryPart then
-                local sp, vis = cam:WorldToScreenPoint(e.PrimaryPart.Position)
-                if vis then events[tostring(e)] = sp end
+                local ok, sp = pcall(function() return cam:WorldToScreenPoint(e.PrimaryPart.Position) end)
+                if ok and sp then events[tostring(e)] = sp end
             end
         end
     end
 
-    local cframe
-    local m = CurrentCurve
     local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
 
+    local cframe
+    local m = CurrentCurve
     if m == "camera" then
         cframe = cam.CFrame
     elseif m == "straight" or m == "dot" then
@@ -330,114 +307,54 @@ local function build_parry_data()
     return { cframe = cframe, events = events, aim = aim }
 end
 
--- ═══ FIRE PARRY — inject token + curve ke captured args ═════════
+-- ═══ FIRE — token regen with fallback 0 (Zythera style) ═════════
 local function Fire_Parry()
-    if tick() - m < A then return false end
-    m = tick()
+    if tick() - lastParryTime < 0.05 then return false end
+    lastParryTime = tick()
 
-    local count = M or 1
-    local fired = false
-
-    for remote, origArgs in pairs(L5) do
-        fired = true
-        for _ = 1, count do
-            local data = build_parry_data()
-            if not data then break end
-
-            -- build packet: original + regen token + new curve
-            local uid = origArgs[2]
-            local tok = _tokenize(uid) or origArgs[3]
-
-            local pkt = {
-                origArgs[1],
-                uid,
-                tok,
-                data.cframe,
-                data.events,
-                data.aim,
-                origArgs[7] or false,
-            }
-
-            local ok = pcall(function()
-                if remote:IsA("RemoteEvent") then
-                    remote:FireServer(unpack(pkt))
-                else
-                    remote:InvokeServer(unpack(pkt))
-                end
-            end)
-            if ok then fired = true end
-        end
-    end
-
-    -- fallback: kirim F key
-    if not fired then
+    if not next(L5) then
         local vim = game:GetService("VirtualInputManager")
         pcall(function()
             vim:SendKeyEvent(true, Enum.KeyCode.F, false, nil)
             vim:SendKeyEvent(false, Enum.KeyCode.F, false, nil)
         end)
+        Play_Parry_Animation()
+        return false
+    end
+
+    local fired = false
+    for remote, origArgs in pairs(L5) do
+        local data = build_parry_data()
+        if not data then break end
+
+        local uid = origArgs[2]
+        local tok = _tokenize(uid) or 0
+
+        local pkt = {
+            origArgs[1],
+            uid,
+            tok,
+            data.cframe,
+            data.events,
+            data.aim,
+            origArgs[7] or false,
+        }
+
+        local ok = pcall(function()
+            if remote:IsA("RemoteEvent") then
+                remote:FireServer(unpack(pkt))
+            else
+                remote:InvokeServer(unpack(pkt))
+            end
+        end)
+        if ok then fired = true end
     end
 
     Play_Parry_Animation()
     return fired
 end
 
--- ═══ SPAM SERVICE — Zythera formula ═════════════════════════════
-local function Spam_Service(ball, ping)
-    if not ball then return 5 end
-    local closest = Closest_Player()
-    if not closest or not closest.PrimaryPart then return 5 end
-
-    local vel = ball.AssemblyLinearVelocity
-    local speed = vel.Magnitude
-    local dist_ball = (LP.Character.PrimaryPart.Position - ball.Position).Magnitude
-    local dist_ent = LP:DistanceFromCharacter(closest.PrimaryPart.Position)
-
-    -- close contact detection
-    _G.In_Close_Contact = _G.In_Close_Contact or false
-    _G.Last_Close_Contact = _G.Last_Close_Contact or 0
-    if dist_ent <= 3 then _G.In_Close_Contact = true end
-    if _G.In_Close_Contact and dist_ent > 3.3 then
-        _G.In_Close_Contact = false
-        _G.Last_Close_Contact = tick()
-    end
-
-    local move_dir = LP.Character.Humanoid.MoveDirection
-    local toEnemy = (closest.PrimaryPart.Position - LP.Character.PrimaryPart.Position).Unit
-    local enemy_move = closest.Humanoid and closest.Humanoid.MoveDirection or Vector3.zero
-
-    local E = 1
-    local since_contact = tick() - _G.Last_Close_Contact
-    if not _G.In_Close_Contact and since_contact >= 1.5 then
-        if move_dir.Magnitude > 0.2 and move_dir:Dot(toEnemy) < -0.4 then E = 10 end
-        if enemy_move.Magnitude > 0.2 and enemy_move:Dot(-toEnemy) < -0.4 then E = 10 end
-    end
-
-    local threshold = ping * 0.7 + math.min(speed / (E * 1.2), 80)
-    if dist_ent > threshold then return threshold end
-    if dist_ball > threshold then return threshold end
-
-    return threshold
-end
-
--- ═══ DETECTION EVENTS ════════════════════════════════════════════
-pcall(function()
-    RS.Remotes.InfinityBall.OnClientEvent:Connect(function(_, active)
-        infinity_active = active or false
-    end)
-end)
-pcall(function()
-    RS.Remotes.DeathBall.OnClientEvent:Connect(function(_, active)
-        deathslash_active = active or false
-    end)
-end)
-pcall(function()
-    RS.Remotes.TimeHoleHoldBall.OnClientEvent:Connect(function(_, active)
-        timehole_active = active or false
-    end)
-end)
-
--- ═══ TARGET CHECK — MULTI-FALLBACK ══════════════════════════════
+-- ═══ TARGET CHECK ═══════════════════════════════════════════════
 local function is_my_target(ball)
     local t = ball:GetAttribute("target")
         or ball:GetAttribute("Target")
@@ -453,7 +370,6 @@ end
 RunService.PreSimulation:Connect(function()
     local now = tick()
 
-    -- cache hrp + ball
     if now - lastHrpCache > 0.15 then
         local ch = LP.Character
         cachedHrp = ch and ch:FindFirstChild("HumanoidRootPart")
@@ -471,29 +387,23 @@ RunService.PreSimulation:Connect(function()
     local zoomies = ball:FindFirstChild("zoomies")
     if not zoomies then return end
 
-    local ping = Get_Ping() / 10
     local speed = zoomies.VectorVelocity.Magnitude
     local dist = (cachedHrp.Position - ball.Position).Magnitude
-    local target = ball:GetAttribute("target")
     local is_target = is_my_target(ball)
 
-    -- skip conditions
     if ball:FindFirstChild("ComboCounter") then return end
     if cachedHrp:FindFirstChild("SingularityCape") then return end
     if InfinityDetect and infinity_active then return end
     if DeathSlashDetect and deathslash_active then return end
     if TimeHoleDetect and timehole_active then return end
 
-    -- AUTO PARRY
+    -- ═══ AUTO PARRY (Ailon formula) ═══
     if AutoParry and next(L5) then
-        -- Zythera-style accuracy formula
-        local ping_thresh = math.clamp(Get_Ping() / 10, 5, 17)
-        local capped = math.min(math.max(speed - 9.5, 0), 650)
+        local ping = Get_Ping() / 10
+        local ping_thresh = math.clamp(ping / 10, 5, 17)
+        local capped = math.max(speed - 9.5, 0)
         local divisor = 2.4 + capped * 0.002
         local accuracy = ping_thresh + math.max(speed / divisor, 9.5)
-
-        local curved = Is_Curved(ball)
-        if curved then accuracy = accuracy * 0.85 end
 
         if is_target and dist <= accuracy then
             local bID = ball:GetDebugId()
@@ -509,7 +419,7 @@ RunService.PreSimulation:Connect(function()
         end
     end
 
-    -- TRIGGERBOT
+    -- ═══ TRIGGERBOT ═══
     if TriggerBot and is_target then
         local bID = ball:GetDebugId()
         if not parried_ids[bID] then
@@ -519,13 +429,14 @@ RunService.PreSimulation:Connect(function()
         end
     end
 
-    -- AUTO SPAM
+    -- ═══ AUTO SPAM ═══
     if AutoSpam then
         local closest = Closest_Player()
         if closest and closest.PrimaryPart then
-            local thresh = Spam_Service(ball, ping)
+            local ping = Get_Ping() / 10
+            local threshold = math.clamp(ping, 1, 16) + math.min(speed / 6, 255)
             local dist_ent = LP:DistanceFromCharacter(closest.PrimaryPart.Position)
-            if dist <= thresh or dist_ent <= thresh then
+            if dist <= threshold and dist_ent <= threshold then
                 if not LP.Character:GetAttribute("Pulsed") then
                     local bID = ball:GetDebugId()
                     if not parried_ids[bID] then
@@ -544,10 +455,10 @@ UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode.E then
         AutoParry = not AutoParry
-        print("[V12] AutoParry:", AutoParry and "ON" or "OFF")
+        print("[V12.1] AutoParry:", AutoParry and "ON" or "OFF")
     elseif input.KeyCode == Enum.KeyCode.End then
         AutoParry = false; AutoSpam = false; TriggerBot = false
-        print("[V12] PANIC")
+        print("[V12.1] PANIC")
     end
 end)
 
@@ -557,31 +468,31 @@ local ok_w, WindUI = pcall(function()
         "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 end)
 if not ok_w or not WindUI then
-    warn("[V12] WindUI fail — running headless")
+    warn("[V12.1] WindUI load fail — running headless")
     return
 end
 
 local Window = WindUI:CreateWindow({
-    Title = "Slax V12",
+    Title = "Slax V12.1",
     Icon = "solar:crown-bold",
     Author = "ALPHA XK",
-    Folder = "SlaxV12",
+    Folder = "SlaxV121",
     Size = UDim2.fromOffset(540, 460),
     Transparent = true,
     Theme = "Dark",
     SideBarWidth = 150,
 })
 
-local TabMain = Window:Tab({ Title = "Combat", Icon = "solar:sword-bold" })
-local TabDet  = Window:Tab({ Title = "Detection", Icon = "solar:shield-bold" })
-local TabCurve= Window:Tab({ Title = "Curve", Icon = "solar:activity-bold" })
-local TabInfo = Window:Tab({ Title = "Info", Icon = "solar:info-circle-bold" })
+local TabMain  = Window:Tab({ Title = "Combat", Icon = "solar:sword-bold" })
+local TabDet   = Window:Tab({ Title = "Detection", Icon = "solar:shield-bold" })
+local TabCurve = Window:Tab({ Title = "Curve", Icon = "solar:activity-bold" })
+local TabInfo  = Window:Tab({ Title = "Info", Icon = "solar:info-circle-bold" })
 
 local SecMain = TabMain:Section({ Title = "Auto Parry" })
 
 SecMain:Toggle({
     Title = "Auto Parry",
-    Desc = "Hookmetamethod + token regen + animation",
+    Desc = "checkcaller-fixed hook + Ailon formula",
     Value = false,
     Callback = function(v)
         AutoParry = v
@@ -591,7 +502,7 @@ SecMain:Toggle({
 
 SecMain:Toggle({
     Title = "Auto Spam",
-    Desc = "Zythera Spam Service — adaptive",
+    Desc = "Adaptive spam near players",
     Value = false,
     Callback = function(v) AutoSpam = v end,
 })
@@ -612,23 +523,9 @@ SecMain:Toggle({
 
 local SecDet = TabDet:Section({ Title = "Skip Parry" })
 
-SecDet:Toggle({
-    Title = "Infinity Ball",
-    Value = true,
-    Callback = function(v) InfinityDetect = v end,
-})
-
-SecDet:Toggle({
-    Title = "Death Slash",
-    Value = true,
-    Callback = function(v) DeathSlashDetect = v end,
-})
-
-SecDet:Toggle({
-    Title = "Time Hole",
-    Value = true,
-    Callback = function(v) TimeHoleDetect = v end,
-})
+SecDet:Toggle({ Title = "Infinity Ball", Value = true, Callback = function(v) InfinityDetect = v end })
+SecDet:Toggle({ Title = "Death Slash",   Value = true, Callback = function(v) DeathSlashDetect = v end })
+SecDet:Toggle({ Title = "Time Hole",     Value = true, Callback = function(v) TimeHoleDetect = v end })
 
 local SecCurve = TabCurve:Section({ Title = "Curve Method" })
 SecCurve:Dropdown({
@@ -645,10 +542,11 @@ task.spawn(function()
     while getgenv()._v12_loaded do
         pcall(function()
             infoPara:Set(string.format(
-                "Hook: %s\nToken: %s\nCaptured remotes: %d\nParry count: %d\nPing: %d ms",
+                "Hook: %s\nCapture: %s (%d remotes)\nToken: %s\nParry count: %d\nPing: %d ms",
                 Q5 and "OK" or "FAIL",
-                _token and "OK" or "FAIL",
+                _captureDone and "DONE" or "waiting",
                 capturedCount,
+                _token and "OK" or "FAIL",
                 (function() local n=0 for _ in pairs(parried_ids) do n=n+1 end return n end)(),
                 Get_Ping()))
         end)
@@ -656,7 +554,7 @@ task.spawn(function()
     end
 end)
 
--- Curve hotkeys 1-7
+-- Curve hotkeys 1-8
 local curveKeys = {
     [Enum.KeyCode.One]="camera",[Enum.KeyCode.Two]="straight",[Enum.KeyCode.Three]="backwards",
     [Enum.KeyCode.Four]="slowball",[Enum.KeyCode.Five]="random",[Enum.KeyCode.Six]="high",
@@ -666,20 +564,20 @@ UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
     if curveKeys[input.KeyCode] then
         CurrentCurve = curveKeys[input.KeyCode]
-        print("[V12] Curve:", CurrentCurve)
+        print("[V12.1] Curve:", CurrentCurve)
     end
 end)
 
 Window:SelectTab(1)
 
 WindUI:Notify({
-    Title = "Slax V12",
-    Content = "Hookmetamethod ready — parry manual sekali kalau perlu",
-    Duration = 5,
+    Title = "Slax V12.1",
+    Content = "Parry manual SEKALI untuk capture remote",
+    Duration = 6,
 })
 
-print("[V12] loaded")
-print("[V12] Toggle: E | Panic: END | Curves: 1-8")
+print("[V12.1] loaded")
+print("[V12.1] Toggle: E | Panic: END | Curves: 1-8")
 
 _G.v12_unload = function()
     getgenv()._v12_loaded = nil
