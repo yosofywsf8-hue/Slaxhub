@@ -1,1068 +1,1810 @@
--- ═══════════════════════════════════════════════════════════════════════════
--- AUTO PARRY ULTIMATE — Semua Fitur Digabung
--- Author: ALPHA XK
--- Sources: Ailon + Zythera + Ssin + Condemned + V12
--- All-in-One: hook, token, curve, target, detection, animation, multi-target
--- ═══════════════════════════════════════════════════════════════════════════
+--[[
+    ╔══════════════════════════════════════════════════════════╗
+    ║                                                          ║
+    ║             FAREX PULL HUB v2.0.0                        ║
+    ║                                                          ║
+    ║     Blade Ball All-in-One Script                         ║
+    ║     Features: 20+                                        ║
+    ║     Platform: PC / Mobile / Console                      ║
+    ║                                                          ║
+    ║     Build: v2 | Codename: SHADOW                         ║
+    ║                                                          ║
+    ╚══════════════════════════════════════════════════════════╝
+]]
 
-if getgenv()._ap_ultimate then
-    pcall(function() if _G.ap_ultimate_unload then _G.ap_ultimate_unload() end end)
-    getgenv()._ap_ultimate = nil
-    task.wait(0.1)
-end
-getgenv()._ap_ultimate = true
+-- ═══════════════════════════════════════════════════════════
+--  [0] فحص الـ executor
+-- ═══════════════════════════════════════════════════════════
 
-local RunService = game:GetService("RunService")
-local Players    = game:GetService("Players")
-local LP         = Players.LocalPlayer
-local UIS        = game:GetService("UserInputService")
-local Stats      = game:GetService("Stats")
-local RS         = game:GetService("ReplicatedStorage")
-local WS         = game:GetService("Workspace")
-local CoreGui    = game:GetService("CoreGui")
-
--- ═══════════════════════════════════════════════════════════════════════════
--- STATE
--- ═══════════════════════════════════════════════════════════════════════════
-local S = {
-    enabled          = false,
-    autoSpam         = false,
-    triggerbot       = false,
-    manualSpam       = false,
-    lobbyAP          = false,
-    animFix          = true,
-    cooldownProtect  = false,
-    autoAbility      = false,
-    randomAccuracy   = false,
-
-    -- detection skip
-    skipInfinity     = true,
-    skipDeathSlash   = true,
-    skipTimeHole     = true,
-    skipSoF          = true,
-    skipPhantom      = true,
-    skipComboCount   = true,
-
-    -- tuning
-    accuracy         = 100,
-    accuracyMin      = 30,
-    accuracyMax      = 70,
-    spamThreshold    = 2.5,
-    spamRate         = 240,
-    parryDelay       = 0.05,
-    maxParryCount    = 36,
-    curveMethod      = "camera",
-    useAilonFormula  = true,
-    useZytheraFormula= false,
-    useSsinFormula   = false,
-    usePerfStats     = false,
+local _REQUIRED = {
+    "cloneref", "getgenv", "hookmetamethod", "newcclosure",
+    "getconnections", "getupvalues", "setupvalue",
+    "getthreadidentity", "setthreadidentity",
 }
 
-local CAP = {
-    remotes          = {},       -- [remote] = captured args
-    remoteCount      = 0,
-    captureDone      = false,
-    oldIndex         = nil,
-    token            = nil,
-    tokenFn          = nil,
-    grabParryAnim    = nil,
-    lastParryTime    = 0,
-    lastParryAnim    = 0,
-    parriedIDs       = {},
-    ballLocks        = {},
-    globalLock       = 0,
+local missing = {}
+for _, fn in ipairs(_REQUIRED) do
+    local ok = pcall(function() return _G[fn] end)
+    if not ok or not _G[fn] then table.insert(missing, fn) end
+end
 
-    infinity_active  = false,
-    deathslash_active= false,
-    timehole_active  = false,
-    slashesoffury_active = false,
-    slashesoffury_count = 0,
-    phantom_lastDestroy = 0,
-    tornado_time     = tick(),
+if #missing > 0 then
+    error("[Farexpull] Missing executor functions: " .. table.concat(missing, ", "))
+end
 
-    velHistory       = {},
-    lastWarping      = tick(),
-    lerpRadians      = 0,
-    curving          = tick(),
+-- ═══════════════════════════════════════════════════════════
+--  [1] الخدمات
+-- ═══════════════════════════════════════════════════════════
 
-    cachedBall       = nil,
-    cachedHrp        = nil,
-    lastCache        = 0,
-    lastHrpCache     = 0,
+local _services = {}
+local _svc_names = {
+    "Players", "RunService", "UserInputService", "ReplicatedStorage",
+    "Workspace", "TweenService", "HttpService", "Stats",
+    "VirtualInputManager", "Debris", "CoreGui", "Lighting",
+    "TextService", "ContentProvider", "TeleportService",
+}
+for _, name in ipairs(_svc_names) do
+    local ok, svc = pcall(function() return cloneref(game:GetService(name)) end)
+    if ok and svc then _services[name] = svc end
+end
 
-    isMobile         = UIS.TouchEnabled and not UIS.KeyboardEnabled,
+local Players = _services.Players
+local RunService = _services.RunService
+local UserInputService = _services.UserInputService
+local ReplicatedStorage = _services.ReplicatedStorage
+local Workspace = _services.Workspace
+local TweenService = _services.TweenService
+local HttpService = _services.HttpService
+local Stats = _services.Stats
+local VirtualInputManager = _services.VirtualInputManager
+local Debris = _services.Debris
+local CoreGui = _services.CoreGui
+local Lighting = _services.Lighting
+local TeleportService = _services.TeleportService
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+-- ═══════════════════════════════════════════════════════════
+--  [2] الحالة العامة
+-- ═══════════════════════════════════════════════════════════
+
+local STATE = {
+    version = "2.0.0",
+    build = "v2",
+    device = nil,
+    features = {},
+    connections = {},
+    flags = {},
+    keybinds = {},
 }
 
-local curveKeys = {
-    [Enum.KeyCode.One]    = "camera",
-    [Enum.KeyCode.Two]    = "straight",
-    [Enum.KeyCode.Three]  = "backwards",
-    [Enum.KeyCode.Four]   = "slowball",
-    [Enum.KeyCode.Five]   = "random",
-    [Enum.KeyCode.Six]    = "high",
-    [Enum.KeyCode.Seven]  = "left",
-    [Enum.KeyCode.Eight]  = "right",
-    [Enum.KeyCode.Nine]   = "dot",
-    [Enum.KeyCode.Zero]   = "accelerated",
-}
-
--- ═══════════════════════════════════════════════════════════════════════════
--- TOKEN SCAN
--- ═══════════════════════════════════════════════════════════════════════════
-pcall(function()
-    for _, f in getgc(true) do
-        if type(f) == 'function' then
-            local ok, src = pcall(function() return debug.info(f, 's') end)
-            if ok and src and tostring(src):find('PRY', 1, true) then
-                local ok2, ups = pcall(function() return debug.getupvalues(f) end)
-                if ok2 and ups then
-                    for _, v in pairs(ups) do
-                        if type(v) == 'function' then
-                            CAP.tokenFn = v
-                            break
-                        end
-                    end
-                end
-                if CAP.tokenFn then break end
-            end
-        end
+local function detect_device()
+    if STATE.device then return STATE.device end
+    if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+        STATE.device = "Mobile"
+    elseif UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled then
+        STATE.device = "Console"
+    else
+        STATE.device = "PC"
     end
-end)
-
-CAP.token = CAP.tokenFn
-
-local function _tokenize(uid)
-    if not CAP.tokenFn then return nil end
-    local ok, res = pcall(function()
-        local t = tostring(math.floor(WS:GetServerTimeNow() * 100))
-        local k = CAP.tokenFn(uid, 'TIME')
-        local chars = table.create(#t)
-        for i = 1, #t do
-            chars[i] = string.char(bit32.bxor(
-                (string.byte(t, i) + i) % 256,
-                string.byte(k, (i - 1) % #k + 1)
-            ))
-        end
-        return table.concat(chars)
-    end)
-    return ok and res or nil
+    return STATE.device
 end
 
-print("[AP-ULT] token:", CAP.tokenFn and "OK" or "FAIL")
+local function is_mobile() return detect_device() == "Mobile" end
+local function is_pc() return detect_device() == "PC" end
 
--- ═══════════════════════════════════════════════════════════════════════════
--- HOOK — FIXED VERSION (checkcaller + fast path + pcall IsA)
--- ═══════════════════════════════════════════════════════════════════════════
-local function is_valid_args(args)
-    return #args >= 6
-        and type(args[2]) == "string"
-        and type(args[3]) == "number"
-end
-
-if typeof(hookmetamethod) == "function" then
-    CAP.oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-        -- FAST PATH 1: capture done
-        if CAP.captureDone then
-            return CAP.oldIndex(self, key)
-        end
-        -- FAST PATH 2: not FireServer/InvokeServer
-        if key ~= "FireServer" and key ~= "InvokeServer" then
-            return CAP.oldIndex(self, key)
-        end
-        -- FAST PATH 3: our own call
-        if checkcaller and checkcaller() then
-            return CAP.oldIndex(self, key)
-        end
-        -- SLOW PATH: safe IsA
-        local isRemote = false
-        pcall(function()
-            if key == "FireServer" then
-                isRemote = self:IsA("RemoteEvent")
-            else
-                isRemote = self:IsA("RemoteFunction")
-            end
-        end)
-        if not isRemote then
-            return CAP.oldIndex(self, key)
-        end
-        return function(_, ...)
-            local args = { ... }
-            if not CAP.remotes[self] and is_valid_args(args) then
-                CAP.remotes[self] = args
-                CAP.remoteCount = CAP.remoteCount + 1
-                print("[AP-ULT] captured:", self.Name or "?", "#args="..#args, "count="..CAP.remoteCount)
-                if CAP.remoteCount >= 3 then
-                    CAP.captureDone = true
-                end
-            end
-            return CAP.oldIndex(self, key)(_, ...)
-        end
-    end))
-    print("[AP-ULT] hook installed")
-else
-    warn("[AP-ULT] hookmetamethod not available — using VIM fallback only")
-end
-
--- ═══════════════════════════════════════════════════════════════════════════
--- PING — dual source
--- ═══════════════════════════════════════════════════════════════════════════
-local function Get_Ping_Stats()
-    local ok, res = pcall(function()
-        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-    end)
-    return ok and res or 60
-end
-
-local function Get_Ping_Perf()
-    local ok, res = pcall(function()
-        local rg = CoreGui:FindFirstChild("RobloxGui")
-        if rg then
-            local perf = rg:FindFirstChild("PerformanceStats")
-            if perf then
-                for _, d in perf:GetDescendants() do
-                    if d:IsA("TextLabel") then
-                        local ms = d.Text:match("(%d+)%s*ms")
-                        if ms then return tonumber(ms) or 60 end
-                    end
-                end
-            end
-        end
-        return 60
-    end)
-    return ok and res or 60
-end
-
-local function Get_Ping()
-    if S.usePerfStats then
-        return Get_Ping_Perf()
+local function register_conn(name, conn)
+    if STATE.connections[name] then
+        pcall(function() STATE.connections[name]:Disconnect() end)
     end
-    return Get_Ping_Stats()
+    STATE.connections[name] = conn
+    return conn
 end
 
--- ═══════════════════════════════════════════════════════════════════════════
--- BALL / TARGET HELPERS
--- ═══════════════════════════════════════════════════════════════════════════
-local function Get_Ball()
-    local bc = WS:FindFirstChild("Balls")
-    if bc then
-        for _, b in pairs(bc:GetChildren()) do
-            if b:GetAttribute("realBall") then return b end
-        end
-    end
-    return nil
-end
+-- ═══════════════════════════════════════════════════════════
+--  [3] Obfuscation
+-- ═══════════════════════════════════════════════════════════
 
-local function Get_Balls()
+local _obf_counter = 0
+local _chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+local function rand_name(prefix)
+    _obf_counter = _obf_counter + 1
     local out = {}
-    local bc = WS:FindFirstChild("Balls")
-    if bc then
-        for _, b in pairs(bc:GetChildren()) do
-            if b:GetAttribute("realBall") then
-                table.insert(out, b)
-            end
-        end
+    for i = 1, 8 do
+        local idx = math.random(1, #_chars)
+        out[i] = _chars:sub(idx, idx)
     end
-    return out
+    return (prefix or "") .. table.concat(out) .. tostring(_obf_counter)
 end
 
-local function Get_Training_Ball()
-    local tb = WS:FindFirstChild("TrainingBalls")
-    if tb then
-        for _, b in pairs(tb:GetChildren()) do
-            if b:GetAttribute("realBall") then return b end
-        end
+local function rand_hex(n)
+    n = n or 16
+    local out = {}
+    for i = 1, n do
+        out[i] = string.format("%02x", math.random(0, 255))
     end
+    return table.concat(out)
+end
+
+local function xor_crypt(data, key)
+    local out = {}
+    local key_len = #key
+    for i = 1, #data do
+        local d = data:byte(i)
+        local k = key:byte(((i - 1) % key_len) + 1)
+        out[i] = string.char(bit32 and bit32.bxor(d, k) or ((d + k) % 256))
+    end
+    return table.concat(out)
+end
+
+-- ═══════════════════════════════════════════════════════════
+--  [4] Input Module
+-- ═══════════════════════════════════════════════════════════
+
+local Input = {}
+
+function Input.send_parry_keypress()
+    if is_mobile() then
+        pcall(function()
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+        end)
+    else
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+        end)
+    end
+end
+
+local _mobile_buttons = {}
+
+function Input.spawn_mobile_button(opts)
+    if not is_mobile() then return nil end
+    opts = opts or {}
+    local name = opts.name or "FarexpullBtn"
+    local text = opts.text or "BTN"
+    local position = opts.position or UDim2.new(0, 20, 0.5, 0)
+    local color = opts.color or Color3.fromRGB(99, 102, 241)
+    local callback = opts.callback or function() end
+
+    if _mobile_buttons[name] then
+        pcall(function() _mobile_buttons[name]:Destroy() end)
+        _mobile_buttons[name] = nil
+    end
+
+    local gui = CoreGui:FindFirstChild("FarexpullMobile")
+    if not gui then
+        gui = Instance.new("ScreenGui")
+        gui.Name = "FarexpullMobile"
+        gui.ResetOnSpawn = false
+        gui.IgnoreGuiInset = true
+        gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        gui.Parent = CoreGui
+    end
+
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = UDim2.new(0, 70, 0, 70)
+    btn.Position = position
+    btn.BackgroundColor3 = color
+    btn.BackgroundTransparency = 0.3
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(235, 235, 245)
+    btn.TextSize = 14
+    btn.Font = Enum.Font.GothamBold
+    btn.AutoButtonColor = false
+    btn.BorderSizePixel = 0
+    btn.Parent = gui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = btn
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = color
+    stroke.Transparency = 0.2
+    stroke.Thickness = 2
+    stroke.Parent = btn
+
+    local touch_start = 0
+    local moved = false
+
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            touch_start = tick()
+            moved = false
+            btn.BackgroundTransparency = 0.15
+        end
+    end)
+
+    btn.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch and tick() - touch_start > 0.15 then
+            moved = true
+        end
+    end)
+
+    btn.InputEnded:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.Touch then return end
+        btn.BackgroundTransparency = 0.3
+        if not moved then pcall(callback) end
+    end)
+
+    _mobile_buttons[name] = btn
+    return btn
+end
+
+function Input.remove_all_mobile_buttons()
+    for name, btn in pairs(_mobile_buttons) do
+        pcall(function() btn:Destroy() end)
+    end
+    _mobile_buttons = {}
+    local gui = CoreGui:FindFirstChild("FarexpullMobile")
+    if gui then gui:Destroy() end
+end
+
+-- ═══════════════════════════════════════════════════════════
+--  [5] Remote Module
+-- ═══════════════════════════════════════════════════════════
+
+local Remote = {}
+
+local _remote_config = {
+    max_rate = 30,
+    jitter = 0.2,
+    discovery_retries = 5,
+    discovery_interval = 0.5,
+    enable_event_data_variance = true,
+    enable_camera_move = true,
+    prefer_remote = true,
+}
+
+local _remote_state = {
+    parry_remote = nil,
+    parry_kind = nil,
+    controllers = nil,
+    discovery_done = false,
+    last_fire = 0,
+    rate_violations = 0,
+    total_fires = 0,
+    successful_fires = 0,
+    failed_fires = 0,
+    fallbacks_used = 0,
+}
+
+local function find_controllers()
+    if _remote_state.controllers and _remote_state.controllers.Parent then
+        return _remote_state.controllers
+    end
+    local c = ReplicatedStorage:FindFirstChild("Controllers")
+    if c then _remote_state.controllers = c; return c end
     return nil
 end
 
-local function Closest_Player()
-    local nearest, closest = math.huge, nil
-    local alive = WS:FindFirstChild("Alive")
-    if not alive then return nil end
-    for _, c in pairs(alive:GetChildren()) do
-        if c ~= LP.Character and c:FindFirstChild("HumanoidRootPart") then
-            local d = (LP.Character.HumanoidRootPart.Position - c.HumanoidRootPart.Position).Magnitude
-            if d < nearest then nearest, closest = d, c end
-        end
-    end
-    return closest
-end
-
-local function is_my_target(ball)
-    local t = ball:GetAttribute("target")
-        or ball:GetAttribute("Target")
-        or ball:GetAttribute("targetPlayer")
-    if not t then
-        -- fallback: velocity approach
-        local z = ball:FindFirstChild("zoomies")
-        local char = LP.Character
-        if z and char and char.PrimaryPart then
-            local vel = z.VectorVelocity
-            local toPlayer = char.PrimaryPart.Position - ball.Position
-            if vel.Magnitude > 3 and toPlayer.Magnitude > 0.1 then
-                if vel.Unit:Dot(toPlayer.Unit) > 0.85 then return true end
+local function find_pry_remote()
+    local controllers = find_controllers()
+    if not controllers then return nil end
+    for _, child in ipairs(controllers:GetChildren()) do
+        if child.Name:find("SwordsController", 1, true) == 1 then
+            local pry = child:FindFirstChild("PRY")
+            if pry then
+                if pry:IsA("RemoteEvent") then return pry, "event"
+                elseif pry:IsA("RemoteFunction") then return pry, "function" end
             end
         end
-        return false
     end
-    if t == LP.Name then return true end
-    if t == LP.UserId then return true end
-    if tostring(t) == tostring(LP.UserId) then return true end
+    return nil, nil
+end
+
+function Remote.discover()
+    if _remote_state.discovery_done then
+        return _remote_state.parry_remote, _remote_state.parry_kind
+    end
+    for attempt = 1, _remote_config.discovery_retries do
+        local pry, kind = find_pry_remote()
+        if pry then
+            _remote_state.parry_remote = pry
+            _remote_state.parry_kind = kind
+            _remote_state.discovery_done = true
+            print("[Farexpull] Remote found: " .. pry:GetFullName())
+            return pry, kind
+        end
+        task.wait(_remote_config.discovery_interval)
+    end
+    warn("[Farexpull] PRY remote not found")
+    return nil, nil
+end
+
+function Remote.start_background_discovery()
+    if _remote_state.discovery_conn then return end
+    _remote_state.discovery_conn = task.spawn(function()
+        while not _remote_state.discovery_done do
+            local pry = find_pry_remote()
+            if pry then
+                _remote_state.parry_remote = pry
+                _remote_state.parry_kind = "event"
+                _remote_state.discovery_done = true
+                return
+            end
+            task.wait(1)
+        end
+    end)
+end
+
+local function can_fire()
+    local now = tick()
+    local interval = 1 / _remote_config.max_rate
+    local j = _remote_config.jitter
+    local min_i = interval * (1 - j)
+    local max_i = interval * (1 + j)
+    local threshold = min_i + math.random() * (max_i - min_i)
+    if now - _remote_state.last_fire >= threshold then
+        _remote_state.last_fire = now
+        return true
+    end
+    _remote_state.rate_violations = _remote_state.rate_violations + 1
     return false
 end
 
--- ═══════════════════════════════════════════════════════════════════════════
--- CURVE DETECTION (multi-signal — Ailon + Zythera)
--- ═══════════════════════════════════════════════════════════════════════════
-local function is_curved(ball)
-    if not ball then return false end
-    local z = ball:FindFirstChild("zoomies")
-    if not z then return false end
-    local char = LP.Character
-    if not char or not char.PrimaryPart then return false end
-
-    local vel = z.VectorVelocity
-    local speed = vel.Magnitude
-    if speed < 1 then return false end
-
-    local delta = char.PrimaryPart.Position - ball.Position
-    local distance = delta.Magnitude
-    if distance < 0.001 then return false end
-
-    local toMe = delta / distance
-    local velUnit = vel.Unit
-    local ping = Get_Ping() / 1000
-    local targeted = ball:GetAttribute("target") == LP.Name
-
-    -- Signal 1: current dot
-    local dot = toMe:Dot(velUnit)
-
-    -- Signal 2: predictive dot
-    local lookahead = math.clamp(ping * 2 + (distance / speed) * 0.1, ping * 2, 0.5)
-    local futurePos = ball.Position + vel * lookahead
-    local futureDelta = char.PrimaryPart.Position - futurePos
-    local futureDist = futureDelta.Magnitude
-    local futureDot = futureDist > 0.001 and (futureDelta / futureDist):Dot(velUnit) or dot
-
-    -- Signal 3: lateral cross
-    local cross = toMe:Cross(velUnit).Magnitude
-
-    -- Signal 4: predictive miss
-    local timeToImpact = math.max(distance / speed - ping, 1/60)
-    local predictedPos = ball.Position + vel * timeToImpact
-    local missAmount = (char.PrimaryPart.Position - predictedPos).Magnitude
-    local hitbox = math.clamp(4 + ping * speed * 0.08 + distance * 0.04, 4, 22)
-    local willMiss = missAmount > hitbox
-
-    -- Backwards curve
-    if targeted and distance < 200 then
-        if dot < 0.05 and futureDot < 0.15 then return true end
-        local bcDot = math.clamp(0.55 - (distance / 200) * 0.25, 0.30, 0.55)
-        if willMiss and dot < bcDot and speed > 15 then return true end
+local function get_event_data()
+    if not _remote_config.enable_event_data_variance then return {} end
+    local data = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local ok, sp = pcall(function() return Camera:WorldToScreenPoint(hrp.Position) end)
+                if ok then data[player.Name] = sp end
+            end
+        end
     end
+    return data
+end
 
-    -- Warp guard
-    local angleRad = math.acos(math.clamp(dot, -1, 1))
-    CAP.lerpRadians = CAP.lerpRadians + (angleRad - CAP.lerpRadians) * 0.55
-    if CAP.lerpRadians < 0.022 then
-        CAP.lastWarping = tick()
+local function get_mouse_vec()
+    if is_mobile() then
+        local vp = Camera.ViewportSize
+        return {vp.X / 2, vp.Y / 2}
     end
+    local ok, pos = pcall(function() return UserInputService:GetMouseLocation() end)
+    if ok and pos then return {pos.X, pos.Y} end
+    return {0, 0}
+end
 
+local function generate_curve_cframe(mode)
+    mode = mode or 2
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return Camera.CFrame end
+    local target_pos = nil
+    local mouse_pos = get_mouse_vec()
+    local ray = Camera:ScreenPointToRay(mouse_pos[1], mouse_pos[2])
+    local look_cf = CFrame.lookAt(ray.Origin, ray.Origin + ray.Direction)
+    local best_dot = -math.huge
+    local best_char = nil
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local their_hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            if their_hrp then
+                local dot = look_cf.LookVector:Dot((their_hrp.Position - Camera.CFrame.Position).Unit)
+                if dot > best_dot then best_dot = dot; best_char = their_hrp end
+            end
+        end
+    end
+    if best_char then target_pos = best_char.Position
+    else target_pos = hrp.Position + Camera.CFrame.LookVector * 100 end
+    if mode == 2 then
+        local rv = Camera.CFrame.RightVector
+        local up = Vector3.new(0, 1, 0)
+        local forward = -(target_pos - hrp.Position).Unit
+        local sign = math.random(0, 1) == 0 and -1 or 1
+        local offsets = {
+            forward * math.random(7000, 12000) + rv * (sign * math.random(2000, 5000)) + up * math.random(3000, 6000),
+            forward * math.random(8000, 15000) + rv * (sign * math.random(1500, 4000)) + up * math.random(2000, 5000),
+            rv * (sign * math.random(8000, 15000)) + forward * math.random(2000, 5000) + up * math.random(2000, 5000),
+        }
+        return CFrame.new(hrp.Position, target_pos + offsets[math.random(1, #offsets)])
+    end
+    if mode == 3 then return CFrame.new(hrp.Position, target_pos + Vector3.new(0, 5, 0)) end
+    if mode == 4 then return CFrame.new(Camera.CFrame.Position, hrp.Position + (hrp.Position - target_pos).Unit * 10000 + Vector3.new(0, 1000, 0)) end
+    if mode == 5 then return CFrame.new(hrp.Position, target_pos + Vector3.new(0, -9e18, 0)) end
+    if mode == 6 then return CFrame.new(hrp.Position, target_pos + Vector3.new(0, 9e18, 0)) end
+    if mode == 7 then
+        local dist = (hrp.Position - target_pos).Magnitude
+        local y = math.clamp((dist - 60) * 0.2, -25, 5)
+        return CFrame.new(hrp.Position, target_pos + Vector3.new(0, y, 0))
+    end
+    return Camera.CFrame
+end
+
+function Remote.fire_parry(opts)
+    opts = opts or {}
+    if not can_fire() then return false, "rate_limited" end
+    if not _remote_state.parry_remote then
+        Remote.discover()
+        if not _remote_state.parry_remote then
+            _remote_state.failed_fires = _remote_state.failed_fires + 1
+            return false, "no_remote"
+        end
+    end
+    local curve_mode = opts.curve_mode or 2
+    local cf = nil
+    if _remote_config.enable_camera_move then
+        cf = generate_curve_cframe(curve_mode)
+    end
+    local event_data = get_event_data()
+    local mouse_vec = get_mouse_vec()
+    local ok = false
+    if _remote_state.parry_kind == "event" then
+        ok = pcall(function()
+            _remote_state.parry_remote:FireServer(0.5, cf, event_data, mouse_vec, false)
+        end)
+    else
+        ok = pcall(function()
+            _remote_state.parry_remote:FireServer(0.5, cf, event_data, mouse_vec, false)
+        end)
+    end
+    _remote_state.total_fires = _remote_state.total_fires + 1
+    if ok then
+        _remote_state.successful_fires = _remote_state.successful_fires + 1
+        return true
+    else
+        _remote_state.failed_fires = _remote_state.failed_fires + 1
+        if _remote_config.prefer_remote then
+            _remote_state.fallbacks_used = _remote_state.fallbacks_used + 1
+            Input.send_parry_keypress()
+            return true, "fallback"
+        end
+        return false
+    end
+end
+
+function Remote.get_stats()
+    return {
+        total = _remote_state.total_fires,
+        successful = _remote_state.successful_fires,
+        failed = _remote_state.failed_fires,
+        fallbacks = _remote_state.fallbacks_used,
+        has_remote = _remote_state.parry_remote ~= nil,
+    }
+end
+
+Remote.start_background_discovery()
+
+-- ═══════════════════════════════════════════════════════════
+--  [6] Config Module
+-- ═══════════════════════════════════════════════════════════
+
+local Config = {}
+
+local _config_folder = nil
+local _config_key = "fxpull_v2_2024"
+local _config_queue = {}
+local _config_thread = nil
+local _current_profile = nil
+
+local function ensure_config_folder()
+    if _config_folder then return _config_folder end
+    local seed = tostring(LocalPlayer.UserId)
+    local hash = 0
+    for i = 1, #seed do
+        hash = (hash * 31 + seed:byte(i)) % 100000000
+    end
+    _config_folder = "fx_" .. string.format("%08x", hash)
+    if not isfolder(_config_folder) then
+        pcall(makefolder, _config_folder)
+    end
+    return _config_folder
+end
+
+local function config_path(name)
+    return ensure_config_folder() .. "/" .. name
+end
+
+local function process_config_queue()
+    while #_config_queue > 0 do
+        local job = table.remove(_config_queue, 1)
+        if job then
+            local data = HttpService:JSONEncode(job.data)
+            local encrypted = xor_crypt(data, _config_key)
+            pcall(function() writefile(job.path, encrypted) end)
+        end
+    end
+    _config_thread = nil
+end
+
+local function queue_config_write(name, data)
+    table.insert(_config_queue, {
+        path = config_path(name),
+        data = data,
+    })
+    if not _config_thread then
+        _config_thread = task.delay(0.15, process_config_queue)
+    end
+end
+
+local function read_config(name)
+    local path = config_path(name)
+    if not isfile(path) then return nil end
+    local ok, raw = pcall(readfile, path)
+    if not ok or not raw then return nil end
+    local decrypted = xor_crypt(raw, _config_key)
+    local ok2, parsed = pcall(HttpService.JSONDecode, HttpService, decrypted)
+    if not ok2 then return nil end
+    return parsed
+end
+
+function Config.save(name, data)
+    name = (name or _current_profile or "default"):gsub("[^%w_%-]", "_"):sub(1, 32)
+    if not data then
+        data = { flags = STATE.flags, keybinds = STATE.keybinds, version = 2 }
+    end
+    data._meta = { version = 2, saved_at = os.time() }
+    queue_config_write(name .. ".cfg", data)
+    _current_profile = name
+    return true, name
+end
+
+function Config.load(name)
+    name = (name or _current_profile or "default"):gsub("[^%w_%-]", "_"):sub(1, 32)
+    local data = read_config(name .. ".cfg")
+    if not data then return false, "not found" end
+    if data.flags then
+        for k, v in pairs(data.flags) do STATE.flags[k] = v end
+    end
+    if data.keybinds then
+        for k, v in pairs(data.keybinds) do STATE.keybinds[k] = v end
+    end
+    _current_profile = name
+    return true
+end
+
+function Config.set_autoload(name)
+    if not name then
+        local p = config_path("auto.dat")
+        if isfile(p) then pcall(delfile, p) end
+        return false
+    end
+    queue_config_write("auto.dat", { profile = name })
+    return true
+end
+
+function Config.get_autoload()
+    local data = read_config("auto.dat")
+    return data and data.profile or nil
+end
+
+function Config.run_autoload()
+    local name = Config.get_autoload()
+    if name then Config.load(name); return name end
+    return nil
+end
+
+function Config.list_profiles()
+    local folder = ensure_config_folder()
+    local ok, files = pcall(listfiles, folder)
+    if not ok then return {} end
+    local profiles = {}
+    for _, file in ipairs(files) do
+        local name = file:match("/([^/]+)%.cfg$")
+        if name then table.insert(profiles, name) end
+    end
+    table.sort(profiles)
+    return profiles
+end
+
+function Config.delete(name)
+    name = name:gsub("[^%w_%-]", "_"):sub(1, 32)
+    local p = config_path(name .. ".cfg")
+    if isfile(p) then pcall(delfile, p) end
+    return true
+end
+
+function Config.get_current() return _current_profile end
+
+ensure_config_folder()
+
+-- ═══════════════════════════════════════════════════════════
+--  [7] Anti-Cheat Scanner
+-- ═══════════════════════════════════════════════════════════
+
+local AntiCheat = {}
+
+local _ac_patterns = {
+    "kraken", "shield", "honeypot", "trap", "report",
+    "ban", "kick", "detect", "flag", "monitor",
+    "anticheat", "ac_", "_ac", "guard", "secure",
+    "verify", "validate", "suspicious", "exploit",
+    "telemetry", "analytics", "trace", "audit",
+}
+local _ac_safe = { "Farexpull", "sp_", "fx_" }
+local _ac_findings = {}
+local _ac_disconnected = {}
+local _ac_conn = nil
+
+local function is_suspicious(name)
+    if type(name) ~= "string" then return false end
+    local lower = name:lower()
+    for _, p in ipairs(_ac_safe) do
+        if lower:find(p:lower(), 1, true) then return false end
+    end
+    for _, p in ipairs(_ac_patterns) do
+        if lower:find(p, 1, true) then return true end
+    end
+    return false
+end
+
+local function analyze_conn(conn)
+    if not conn or not conn.Function then return nil end
+    local info
+    pcall(function() info = debug.getinfo(conn.Function) end)
+    if not info then return nil end
+    if is_suspicious(info.name) or is_suspicious(info.short_src) then
+        return { name = info.name, src = info.short_src, line = info.linedefined }
+    end
+    return nil
+end
+
+local function scan_remote(remote)
+    if not remote or not getconnections then return end
+    local events = {}
+    pcall(function()
+        if remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent") then
+            events = getconnections(remote.OnClientEvent)
+        elseif remote:IsA("RemoteFunction") then
+            events = getconnections(remote.OnClientInvoke)
+        end
+    end)
+    for _, conn in ipairs(events) do
+        local finding = analyze_conn(conn)
+        if finding then
+            finding.remote = remote:GetFullName()
+            table.insert(_ac_findings, finding)
+            warn("[Farexpull] Anti-cheat: " .. tostring(finding.name) .. " on " .. finding.remote)
+            pcall(function()
+                conn:Disconnect()
+                table.insert(_ac_disconnected, finding)
+            end)
+        end
+    end
+end
+
+function AntiCheat.scan()
+    if not getconnections then return 0 end
+    local count = 0
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            scan_remote(obj)
+            count = count + 1
+        end
+    end
+    return count
+end
+
+function AntiCheat.start()
+    if _ac_conn then return end
+    _ac_conn = task.spawn(function()
+        while true do
+            pcall(AntiCheat.scan)
+            task.wait(5)
+        end
+    end)
+    print("[Farexpull] Anti-cheat scanner started")
+end
+
+function AntiCheat.stop()
+    if _ac_conn then
+        pcall(function() task.cancel(_ac_conn) end)
+        _ac_conn = nil
+    end
+end
+
+function AntiCheat.report()
+    print(string.format("[Farexpull] AC report: %d findings, %d disconnected",
+        #_ac_findings, #_ac_disconnected))
+end
+
+-- ═══════════════════════════════════════════════════════════
+--  [8] Parry Module
+-- ═══════════════════════════════════════════════════════════
+
+local Parry = {}
+
+local _parry_config = {
+    enabled = false,
+    accuracy = 75,
+    randomize_accuracy = false,
+    random_accuracy_min = 25,
+    random_accuracy_max = 85,
+    parry_mode = "Hybrid",
+    curve_mode = 2,
+    triggerbot = false,
+    kill_pre_click = false,
+    kill_pre_click_range = 30,
+    parry_hold = 0.4,
+    cooldown = 2,
+    ping_ttl = 0.12,
+}
+
+local _parry_state = {
+    hb_conn = nil,
+    parried = false,
+    parried_at = 0,
+    ping = 50,
+    ping_at = 0,
+    failed_at = 0,
+    last_attr = nil,
+    cooldown_conn = nil,
+    ball_tracking = {},
+    curve_time = 0,
+    original_accuracy = nil,
+    stats = { parries = 0, hits = 0, misses = 0 },
+    grab_track = nil,
+}
+
+local function get_ping()
     local now = tick()
-    local tiWindow = math.min(timeToImpact / 1.15, 0.6)
-    if (now - CAP.lastWarping) < tiWindow and (now - CAP.curving) < tiWindow then
+    if now - _parry_state.ping_at < _parry_config.ping_ttl then
+        return _parry_state.ping
+    end
+    local ok, p = pcall(function()
+        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    if ok and type(p) == "number" then
+        _parry_state.ping = p
+        _parry_state.ping_at = now
+    end
+    return _parry_state.ping
+end
+
+local function get_parry_distance(vel)
+    local acc = _parry_config.accuracy
+    local acc_mult = 0.5 + (math.clamp(acc, 1, 100) - 1) * 0.010101
+    local ping = get_ping()
+    local ping_factor = math.clamp(ping / 100, 5, 17)
+    local base = vel / ((2.4 + math.min(math.max(vel - 9.5, 0), 650) * 0.002) * acc_mult)
+    return ping_factor + math.max(base, 9.5)
+end
+
+local function get_balls()
+    local result = {}
+    for _, folder_name in ipairs({"Balls", "TrainingBalls"}) do
+        local folder = Workspace:FindFirstChild(folder_name)
+        if folder then
+            for _, child in ipairs(folder:GetChildren()) do
+                if child:IsA("BasePart") then
+                    table.insert(result, child)
+                end
+            end
+        end
+    end
+    return result
+end
+
+local function get_ball_velocity(ball)
+    local zoomies = ball:FindFirstChild("zoomies")
+    if zoomies and zoomies:IsA("VectorForce") then
+        return zoomies.VectorVelocity
+    end
+    return ball.AssemblyLinearVelocity
+end
+
+local function play_grab_animation()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then return end
+
+    local ok, anim_folder = pcall(function()
+        local collection = ReplicatedStorage.Shared.SwordAPI.Collection
+        return collection.Default
+    end)
+    if not ok or not anim_folder then return end
+
+    local grab = anim_folder:FindFirstChild("GrabParry")
+        or anim_folder:FindFirstChild("Grab")
+        or anim_folder:FindFirstChild("Parry")
+    if not grab then return end
+
+    if _parry_state.grab_track then
+        pcall(function() _parry_state.grab_track:Stop() end)
+    end
+
+    local track = animator:LoadAnimation(grab)
+    track.Priority = Enum.AnimationPriority.Action4
+    track:Play(0, 1, 1)
+    _parry_state.grab_track = track
+end
+
+function Parry.execute()
+    local mode = _parry_config.parry_mode
+    task.spawn(play_grab_animation)
+
+    if mode == "Keypress" then
+        Input.send_parry_keypress()
         return true
     end
 
-    -- Final gate: cross + dot
-    local threshold = math.clamp(0.40 + ping * 0.3, 0.40, 0.60)
-    local crossNeeded = 0.08 + (distance / 500) * 0.05
-    if cross > crossNeeded and dot < threshold then return true end
-    if targeted and cross > crossNeeded * 2 then return true end
-
-    -- Velocity history (Zythera)
-    table.insert(CAP.velHistory, vel)
-    if #CAP.velHistory > 4 then table.remove(CAP.velHistory, 1) end
-    if #CAP.velHistory == 4 then
-        for i = 1, 2 do
-            local d = (velUnit - CAP.velHistory[i].Unit).Unit
-            local proj = toMe:Dot(d)
-            if dot - proj < -ping then return true end
-        end
+    if mode == "Remote" then
+        local ok = Remote.fire_parry({curve_mode = _parry_config.curve_mode})
+        if not ok then Input.send_parry_keypress() end
+        return ok
     end
 
-    return false
-end
-
--- ═══════════════════════════════════════════════════════════════════════════
--- BUILD PARRY PAYLOAD (curve CFrame + events + aim)
--- ═══════════════════════════════════════════════════════════════════════════
-local cachedAim = {0, 0}
-local cachedEvents = {}
-
-RunService.RenderStepped:Connect(function()
-    local cam = WS.CurrentCamera
-    if not cam then return end
-    local vp = cam.ViewportSize
-    if CAP.isMobile then
-        cachedAim = {vp.X / 2, vp.Y / 2}
+    if math.random() < 0.5 then
+        local ok = Remote.fire_parry({curve_mode = _parry_config.curve_mode})
+        if not ok then Input.send_parry_keypress() end
+        return ok
     else
-        local ok, m = pcall(function() return UIS:GetMouseLocation() end)
-        cachedAim = ok and m and {m.X, m.Y} or {vp.X / 2, vp.Y / 2}
+        Input.send_parry_keypress()
+        return true
     end
-    local alive = WS:FindFirstChild("Alive")
-    if alive then
-        local data = {}
-        for _, e in pairs(alive:GetChildren()) do
-            if e ~= LP.Character and e.PrimaryPart then
-                local ok, sp = pcall(function() return cam:WorldToScreenPoint(e.PrimaryPart.Position) end)
-                if ok and sp then data[tostring(e)] = sp end
+end
+
+local function auto_parry_loop()
+    if not _parry_config.enabled then return end
+
+    -- Reset parried
+    if _parry_state.parried and (tick() - _parry_state.parried_at) > 1.5 then
+        _parry_state.parried = false
+    end
+
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return end
+
+    local self_pos = hrp.Position
+
+    for _, ball in ipairs(get_balls()) do
+        local target = ball:GetAttribute("target")
+        if target ~= LocalPlayer.Name then continue end
+
+        if _parry_state.parried then continue end
+        if ball:FindFirstChild("ComboCounter") then continue end
+
+        local vel = get_ball_velocity(ball)
+        local speed = vel.Magnitude
+        local distance = (ball.Position - self_pos).Magnitude
+
+        local parry_dist = get_parry_distance(speed)
+        if distance > parry_dist then continue end
+
+        if _parry_config.randomize_accuracy then
+            if not _parry_state.original_accuracy then
+                _parry_state.original_accuracy = _parry_config.accuracy
             end
         end
-        cachedEvents = data
+
+        Parry.execute()
+
+        _parry_state.parried = true
+        _parry_state.parried_at = tick()
+        _parry_state.stats.parries = _parry_state.stats.parries + 1
+
+        task.delay(_parry_config.parry_hold, function()
+            if _parry_state.parried and (tick() - _parry_state.parried_at) >= _parry_config.parry_hold then
+                _parry_state.parried = false
+            end
+        end)
+
+        break
     end
-end)
+end
 
-local function build_curve_cframe()
-    local cam = WS.CurrentCamera
-    if not cam then return CFrame.new() end
-    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if not root then return cam.CFrame end
+function Parry.start()
+    if _parry_config.enabled then return end
+    _parry_config.enabled = true
+    _parry_state.hb_conn = RunService.Heartbeat:Connect(auto_parry_loop)
+    print("[Farexpull] Parry started")
+end
 
-    local m = S.curveMethod
-    if m == "camera" then
-        return cam.CFrame
-    elseif m == "straight" or m == "dot" then
-        local target = Closest_Player()
-        if target and target.PrimaryPart then
-            return CFrame.lookAt(root.Position, target.PrimaryPart.Position + Vector3.new(0, 1.75, 0))
+function Parry.stop()
+    if not _parry_config.enabled then return end
+    _parry_config.enabled = false
+    if _parry_state.hb_conn then
+        _parry_state.hb_conn:Disconnect()
+        _parry_state.hb_conn = nil
+    end
+end
+
+function Parry.set_accuracy(a) _parry_config.accuracy = math.clamp(a, 1, 100) end
+function Parry.set_mode(m) if m == "Remote" or m == "Keypress" or m == "Hybrid" then _parry_config.parry_mode = m end end
+function Parry.set_curve(m) _parry_config.curve_mode = math.clamp(m, 1, 7) end
+function Parry.get_stats() return _parry_state.stats end
+
+-- ═══════════════════════════════════════════════════════════
+--  [9] Spam Module
+-- ═══════════════════════════════════════════════════════════
+
+local Spam = {}
+
+local _spam_config = {
+    manual_rate = 30,
+    manual_mode = "Remote",
+    auto_rate = 20,
+    auto_mode = "Hybrid",
+    auto_threshold = 1.5,
+    auto_burst = 0.5,
+    jitter = 0.15,
+}
+
+local _spam_state = {
+    manual_active = false,
+    auto_active = false,
+    manual_conn = nil,
+    auto_conn = nil,
+    last_spam = 0,
+    burst_until = 0,
+    mode_index = 0,
+    spam_count = 0,
+}
+
+local function apply_jitter(interval)
+    local j = _spam_config.jitter
+    return interval * (1 - j) + math.random() * (interval * 2 * j)
+end
+
+local function pick_mode(base_mode)
+    if base_mode ~= "Hybrid" then return base_mode end
+    _spam_state.mode_index = (_spam_state.mode_index + 1) % 2
+    return _spam_state.mode_index == 0 and "Remote" or "Keypress"
+end
+
+local function execute_spam(base_mode)
+    local mode = pick_mode(base_mode)
+    task.spawn(play_grab_animation)
+
+    if mode == "Remote" then
+        local ok = Remote.fire_parry({curve_mode = 2})
+        if not ok then Input.send_parry_keypress() end
+    else
+        Input.send_parry_keypress()
+    end
+    _spam_state.spam_count = _spam_state.spam_count + 1
+end
+
+local function manual_loop()
+    if not _spam_state.manual_active then return end
+    local now = tick()
+    local interval = 1 / _spam_config.manual_rate
+    if now >= _spam_state.last_spam + apply_jitter(interval) then
+        execute_spam(_spam_config.manual_mode)
+        _spam_state.last_spam = now
+    end
+end
+
+local function auto_loop()
+    if not _spam_state.auto_active then return end
+
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local self_pos = hrp.Position
+
+    local now = tick()
+    if now < _spam_state.burst_until then
+        local interval = 1 / _spam_config.auto_rate
+        if now >= _spam_state.last_spam + apply_jitter(interval) then
+            execute_spam(_spam_config.auto_mode)
+            _spam_state.last_spam = now
         end
-        return cam.CFrame
-    elseif m == "backwards" then
-        return CFrame.new(root.Position, root.Position - cam.CFrame.LookVector * 10000)
-    elseif m == "high" then
-        return CFrame.new(root.Position, root.Position + Vector3.new(0, 1e9, 0))
-    elseif m == "slowball" then
-        return CFrame.new(root.Position, root.Position + Vector3.new(0, -350, 0))
-    elseif m == "random" then
-        return CFrame.new(root.Position, Vector3.new(math.random(-4000,4000), math.random(-4000,4000), math.random(-4000,4000)))
-    elseif m == "left" then
-        return CFrame.new(cam.CFrame.Position, cam.CFrame.Position - cam.CFrame.RightVector * 1e9)
-    elseif m == "right" then
-        return CFrame.new(cam.CFrame.Position, cam.CFrame.Position + cam.CFrame.RightVector * 1e9)
-    elseif m == "accelerated" then
-        return CFrame.new(root.Position, (Closest_Player() and Closest_Player().PrimaryPart and Closest_Player().PrimaryPart.Position or root.Position) + Vector3.new(0, 5, 0))
+        return
     end
-    return cam.CFrame
+
+    for _, ball in ipairs(get_balls()) do
+        if ball:GetAttribute("target") == LocalPlayer.Name then
+            local dist = (ball.Position - self_pos).Magnitude
+            if dist <= _spam_config.auto_threshold then
+                _spam_state.burst_until = now + _spam_config.auto_burst
+                _spam_state.last_spam = 0
+                break
+            end
+        end
+    end
 end
 
--- ═══════════════════════════════════════════════════════════════════════════
--- FIRE PARRY — multi-remote, token regen with fallback 0
--- ═══════════════════════════════════════════════════════════════════════════
-local function Fire_Parry()
-    if tick() - CAP.lastParryTime < 0.03 then return false end
-    CAP.lastParryTime = tick()
-
-    if not next(CAP.remotes) then
-        -- fallback: kirim F key
-        local vim = game:GetService("VirtualInputManager")
-        pcall(function()
-            vim:SendKeyEvent(true, Enum.KeyCode.F, false, nil)
-            vim:SendKeyEvent(false, Enum.KeyCode.F, false, nil)
-        end)
-        return false
-    end
-
-    local fired = false
-    local curveCF = build_curve_cframe()
-
-    for remote, origArgs in pairs(CAP.remotes) do
-        local uid = origArgs[2]
-        local tok = _tokenize(uid) or origArgs[3] or 0
-
-        local pkt = {
-            origArgs[1],
-            uid,
-            tok,
-            curveCF,
-            cachedEvents,
-            cachedAim,
-            origArgs[7] or false,
-        }
-
-        local ok = pcall(function()
-            if remote:IsA("RemoteEvent") then
-                remote:FireServer(unpack(pkt))
-            elseif remote:IsA("RemoteFunction") then
-                remote:InvokeServer(unpack(pkt))
-            end
-        end)
-        if ok then fired = true end
-    end
-
-    -- play animation
-    if S.animFix then
-        task.spawn(function()
-            local char = LP.Character
-            if not char then return end
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if not hum then return end
-            local animator = hum:FindFirstChildOfClass("Animator")
-            if not animator then return end
-            local shared = RS:FindFirstChild("Shared")
-            local swordAPI = shared and shared:FindFirstChild("SwordAPI")
-            local collection = swordAPI and swordAPI:FindFirstChild("Collection")
-            local default = collection and collection:FindFirstChild("Default")
-            local anim = default and default:FindFirstChild("GrabParry")
-            if not anim then return end
-            for _, t in pairs(animator:GetPlayingAnimationTracks()) do
-                if t.Name == "GrabParry" or t.Name == "Grab" then
-                    pcall(function() t:Stop(0.1) end)
-                end
-            end
-            local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
-            if ok and track then
-                pcall(function() track:Play(0, 1, 1) end)
-                CAP.grabParryAnim = track
-            end
-        end)
-    end
-
-    return fired
+function Spam.start_manual()
+    if _spam_state.manual_active then return end
+    _spam_state.manual_active = true
+    _spam_state.last_spam = 0
+    _spam_state.manual_conn = RunService.Heartbeat:Connect(manual_loop)
 end
 
--- ═══════════════════════════════════════════════════════════════════════════
--- PARRY ACCURACY — 3 formula, pilih satu
--- ═══════════════════════════════════════════════════════════════════════════
-local function compute_accuracy(speed)
-    local ping = Get_Ping()
-    local ping_sec = ping / 1000
-
-    if S.useAilonFormula then
-        local ping_thresh = math.clamp(ping / 10, 5, 17)
-        local capped = math.max(speed - 9.5, 0)
-        local divisor = 2.4 + capped * 0.002
-        local acc = ping_thresh + math.max(speed / divisor, 9.5)
-        return acc
+function Spam.stop_manual()
+    _spam_state.manual_active = false
+    if _spam_state.manual_conn then
+        _spam_state.manual_conn:Disconnect()
+        _spam_state.manual_conn = nil
     end
-
-    if S.useZytheraFormula then
-        local ping_thr = math.clamp(ping / 100, 1, 16)
-        local base = ping_thr + math.min(speed / 6, 255)
-        return base
-    end
-
-    if S.useSsinFormula then
-        local acc = speed * (ping_sec + 0.016) * 8 * 0.43
-        return acc
-    end
-
-    -- default: Ailon
-    local ping_thresh = math.clamp(ping / 10, 5, 17)
-    local capped = math.max(speed - 9.5, 0)
-    local divisor = 2.4 + capped * 0.002
-    return ping_thresh + math.max(speed / divisor, 9.5)
 end
 
--- ═══════════════════════════════════════════════════════════════════════════
--- DETECTION EVENT LISTENERS
--- ═══════════════════════════════════════════════════════════════════════════
-pcall(function()
-    RS.Remotes.SecondaryEndCD.OnClientEvent:Connect(function() end)
-end)
-pcall(function()
-    RS.Remotes.DeathBall.OnClientEvent:Connect(function(_, active)
-        CAP.deathslash_active = active or false
+function Spam.start_auto()
+    if _spam_state.auto_active then return end
+    _spam_state.auto_active = true
+    _spam_state.auto_conn = RunService.Heartbeat:Connect(auto_loop)
+end
+
+function Spam.stop_auto()
+    _spam_state.auto_active = false
+    if _spam_state.auto_conn then
+        _spam_state.auto_conn:Disconnect()
+        _spam_state.auto_conn = nil
+    end
+end
+
+function Spam.stop()
+    Spam.stop_manual()
+    Spam.stop_auto()
+end
+
+function Spam.set_manual_rate(r) _spam_config.manual_rate = math.clamp(r, 1, 100) end
+function Spam.set_auto_rate(r) _spam_config.auto_rate = math.clamp(r, 1, 100) end
+function Spam.set_auto_threshold(t) _spam_config.auto_threshold = math.clamp(t, 0.5, 10) end
+
+-- ═══════════════════════════════════════════════════════════
+--  [10] Immortal Module
+-- ═══════════════════════════════════════════════════════════
+
+local Immortal = {}
+
+local _imm_config = {
+    radius = 25,
+    height = 30,
+    visualizer = false,
+    visualizer_color = Color3.fromRGB(255, 0, 0),
+    velocity_override = true,
+    head_override = true,
+}
+
+local _imm_state = {
+    enabled = false,
+    hb_conn = nil,
+    char_conn = nil,
+    character = nil,
+    hrp = nil,
+    head = nil,
+    alive = nil,
+    original_cframe = nil,
+    original_velocity = nil,
+    vis_folder = nil,
+    original_hook = nil,
+    hook_installed = false,
+}
+
+local _empty_cframe = CFrame.new()
+
+local function imm_update_cache()
+    local char = LocalPlayer.Character
+    if char == _imm_state.character then return end
+    _imm_state.character = char
+    if char then
+        _imm_state.hrp = char:FindFirstChild("HumanoidRootPart")
+        _imm_state.head = char:FindFirstChild("Head")
+        _imm_state.alive = Workspace:FindFirstChild("Alive")
+    else
+        _imm_state.hrp = nil
+        _imm_state.head = nil
+    end
+end
+
+local function imm_is_in_alive()
+    return _imm_state.alive and _imm_state.character and _imm_state.character.Parent == _imm_state.alive
+end
+
+local function imm_get_random_position()
+    if not _imm_state.hrp then return _empty_cframe end
+    local base = _imm_state.hrp.Position
+    local angle = math.rad(math.random(0, 360))
+    local radius = _imm_config.radius
+    local height_offset = (math.random() < 0.5) and 0 or _imm_config.height
+    local x = base.X + math.cos(angle) * radius
+    local y = base.Y - _imm_state.hrp.Size.Y * 0.5 + 5 + height_offset
+    local z = base.Z + math.sin(angle) * radius
+    return CFrame.new(x, y, z)
+end
+
+local function imm_create_vis_folder()
+    if _imm_state.vis_folder then _imm_state.vis_folder:Destroy() end
+    local f = Instance.new("Folder")
+    f.Name = "Farexpull_Vis"
+    f.Parent = Workspace
+    _imm_state.vis_folder = f
+end
+
+local function imm_spawn_vis(cframe)
+    if not _imm_config.visualizer or not _imm_state.vis_folder then return end
+    local p = Instance.new("Part")
+    p.Size = Vector3.new(2, 0.5, 2)
+    p.CFrame = cframe
+    p.Anchored = true
+    p.CanCollide = false
+    p.CanQuery = false
+    p.Material = Enum.Material.Neon
+    p.Color = _imm_config.visualizer_color
+    p.Transparency = 0.5
+    p.Parent = _imm_state.vis_folder
+    Debris:AddItem(p, 0.1)
+end
+
+local function imm_clear_vis()
+    if _imm_state.vis_folder then
+        _imm_state.vis_folder:Destroy()
+        _imm_state.vis_folder = nil
+    end
+end
+
+local function imm_perform_desync()
+    imm_update_cache()
+    if not _imm_state.enabled then return end
+    if not _imm_state.hrp then return end
+    if not imm_is_in_alive() then return end
+
+    local hrp = _imm_state.hrp
+    _imm_state.original_cframe = hrp.CFrame
+    _imm_state.original_velocity = hrp.AssemblyLinearVelocity
+
+    local fake = imm_get_random_position()
+    hrp.CFrame = fake
+    if _imm_config.velocity_override then
+        hrp.AssemblyLinearVelocity = Vector3.new(1, 1, 1)
+    end
+
+    if _imm_config.visualizer then imm_spawn_vis(fake) end
+
+    RunService.RenderStepped:Wait()
+
+    hrp.CFrame = _imm_state.original_cframe
+    hrp.AssemblyLinearVelocity = _imm_state.original_velocity
+end
+
+local function imm_install_hook()
+    if _imm_state.hook_installed then return end
+    if type(hookmetamethod) ~= "function" then return end
+
+    local function hooked_index(self, key)
+        if not _imm_state.enabled then
+            return _imm_state.original_hook(self, key)
+        end
+        if checkcaller and checkcaller() then
+            return _imm_state.original_hook(self, key)
+        end
+        if key == "CFrame" then
+            if self == _imm_state.hrp then
+                return _imm_state.original_cframe or _empty_cframe
+            end
+            if _imm_config.head_override and self == _imm_state.head and _imm_state.original_cframe then
+                local offset = Vector3.new(0, _imm_state.hrp.Size.Y * 0.5 + 0.5, 0)
+                return _imm_state.original_cframe + offset
+            end
+        end
+        if key == "AssemblyLinearVelocity" and _imm_config.velocity_override then
+            if self == _imm_state.hrp then return Vector3.new(1, 1, 1) end
+        end
+        return _imm_state.original_hook(self, key)
+    end
+
+    local ok = pcall(function()
+        _imm_state.original_hook = hookmetamethod(game, "__index", newcclosure(hooked_index))
     end)
-end)
-pcall(function()
-    RS.Remotes.InfinityBall.OnClientEvent:Connect(function(_, active)
-        CAP.infinity_active = active or false
+    if ok then _imm_state.hook_installed = true end
+end
+
+local function imm_uninstall_hook()
+    if not _imm_state.hook_installed then return end
+    pcall(function()
+        if _imm_state.original_hook then
+            hookmetamethod(game, "__index", _imm_state.original_hook)
+        end
     end)
-end)
-pcall(function()
-    local pkg = RS:FindFirstChild("Packages")
-    local idx = pkg and pkg:FindFirstChild("_Index")
-    local netMod = idx and idx:FindFirstChild("sleitnick_net@0.1.0")
-    local net = netMod and netMod:FindFirstChild("net")
-    if net then
-        local netReq = require(net)
-        netReq["RE/TimeHoleActivate"].OnClientEvent:Connect(function(...)
-            local p = ...
-            if p == LP or (p and p.Name == LP.Name) then
-                CAP.timehole_active = true
-            end
-        end)
-        netReq["RE/TimeHoleDeactivate"].OnClientEvent:Connect(function()
-            CAP.timehole_active = false
-        end)
-        netReq["RE/SlashesOfFuryActivate"].OnClientEvent:Connect(function(...)
-            local p = ...
-            if p == LP or (p and p.Name == LP.Name) then
-                CAP.slashesoffury_active = true
-                CAP.slashesoffury_count = 0
-            end
-        end)
-        netReq["RE/SlashesOfFuryEnd"].OnClientEvent:Connect(function()
-            CAP.slashesoffury_active = false
-            CAP.slashesoffury_count = 0
-        end)
-        netReq["RE/SlashesOfFuryParry"].OnClientEvent:Connect(function()
-            CAP.slashesoffury_count = CAP.slashesoffury_count + 1
-        end)
-        netReq["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(function()
-            task.spawn(function()
-                while CAP.slashesoffury_active and CAP.slashesoffury_count < S.maxParryCount do
-                    if S.skipSoF == false or true then
-                        Fire_Parry()
-                        task.wait(S.parryDelay)
-                    else
-                        break
-                    end
+    _imm_state.hook_installed = false
+    _imm_state.original_hook = nil
+end
+
+function Immortal.start()
+    if _imm_state.enabled then return end
+    _imm_state.enabled = true
+    imm_install_hook()
+    if _imm_config.visualizer then imm_create_vis_folder() end
+    _imm_state.hb_conn = RunService.Heartbeat:Connect(imm_perform_desync)
+    _imm_state.char_conn = LocalPlayer.CharacterAdded:Connect(function()
+        task.wait(1)
+        _imm_state.character = nil
+        imm_update_cache()
+    end)
+    print("[Farexpull] Immortal started")
+end
+
+function Immortal.stop()
+    if not _imm_state.enabled then return end
+    _imm_state.enabled = false
+    if _imm_state.hb_conn then _imm_state.hb_conn:Disconnect(); _imm_state.hb_conn = nil end
+    if _imm_state.char_conn then _imm_state.char_conn:Disconnect(); _imm_state.char_conn = nil end
+    imm_uninstall_hook()
+    imm_clear_vis()
+end
+
+function Immortal.set_radius(r) _imm_config.radius = math.clamp(r, 0, 100) end
+function Immortal.set_height(h) _imm_config.height = math.clamp(h, 0, 100) end
+function Immortal.set_visualizer(v) _imm_config.visualizer = v and true or false
+    if _imm_state.enabled then
+        if v then imm_create_vis_folder() else imm_clear_vis() end
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════
+--  [11] Anti-Phantom Module
+-- ═══════════════════════════════════════════════════════════
+
+local AntiPhantom = {}
+
+local _ap_config = {
+    phantom = false,
+    phantom_blatant = false,
+    phantom_type = "Spam",
+    flash = false,
+    flash_blatant = false,
+    flash_type = "Spam",
+    detect_window = 1.25,
+    teleport_distance = 32,
+    spam_interval = 0.05,
+}
+
+local _ap_state = {
+    target = nil,
+    data = nil,
+    last_spam = 0,
+    conns = {},
+}
+
+local function ap_reset()
+    _ap_state.target = nil
+    _ap_state.data = nil
+end
+
+local function ap_trigger(name, target)
+    if name == "Phantom" and not _ap_config.phantom then return end
+    if name == "Flash" and not _ap_config.flash then return end
+    if type(target) ~= "Instance" or not target:IsA("Model") then return end
+
+    _ap_state.target = target
+    _ap_state.data = {
+        name = name,
+        blatant = name == "Phantom" and _ap_config.phantom_blatant or _ap_config.flash_blatant,
+        type = name == "Phantom" and _ap_config.phantom_type or _ap_config.flash_type,
+        expires = tick() + _ap_config.detect_window,
+    }
+end
+
+local function ap_update()
+    local data = _ap_state.data
+    local target = _ap_state.target
+    if not data then return end
+    if tick() >= data.expires then ap_reset(); return end
+
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local t_hrp = target:FindFirstChild("HumanoidRootPart")
+    if not hrp or not t_hrp then ap_reset(); return end
+
+    local delta = hrp.Position - t_hrp.Position
+    local dist = delta.Magnitude
+
+    if data.blatant and dist < _ap_config.teleport_distance then
+        local dir = dist > 0.1 and delta.Unit or -t_hrp.CFrame.LookVector
+        hrp.CFrame = hrp.CFrame + dir * (_ap_config.teleport_distance - dist)
+        ap_reset()
+        return
+    end
+
+    if data.type == "Spam" then
+        local now = tick()
+        if now - _ap_state.last_spam >= _ap_config.spam_interval then
+            _ap_state.last_spam = now
+            pcall(Remote.fire_parry, {curve_mode = 2})
+        end
+    elseif data.type == "Ability" then
+        local now = tick()
+        if now - _ap_state.last_spam >= 0.3 then
+            _ap_state.last_spam = now
+            pcall(function()
+                local r = ReplicatedStorage:FindFirstChild("Remotes")
+                if r and r:FindFirstChild("AbilityButtonPress") then
+                    r.AbilityButtonPress:Fire()
                 end
             end)
-        end)
-    end
-end)
-
--- Anti-Phantom
-pcall(function()
-    local runtime = WS:FindFirstChild("Runtime")
-    if not runtime then return end
-    runtime.ChildAdded:Connect(function(obj)
-        if not S.skipPhantom then return end
-        if obj.Name ~= "maxTransmission" and obj.Name ~= "transmissionpart" then return end
-        local weld = obj:FindFirstChildWhichIsA("WeldConstraint")
-        if not weld then return end
-        local char = LP.Character or LP.CharacterAdded:Wait()
-        if char and weld.Part1 == char.HumanoidRootPart then
-            weld:Destroy()
-            local ball = Get_Ball()
-            if ball then
-                local conn
-                conn = RunService.RenderStepped:Connect(function()
-                    local h = ball:GetAttribute("highlighted")
-                    if h == true then
-                        RS.Remotes.AbilityButtonPress:Fire()
-                    elseif h == false then
-                        conn:Disconnect()
-                    end
-                end)
-                task.delay(3, function() if conn and conn.Connected then conn:Disconnect() end end)
-            end
-        end
-    end)
-end)
-
--- ═══════════════════════════════════════════════════════════════════════════
--- MAIN LOOP
--- ═══════════════════════════════════════════════════════════════════════════
-RunService.PreSimulation:Connect(function()
-    local now = tick()
-
-    if now - CAP.lastHrpCache > 0.15 then
-        local ch = LP.Character
-        CAP.cachedHrp = ch and ch:FindFirstChild("HumanoidRootPart")
-        CAP.lastHrpCache = now
-    end
-    if not CAP.cachedHrp then return end
-
-    if now - CAP.lastCache > 0.06 then
-        CAP.cachedBall = Get_Ball()
-        CAP.lastCache = now
-    end
-    local ball = CAP.cachedBall
-    if not ball then return end
-
-    local z = ball:FindFirstChild("zoomies")
-    if not z then return end
-    local speed = z.VectorVelocity.Magnitude
-    local dist = (CAP.cachedHrp.Position - ball.Position).Magnitude
-
-    if CAP.cachedHrp:FindFirstChild("SingularityCape") then return end
-    if S.skipComboCount and ball:FindFirstChild("ComboCounter") then return end
-    if S.skipInfinity and CAP.infinity_active then return end
-    if S.skipDeathSlash and CAP.deathslash_active then return end
-    if S.skipTimeHole and CAP.timehole_active then return end
-
-    -- Tornado check
-    local runtime = WS:FindFirstChild("Runtime")
-    if runtime and runtime:FindFirstChild("Tornado") then
-        local ttime = runtime.Tornado:GetAttribute("TornadoTime") or 1
-        if now - CAP.tornado_time < ttime + 0.314 then return end
-    end
-
-    -- AUTO PARRY
-    if S.enabled and next(CAP.remotes) then
-        local accuracy = compute_accuracy(speed)
-
-        if S.randomAccuracy then
-            local acc = math.random(S.accuracyMin, S.accuracyMax)
-            accuracy = accuracy * (0.7 + (acc - 1) * 0.0035)
-        end
-
-        if is_my_target(ball) then
-            local curved = is_curved(ball)
-            if curved then
-                -- skip curve (bait)
-            else
-                if dist <= accuracy then
-                    local bID = ball:GetDebugId()
-                    if not CAP.parriedIDs[bID] then
-                        -- Cooldown protection
-                        if S.cooldownProtect then
-                            local pg = LP:FindFirstChild("PlayerGui")
-                            local hotbar = pg and pg:FindFirstChild("Hotbar")
-                            local block = hotbar and hotbar:FindFirstChild("Block")
-                            local grad = block and block:FindFirstChild("UIGradient")
-                            if grad and grad.Offset.Y < 0.4 then
-                                RS.Remotes.AbilityButtonPress:Fire()
-                            else
-                                Fire_Parry()
-                                CAP.parriedIDs[bID] = true
-                            end
-                        else
-                            Fire_Parry()
-                            CAP.parriedIDs[bID] = true
-                        end
-                        task.spawn(function()
-                            ball:GetAttributeChangedSignal("target"):Wait()
-                            CAP.parriedIDs[bID] = nil
-                        end)
-                        task.delay(3, function() CAP.parriedIDs[bID] = nil end)
-                    end
-                end
-            end
         end
     end
-
-    -- TRIGGERBOT
-    if S.triggerbot and is_my_target(ball) then
-        local bID = ball:GetDebugId()
-        if not CAP.parriedIDs[bID] then
-            Fire_Parry()
-            CAP.parriedIDs[bID] = true
-            task.delay(0.4, function() CAP.parriedIDs[bID] = nil end)
-        end
-    end
-
-    -- AUTO SPAM
-    if S.autoSpam then
-        local closest = Closest_Player()
-        if closest and closest.PrimaryPart then
-            local ping = Get_Ping() / 100
-            local threshold = math.clamp(ping, 1, 16) + math.min(speed / 6, 255)
-            local dist_ent = LP:DistanceFromCharacter(closest.PrimaryPart.Position)
-            if (dist <= threshold or dist_ent <= threshold) and is_my_target(ball) then
-                if not CAP.cachedHrp.Parent:GetAttribute("Pulsed") then
-                    local bID = ball:GetDebugId()
-                    if not CAP.parriedIDs[bID] then
-                        Fire_Parry()
-                        CAP.parriedIDs[bID] = true
-                        task.delay(0.1, function() CAP.parriedIDs[bID] = nil end)
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- ═══════════════════════════════════════════════════════════════════════════
--- MANUAL SPAM
--- ═══════════════════════════════════════════════════════════════════════════
-RunService.Heartbeat:Connect(function()
-    if not S.manualSpam then return end
-    local now = tick()
-    local interval = 1 / math.max(S.spamRate, 1)
-    if now - CAP.globalLock < interval then return end
-    CAP.globalLock = now
-    Fire_Parry()
-end)
-
--- ═══════════════════════════════════════════════════════════════════════════
--- LOBBY AUTO PARRY
--- ═══════════════════════════════════════════════════════════════════════════
-RunService.Heartbeat:Connect(function()
-    if not S.lobbyAP then return end
-    local tb = Get_Training_Ball()
-    if not tb then return end
-    local z = tb:FindFirstChild("zoomies")
-    if not z then return end
-    if tb:GetAttribute("target") ~= LP.Name then return end
-    local speed = z.VectorVelocity.Magnitude
-    local dist = LP:DistanceFromCharacter(tb.Position)
-    local ping = Get_Ping() / 1000
-    local timeToReach = speed > 0 and (dist / speed - ping) or math.huge
-    if timeToReach <= 0.15 and timeToReach >= 0 then
-        Fire_Parry()
-    end
-end)
-
--- ═══════════════════════════════════════════════════════════════════════════
--- KEYBINDS
--- ═══════════════════════════════════════════════════════════════════════════
-UIS.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if curveKeys[input.KeyCode] then
-        S.curveMethod = curveKeys[input.KeyCode]
-        print("[AP-ULT] Curve:", S.curveMethod)
-    end
-    if input.KeyCode == Enum.KeyCode.E then
-        S.enabled = not S.enabled
-        print("[AP-ULT] AutoParry:", S.enabled and "ON" or "OFF")
-    elseif input.KeyCode == Enum.KeyCode.Q then
-        S.manualSpam = not S.manualSpam
-        print("[AP-ULT] ManualSpam:", S.manualSpam and "ON" or "OFF")
-    elseif input.KeyCode == Enum.KeyCode.End then
-        S.enabled = false; S.autoSpam = false; S.triggerbot = false; S.manualSpam = false
-        print("[AP-ULT] PANIC")
-    end
-end)
-
--- ═══════════════════════════════════════════════════════════════════════════
--- UI — WindUI v2
--- ═══════════════════════════════════════════════════════════════════════════
-local ok_w, WindUI = pcall(function()
-    return loadstring(game:HttpGet(
-        "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-end)
-if not ok_w or not WindUI then
-    warn("[AP-ULT] WindUI load fail — headless mode")
-    return
 end
 
-local Window = WindUI:CreateWindow({
-    Title = "Auto Parry ULTIMATE",
-    Icon = "solar:crown-bold",
-    Author = "ALPHA XK",
-    Folder = "APUltimate",
-    Size = UDim2.fromOffset(560, 500),
-    Transparent = true,
-    Theme = "Dark",
-    SideBarWidth = 150,
-})
-
-local TabMain  = Window:Tab({ Title = "Auto Parry", Icon = "solar:sword-bold" })
-local TabMode  = Window:Tab({ Title = "Modes", Icon = "solar:play-bold" })
-local TabDet   = Window:Tab({ Title = "Detection", Icon = "solar:shield-bold" })
-local TabTune  = Window:Tab({ Title = "Tuning", Icon = "solar:tuning-bold" })
-local TabCurve = Window:Tab({ Title = "Curve", Icon = "solar:activity-bold" })
-local TabInfo  = Window:Tab({ Title = "Info", Icon = "solar:info-circle-bold" })
-
--- ═══ AUTO PARRY ═══
-local SecMain = TabMain:Section({ Title = "Auto Parry — Master" })
-
-SecMain:Toggle({
-    Title = "Auto Parry",
-    Desc = "Master switch — predictive + multi-signal curve detect",
-    Value = false,
-    Callback = function(v)
-        S.enabled = v
-        WindUI:Notify({ Title = "Auto Parry", Content = v and "ON" or "OFF", Duration = 2 })
-    end,
-})
-
-SecMain:Toggle({
-    Title = "Animation Fix",
-    Desc = "Play GrabParry anim (stealth)",
-    Value = true,
-    Callback = function(v) S.animFix = v end,
-})
-
-SecMain:Toggle({
-    Title = "Cooldown Protection",
-    Desc = "Fire ability kalau parry cooldown aktif",
-    Value = false,
-    Callback = function(v) S.cooldownProtect = v end,
-})
-
-SecMain:Toggle({
-    Title = "Auto Ability",
-    Desc = "Fire ability saat clash",
-    Value = false,
-    Callback = function(v) S.autoAbility = v end,
-})
-
-SecMain:Toggle({
-    Title = "Random Accuracy (Humanizer)",
-    Desc = "Random accuracy per ball — susah di-detect",
-    Value = false,
-    Callback = function(v) S.randomAccuracy = v end,
-})
-
--- ═══ MODES ═══
-local SecMode = TabMode:Section({ Title = "Parry Modes" })
-
-SecMode:Toggle({
-    Title = "Auto Spam",
-    Desc = "Spam parry di dekat player",
-    Value = false,
-    Callback = function(v) S.autoSpam = v end,
-})
-
-SecMode:Toggle({
-    Title = "Trigger Bot",
-    Desc = "Instant parry saat target = lo",
-    Value = false,
-    Callback = function(v) S.triggerbot = v end,
-})
-
-SecMode:Toggle({
-    Title = "Manual Spam",
-    Desc = "Spam parry terus-terusan (toggle Q)",
-    Value = false,
-    Callback = function(v) S.manualSpam = v end,
-})
-
-SecMode:Slider({
-    Title = "Manual Spam Rate",
-    Desc = "CPS (60-5000)",
-    Value = { Min = 60, Max = 5000, Default = 240, Rounding = 0 },
-    Callback = function(v) S.spamRate = v end,
-})
-
-SecMode:Toggle({
-    Title = "Lobby Auto Parry",
-    Desc = "Auto parry di training ball (lobby)",
-    Value = false,
-    Callback = function(v) S.lobbyAP = v end,
-})
-
--- ═══ DETECTION SKIP ═══
-local SecDet = TabDet:Section({ Title = "Skip Parry Saat Ability Ini Aktif" })
-
-SecDet:Toggle({ Title = "Infinity Ball", Value = true, Callback = function(v) S.skipInfinity = v end })
-SecDet:Toggle({ Title = "Death Slash",   Value = true, Callback = function(v) S.skipDeathSlash = v end })
-SecDet:Toggle({ Title = "Time Hole",     Value = true, Callback = function(v) S.skipTimeHole = v end })
-SecDet:Toggle({ Title = "Slashes of Fury", Value = true, Callback = function(v) S.skipSoF = v end })
-SecDet:Toggle({ Title = "Anti-Phantom",  Value = true, Callback = function(v) S.skipPhantom = v end })
-SecDet:Toggle({ Title = "ComboCounter skip", Value = true, Callback = function(v) S.skipComboCount = v end })
-
--- ═══ TUNING ═══
-local SecTune = TabTune:Section({ Title = "Formula Presets" })
-
-SecTune:Toggle({
-    Title = "Ailon Formula (default)",
-    Desc = "ping_thresh + max(speed/divisor, 9.5)",
-    Value = true,
-    Callback = function(v)
-        if v then
-            S.useAilonFormula = true
-            S.useZytheraFormula = false
-            S.useSsinFormula = false
+function AntiPhantom.start()
+    if _ap_state.conns.hb then return end
+    _ap_state.conns.hb = RunService.PreSimulation:Connect(function()
+        pcall(ap_update)
+    end)
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if remotes then
+        local activate = remotes:FindFirstChild("ActivateAbility")
+        if activate then
+            _ap_state.conns.phantom = activate.OnClientEvent:Connect(function(player, data)
+                if player:GetAttribute("Ability") == "Phantom" then
+                    ap_trigger("Phantom", player)
+                end
+            end)
         end
-    end,
-})
-
-SecTune:Toggle({
-    Title = "Zythera Formula",
-    Desc = "ping * 0.7 + min(speed/(E*1.2), 80)",
-    Value = false,
-    Callback = function(v)
-        if v then
-            S.useAilonFormula = false
-            S.useZytheraFormula = true
-            S.useSsinFormula = false
+        local flash = remotes:FindFirstChild("PlrFlashCountered")
+        if flash then
+            _ap_state.conns.flash = flash.OnClientEvent:Connect(function(player)
+                ap_trigger("Flash", player)
+            end)
         end
-    end,
-})
+    end
+end
 
-SecTune:Toggle({
-    Title = "Ssin Formula",
-    Desc = "speed * (ping + 0.016) * 3.44",
-    Value = false,
-    Callback = function(v)
-        if v then
-            S.useAilonFormula = false
-            S.useZytheraFormula = false
-            S.useSsinFormula = true
+function AntiPhantom.stop()
+    for _, c in pairs(_ap_state.conns) do
+        pcall(function() c:Disconnect() end)
+    end
+    _ap_state.conns = {}
+    ap_reset()
+end
+
+function AntiPhantom.set_phantom(e, b, t)
+    _ap_config.phantom = e and true or false
+    if b ~= nil then _ap_config.phantom_blatant = b end
+    if t then _ap_config.phantom_type = t end
+end
+
+function AntiPhantom.set_flash(e, b, t)
+    _ap_config.flash = e and true or false
+    if b ~= nil then _ap_config.flash_blatant = b end
+    if t then _ap_config.flash_type = t end
+end
+
+-- ═══════════════════════════════════════════════════════════
+--  [12] Preclick Module
+-- ═══════════════════════════════════════════════════════════
+
+local Preclick = {}
+
+local _pc_config = {
+    enabled = false,
+    for_all = false,
+    delay_ms = 135,
+    use_remote = true,
+    queue_max = 8,
+}
+
+local _pc_state = {
+    queue = {},
+    hb_conn = nil,
+    ping = 50,
+    ping_at = 0,
+    fired = 0,
+}
+
+local function pc_get_ping()
+    local now = tick()
+    if now - _pc_state.ping_at < 0.1 then return _pc_state.ping end
+    local ok, val = pcall(function()
+        return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    if ok and type(val) == "number" then
+        _pc_state.ping = val
+        _pc_state.ping_at = now
+    end
+    return _pc_state.ping
+end
+
+local function pc_fire()
+    local char = LocalPlayer.Character
+    if not char or not char.PrimaryPart then return end
+    if char.Parent ~= Workspace:FindFirstChild("Alive") then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return end
+    if _pc_config.use_remote then
+        Remote.fire_parry({curve_mode = 2})
+    else
+        Input.send_parry_keypress()
+    end
+    _pc_state.fired = _pc_state.fired + 1
+end
+
+local function pc_process()
+    local now = tick()
+    for i = #_pc_state.queue, 1, -1 do
+        local job = _pc_state.queue[i]
+        if now >= job.fire_at then
+            pcall(pc_fire)
+            table.remove(_pc_state.queue, i)
         end
-    end,
-})
+    end
+end
 
-SecTune:Toggle({
-    Title = "Use PerformanceStats Ping",
-    Desc = "Ping dari RobloxGui.PerformanceStats (Zythera style)",
-    Value = false,
-    Callback = function(v) S.usePerfStats = v end,
-})
+local function pc_trigger(ball)
+    if not _pc_config.enabled then return end
+    local char = LocalPlayer.Character
+    if not char or char.Parent ~= Workspace:FindFirstChild("Alive") then return end
+    if not _pc_config.for_all then
+        if ball:GetAttribute("target") ~= LocalPlayer.Name then return end
+    end
+    local speed = get_ball_velocity(ball).Magnitude
+    local hrp = char.PrimaryPart
+    local dist = (ball.Position - hrp.Position).Magnitude
+    if speed < 1 then return end
+    local time_to_arrive = dist / speed
+    if time_to_arrive > 2 or time_to_arrive < 0.02 then return end
+    local delay = _pc_config.delay_ms / 1000
+    local fire_in = time_to_arrive - delay
+    if fire_in <= 0 then
+        pcall(pc_fire)
+        return
+    end
+    if #_pc_state.queue >= _pc_config.queue_max then
+        table.remove(_pc_state.queue, 1)
+    end
+    table.insert(_pc_state.queue, { fire_at = tick() + fire_in })
+end
 
-local SecTune2 = TabTune:Section({ Title = "Tuning Values" })
+function Preclick.start()
+    if _pc_state.hb_conn then return end
+    _pc_config.enabled = true
+    _pc_state.hb_conn = RunService.Heartbeat:Connect(function()
+        pcall(pc_process)
+        for _, ball in ipairs(get_balls()) do
+            pcall(pc_trigger, ball)
+        end
+    end)
+end
 
-SecTune2:Slider({
-    Title = "Accuracy (base)",
-    Desc = "1-100",
-    Value = { Min = 1, Max = 100, Default = 100, Rounding = 0 },
-    Callback = function(v) S.accuracy = v end,
-})
+function Preclick.stop()
+    _pc_config.enabled = false
+    if _pc_state.hb_conn then
+        _pc_state.hb_conn:Disconnect()
+        _pc_state.hb_conn = nil
+    end
+    _pc_state.queue = {}
+end
 
-SecTune2:Slider({
-    Title = "Random Accuracy Min",
-    Desc = "Batas bawah random (kalau humanizer on)",
-    Value = { Min = 1, Max = 100, Default = 30, Rounding = 0 },
-    Callback = function(v) S.accuracyMin = v end,
-})
+function Preclick.set_delay(ms) _pc_config.delay_ms = math.clamp(ms, 10, 500) end
+function Preclick.set_for_all(v) _pc_config.for_all = v and true or false end
 
-SecTune2:Slider({
-    Title = "Random Accuracy Max",
-    Desc = "Batas atas random",
-    Value = { Min = 1, Max = 100, Default = 70, Rounding = 0 },
-    Callback = function(v) S.accuracyMax = v end,
-})
+-- ═══════════════════════════════════════════════════════════
+--  [13] ESP Module
+-- ═══════════════════════════════════════════════════════════
 
--- ═══ CURVE ═══
-local SecCurve = TabCurve:Section({ Title = "Curve Method" })
+local ESP = {}
 
-SecCurve:Dropdown({
-    Title = "Curve",
-    Values = {"camera","straight","dot","backwards","slowball","random","high","left","right","accelerated"},
-    Value = "camera",
-    Callback = function(v) S.curveMethod = v end,
-})
+local _esp_state = {
+    active = false,
+    labels = {},
+    conn = nil,
+    icon_size = 34,
+    text_size = 13,
+    show_names = false,
+}
 
-SecCurve:Paragraph({
-    Title = "Hotkeys",
-    Desc = "1=camera 2=straight 3=backwards 4=slowball 5=random\n6=high 7=left 8=right 9=dot 0=accelerated",
-})
+local function esp_create_label(player, character)
+    if not character then return end
+    local head = character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
+    if not head then return end
 
--- ═══ INFO ═══
-local SecInfo = TabInfo:Section({ Title = "Runtime" })
-local infoPara = SecInfo:Paragraph({ Title = "Status", Desc = "init..." })
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "Farexpull_ESP"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 230, 0, _esp_state.icon_size + 64)
+    billboard.StudsOffset = Vector3.new(0, 4.15, 0)
+    billboard.AlwaysOnTop = true
+    billboard.MaxDistance = 500
+    billboard.Parent = head
 
-task.spawn(function()
-    while getgenv()._ap_ultimate do
-        pcall(function()
-            local mode = "normal"
-            if CAP.infinity_active then mode = "INF" end
-            if CAP.deathslash_active then mode = "DS" end
-            if CAP.timehole_active then mode = "TH" end
-            infoPara:Set(string.format(
-                "Hook: %s | Capture: %s\nRemote count: %d\nToken: %s\nParry count: %d\nPing: %d ms | Active: %s",
-                CAP.oldIndex and "OK" or "FAIL",
-                CAP.captureDone and "DONE" or "waiting",
-                CAP.remoteCount,
-                CAP.tokenFn and "OK" or "FAIL",
-                (function() local n=0 for _ in pairs(CAP.parriedIDs) do n=n+1 end return n end)(),
-                Get_Ping(),
-                mode
-            ))
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 1, 0)
+    container.BackgroundTransparency = 1
+    container.Parent = billboard
+
+    local name_label = Instance.new("TextLabel")
+    name_label.Size = UDim2.new(1, -18, 0, 16)
+    name_label.Position = UDim2.new(0, 9, 0, _esp_state.icon_size + 20)
+    name_label.BackgroundTransparency = 1
+    name_label.TextColor3 = Color3.fromRGB(225, 225, 230)
+    name_label.TextStrokeColor3 = Color3.new(0, 0, 0)
+    name_label.TextStrokeTransparency = 0.1
+    name_label.TextSize = _esp_state.text_size - 1
+    name_label.Font = Enum.Font.GothamMedium
+    name_label.Text = player.DisplayName
+    name_label.Visible = _esp_state.show_names
+    name_label.Parent = container
+
+    _esp_state.labels[player] = {
+        billboard = billboard,
+        name_label = name_label,
+        character = character,
+    }
+end
+
+local function esp_destroy_label(player)
+    local label = _esp_state.labels[player]
+    if label and label.billboard then
+        pcall(function() label.billboard:Destroy() end)
+    end
+    _esp_state.labels[player] = nil
+end
+
+local function esp_refresh()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local char = player.Character
+            if char and not _esp_state.labels[player] then
+                pcall(esp_create_label, player, char)
+            elseif not char then
+                esp_destroy_label(player)
+            end
+        end
+    end
+end
+
+function ESP.start()
+    if _esp_state.active then return end
+    _esp_state.active = true
+    esp_refresh()
+    _esp_state.conn = RunService.Heartbeat:Connect(function()
+        if tick() % 1 < 0.02 then esp_refresh() end
+    end)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            p.CharacterAdded:Connect(function(c)
+                task.wait(0.5)
+                if _esp_state.active then pcall(esp_create_label, p, c) end
+            end)
+        end
+    end
+end
+
+function ESP.stop()
+    _esp_state.active = false
+    if _esp_state.conn then
+        _esp_state.conn:Disconnect()
+        _esp_state.conn = nil
+    end
+    for p in pairs(_esp_state.labels) do
+        esp_destroy_label(p)
+    end
+end
+
+function ESP.set_show_names(v)
+    _esp_state.show_names = v and true or false
+    for _, label in pairs(_esp_state.labels) do
+        if label.name_label then
+            label.name_label.Visible = _esp_state.show_names
+        end
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════
+--  [14] UI — بسيط
+-- ═══════════════════════════════════════════════════════════
+
+local UI = {}
+
+local _ui_state = { gui = nil, open = true, main = nil }
+
+local function create_ui()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "FarexpullHub"
+    gui.ResetOnSpawn = false
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    gui.IgnoreGuiInset = true
+    local parent_ok = pcall(function()
+        if gethui then gui.Parent = gethui()
+        else gui.Parent = CoreGui end
+    end)
+    if not parent_ok then
+    pcall(function() gui.Parent = CoreGui end)
+    end
+    
+-- Title bar (بداية)
+    local title_bar = Instance.new("Frame")
+    title_bar.Name = "TitleBar"
+    title_bar.Size = UDim2.new(1, 0, 0, 40)
+    title_bar.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+    title_bar.BorderSizePixel = 0
+    title_bar.Parent = gui
+
+    local tb_corner = Instance.new("UICorner")
+    tb_corner.CornerRadius = UDim.new(0, 10)
+    tb_corner.Parent = title_bar
+
+    local title_label = Instance.new("TextLabel")
+    title_label.Size = UDim2.new(0, 200, 0, 30)
+    title_label.Position = UDim2.new(0, 15, 0, 5)
+    title_label.BackgroundTransparency = 1
+    title_label.Text = "FAREXPULL"
+    title_label.TextColor3 = Color3.fromRGB(99, 102, 241)
+    title_label.TextSize = 18
+    title_label.Font = Enum.Font.GothamBlack
+    title_label.TextXAlignment = Enum.TextXAlignment.Left
+    title_label.Parent = title_bar
+
+    -- Body
+    local body = Instance.new("Frame")
+    body.Size = UDim2.new(1, 0, 1, -40)
+    body.Position = UDim2.new(0, 0, 0, 40)
+    body.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    body.BorderSizePixel = 0
+    body.Parent = gui
+
+    -- Content area
+    local content = Instance.new("ScrollingFrame")
+    content.Size = UDim2.new(1, -20, 1, -20)
+    content.Position = UDim2.new(0, 10, 0, 10)
+    content.BackgroundTransparency = 1
+    content.BorderSizePixel = 0
+    content.ScrollBarThickness = 3
+    content.ScrollBarImageColor3 = Color3.fromRGB(99, 102, 241)
+    content.CanvasSize = UDim2.new(0, 0, 0, 0)
+    content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    content.Parent = body
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 6)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = content
+
+    -- Helper: toggle
+    local function add_toggle(parent, label, get_cb, set_cb)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -6, 0, 36)
+        btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+        btn.BorderSizePixel = 0
+        btn.Text = ""
+        btn.AutoButtonColor = false
+        btn.Parent = parent
+
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 6)
+        c.Parent = btn
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -60, 1, 0)
+        lbl.Position = UDim2.new(0, 12, 0, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = label
+        lbl.TextColor3 = Color3.fromRGB(200, 200, 220)
+        lbl.TextSize = 13
+        lbl.Font = Enum.Font.GothamSemibold
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Parent = btn
+
+        local indicator = Instance.new("Frame")
+        indicator.Size = UDim2.new(0, 36, 0, 18)
+        indicator.Position = UDim2.new(1, -48, 0.5, -9)
+        indicator.BackgroundColor3 = get_cb() and Color3.fromRGB(99, 102, 241) or Color3.fromRGB(40, 40, 55)
+        indicator.BorderSizePixel = 0
+        indicator.Parent = btn
+
+        local ic = Instance.new("UICorner")
+        ic.CornerRadius = UDim.new(1, 0)
+        ic.Parent = indicator
+
+        local dot = Instance.new("Frame")
+        dot.Size = UDim2.new(0, 14, 0, 14)
+        dot.Position = get_cb() and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+        dot.BackgroundColor3 = Color3.new(1, 1, 1)
+        dot.BorderSizePixel = 0
+        dot.Parent = indicator
+
+        local dc = Instance.new("UICorner")
+        dc.CornerRadius = UDim.new(1, 0)
+        dc.Parent = dot
+
+        local function refresh()
+            local on = get_cb()
+            indicator.BackgroundColor3 = on and Color3.fromRGB(99, 102, 241) or Color3.fromRGB(40, 40, 55)
+            dot.Position = on and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
+        end
+
+        btn.MouseButton1Click:Connect(function()
+            set_cb(not get_cb())
+            refresh()
         end)
-        task.wait(1)
+
+        return refresh
+    end
+
+    -- Toggles
+    add_toggle(content, "Auto Parry",
+        function() return _parry_config.enabled end,
+        function(v) if v then Parry.start() else Parry.stop() end end
+    )
+    add_toggle(content, "Triggerbot",
+        function() return _parry_config.triggerbot end,
+        function(v) _parry_config.triggerbot = v end
+    )
+    add_toggle(content, "Manual Spam",
+        function() return _spam_state.manual_active end,
+        function(v) if v then Spam.start_manual() else Spam.stop_manual() end end
+    )
+    add_toggle(content, "Auto Spam",
+        function() return _spam_state.auto_active end,
+        function(v) if v then Spam.start_auto() else Spam.stop_auto() end end
+    )
+    add_toggle(content, "Auto Preclick",
+        function() return _pc_config.enabled end,
+        function(v) if v then Preclick.start() else Preclick.stop() end end
+    )
+    add_toggle(content, "Immortality",
+        function() return _imm_state.enabled end,
+        function(v) if v then Immortal.start() else Immortal.stop() end end
+    )
+    add_toggle(content, "Anti Phantom",
+        function() return _ap_config.phantom end,
+        function(v) AntiPhantom.set_phantom(v) end
+    )
+    add_toggle(content, "Anti Flash Counter",
+        function() return _ap_config.flash end,
+        function(v) AntiPhantom.set_flash(v) end
+    )
+    add_toggle(content, "Ability ESP",
+        function() return _esp_state.active end,
+        function(v) if v then ESP.start() else ESP.stop() end end
+    )
+    add_toggle(content, "Show Names",
+        function() return _esp_state.show_names end,
+        function(v) ESP.set_show_names(v) end
+    )
+    add_toggle(content, "Anti-Cheat Scanner",
+        function() return _ac_conn ~= nil end,
+        function(v) if v then AntiCheat.start() else AntiCheat.stop() end end
+    )
+
+    _ui_state.gui = gui
+    _ui_state.open = true
+
+    print("[Farexpull] UI created successfully")
+end
+
+create_ui()
+
+-- Keybind RC / RightAlt
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.RightControl or input.KeyCode == Enum.KeyCode.RightAlt then
+        if _ui_state.gui then
+            _ui_state.open = not _ui_state.open
+            _ui_state.gui.Enabled = _ui_state.open
+        end
     end
 end)
 
-Window:SelectTab(1)
+-- Startup
+AntiCheat.start()
+pcall(Remote.discover)
+pcall(Config.run_autoload)
 
-WindUI:Notify({
-    Title = "Auto Parry ULTIMATE",
-    Content = "Parry manual sekali untuk capture remote",
-    Duration = 6,
-})
+print("[Farexpull] Hub v2 loaded successfully | Device: " .. detect_device())
 
-print("[AP-ULT] loaded")
-print("[AP-ULT] E=AutoParry | Q=ManualSpam | END=Panic | 1-0=Curve")
-
-_G.ap_ultimate_unload = function()
-    getgenv()._ap_ultimate = nil
-    pcall(function() Window:Destroy() end)
+getgenv().FarexpullShutdown = function()
+    pcall(function() Parry.stop() end)
+    pcall(function() Spam.stop() end)
+    pcall(function() Immortal.stop() end)
+    pcall(function() AntiPhantom.stop() end)
+    pcall(function() Preclick.stop() end)
+    pcall(function() ESP.stop() end)
+    pcall(function() AntiCheat.stop() end)
+    pcall(function() Input.remove_all_mobile_buttons() end)
+    if _ui_state.gui then
+        pcall(function() _ui_state.gui:Destroy() end)
+    end
+    for name, conn in pairs(STATE.connections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    STATE.connections = {}
+    print("[Farexpull] Shutdown complete")
 end
