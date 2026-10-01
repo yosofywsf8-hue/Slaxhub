@@ -1,277 +1,485 @@
--- [[ SLAX HUB - INTEGRATED VERSION ]] --
-repeat task.wait() until game:IsLoaded()
+-- ================================================================
+-- Timebomb Duels | Full AutoPlay + UI
+-- Nyx | stealth build, drag-able panel, toggles + sliders
+-- ================================================================
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local StatsService = game:GetService("Stats")
-local UserInputService = game:GetService("UserInputService")
-local Camera = workspace.CurrentCamera
-local player = Players.LocalPlayer
+local Players     = game:GetService("Players")
+local RunService  = game:GetService("RunService")
+local UIS         = game:GetService("UserInputService")
+local TweenS      = game:GetService("TweenService")
+local CoreGui     = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
 
--- // [ الإعدادات العامة ] // --
-local cfg = {
-    parry = true,
-    spam = false,
-    cps = 200,
-    accuracy = 3.3,
-    animfix = true,
-    curveType = 'straight'
-}
+-- ================================================================
+-- 1) الإعدادات الافتراضية
+-- ================================================================
+_G.AutoPlay       = true
+_G.TouchRange     = 3.2
+_G.ChaseRange     = 4.5
+_G.SpeedMult      = 1.15
+_G.UpdateRate     = 1/40
+_G.Smooth         = 0.4
+_G.Jitter         = 0.03
+_G.StopOnBombLoss = true
 
-local parried_balls = {}
-local AnimationCache = {}
-local spamActive = false
-local lastSpamTime = 0
-local Lerp_Radians = 0
-local Last_Warping = tick()
-
--- // [ Sword API & Animations ] // --
-local SwordAPI = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("SwordAPI")
-
-local function GetPing()
-    local success, result = pcall(function()
-        return StatsService.Network.ServerStatsItem["Data Ping"]:GetValue()
-    end)
-    return success and result or 100
+-- ================================================================
+-- 2) مساعدات
+-- ================================================================
+local function getHRP(plr)
+    plr = plr or LocalPlayer
+    if plr.Character then
+        return plr.Character:FindFirstChild("HumanoidRootPart")
+    end
 end
 
--- // [ كشف انحناء الكرة (Curve Detection) ] // --
-local function Is_Curved(ball)
-    local Zoomies = ball:FindFirstChild("zoomies")
-    if not Zoomies then return false end
-    
-    local Velocity = Zoomies.VectorVelocity
-    local Character = player.Character
-    if not Character or not Character.PrimaryPart then return false end
-
-    -- حد 25 وحدة: عدم تجاهل الكرة إذا كانت قريبة جداً
-    local distanceToBall = (Character.PrimaryPart.Position - ball.Position).Magnitude
-    if distanceToBall <= 25 then
-        return false
+local function getHumanoid(plr)
+    plr = plr or LocalPlayer
+    if plr.Character then
+        return plr.Character:FindFirstChildOfClass("Humanoid")
     end
-
-    local Speed = Velocity.Magnitude
-    local Direction = (Character.PrimaryPart.Position - ball.Position).Unit
-    local Dot = Direction:Dot(Velocity.Unit)
-
-    local Ping = GetPing() / 1000
-    local Distance = (Character.PrimaryPart.Position - ball.Position).Magnitude
-    local Reach_Time = Distance / Speed - Ping
-    local Radians = math.rad(math.asin(math.clamp(Dot, -1, 1)))
-    Lerp_Radians = Lerp_Radians + (Radians - Lerp_Radians) * 0.8
-
-    if Lerp_Radians < 0.018 then
-        Last_Warping = tick()
-    end
-
-    if (tick() - Last_Warping) < (Reach_Time / 1.5) then
-        return true
-    end
-    return Dot < (0.5 - Ping)
 end
 
--- // [ أنيميشن الصد ] // --
-local function GetParryAnimation()
-    local char = player.Character
-    local currentSword = char and char:GetAttribute("CurrentlyEquippedSword")
-    if not currentSword then
-        return SwordAPI.Collection.Default:FindFirstChild("GrabParry")
+local function hasBomb()
+    local char = LocalPlayer.Character
+    if not char then return false end
+    for _, obj in ipairs(char:GetChildren()) do
+        local n = obj.Name:lower()
+        if n:find("bomb") or n:find("c4") or n:find("tnt")
+           or n:find("device") or n:find("payload") or n:find("قنبلة") then
+            return true
+        end
     end
-    if AnimationCache[currentSword] then
-        return AnimationCache[currentSword]
+    for _, attr in ipairs(LocalPlayer:GetAttributes()) do
+        local a = attr:lower()
+        if (a:find("bomb") or a:find("carrier") or a:find("has") or a:find("holding"))
+           and LocalPlayer:GetAttribute(attr) == true then
+            return true
+        end
     end
-    local success, swordData = pcall(function()
-        return ReplicatedStorage.Shared.ReplicatedInstances.Swords.GetSword:Invoke(currentSword)
-    end)
-    if success and type(swordData) == "table" then
-        for _, obj in pairs(SwordAPI.Collection:GetChildren()) do
-            if obj.Name == swordData.AnimationType then
-                local anim = obj:FindFirstChild("GrabParry") or obj:FindFirstChild("Grab")
-                if anim then
-                    AnimationCache[currentSword] = anim
-                    return anim
-                end
+    if LocalPlayer:HasTag("HasBomb") or LocalPlayer:HasTag("Bomb") then return true end
+    if char:HasTag("HasBomb") or char:HasTag("Bomb") then return true end
+    for _, obj in ipairs(char:GetDescendants()) do
+        if (obj:IsA("Highlight") or obj:IsA("BillboardGui")) and obj.Enabled then
+            if obj.Name:lower():find("bomb") then return true end
+        end
+    end
+    return false
+end
+
+local function getTargets()
+    local list = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local hum, hrp = getHumanoid(plr), getHRP(plr)
+            if hum and hrp and hum.Health > 0 then
+                table.insert(list, plr)
             end
         end
     end
-    return SwordAPI.Collection.Default:FindFirstChild("GrabParry")
+    return list
 end
 
-local function PlayParryAnimation()
-    if not cfg.animfix then return end
-    local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-    if not hum or not hum:FindFirstChild("Animator") then return end
-    local animation = GetParryAnimation()
-    if not animation then return end
-    for _, track in pairs(hum.Animator:GetPlayingAnimationTracks()) do
-        if track.Name:find("Grab") or track.Name:find("Parry") then
-            track:Stop(0.1)
+local function getNearest(players)
+    local myHRP = getHRP()
+    if not myHRP then return nil, math.huge end
+    local closest, dist = nil, math.huge
+    for _, plr in ipairs(players) do
+        local hrp = getHRP(plr)
+        if hrp then
+            local d = (hrp.Position - myHRP.Position).Magnitude
+            if d < dist then closest, dist = plr, d end
         end
     end
-    local track = hum.Animator:LoadAnimation(animation)
-    track:Play(0, 1, 1)
+    return closest, dist
 end
 
--- // [ تطبيق منحنى الاتجاه (Curve Angle) ] // --
-local function ApplyCurveToCFrame(baseCFrame)
-    if not cfg.curveType or cfg.curveType == 'straight' then
-        return baseCFrame
-    end
-    local rotation = CFrame.new()
-    if cfg.curveType == 'backwards' then
-        rotation = CFrame.Angles(0, math.rad(180), 0)
-    elseif cfg.curveType == 'down' then
-        rotation = CFrame.Angles(math.rad(-45), 0, 0)
-    elseif cfg.curveType == 'up' then
-        rotation = CFrame.Angles(math.rad(45), 0, 0)
-    elseif cfg.curveType == 'left' then
-        rotation = CFrame.Angles(0, math.rad(-90), 0)
-    elseif cfg.curveType == 'right' then
-        rotation = CFrame.Angles(0, math.rad(90), 0)
-    elseif cfg.curveType == 'random' then
-        local randomAngle = math.random() * math.pi * 2
-        rotation = CFrame.Angles(0, randomAngle, 0)
-    end
-    return baseCFrame * rotation
+local function jitter(v)
+    return v + Vector3.new(
+        (math.random() - 0.5) * _G.Jitter, 0,
+        (math.random() - 0.5) * _G.Jitter
+    )
 end
 
--- // [ استخراج بيانات التشفير والريموت ] // --
-local function GetParryData()
-    local viewportSize = Camera.ViewportSize
-    local centerPos = { viewportSize.X / 2, viewportSize.Y / 2 }
-    local events = {}
-    for _, v in pairs(workspace.Alive:GetChildren()) do
-        if v ~= player.Character and v:FindFirstChild("HumanoidRootPart") then
-            local screenPos, isOnScreen = Camera:WorldToScreenPoint(v.HumanoidRootPart.Position)
-            if isOnScreen then
-                events[tostring(v)] = screenPos
-            end
+-- ================================================================
+-- 3) بناء الواجهة
+-- ================================================================
+local parentGui = (gethui and gethui()) or CoreGui
+local old = parentGui:FindFirstChild("NyxTimebombUI")
+if old then old:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "NyxTimebombUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = parentGui
+
+-- ---- الحاوية الرئيسية ----
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.Size = UDim2.new(0, 300, 0, 360)
+Main.Position = UDim2.new(0, 30, 0, 100)
+Main.BackgroundColor3 = Color3.fromRGB(18, 14, 22)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Draggable = true
+Main.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 12)
+MainCorner.Parent = Main
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(180, 110, 200)
+MainStroke.Thickness = 1.2
+MainStroke.Transparency = 0.35
+MainStroke.Parent = Main
+
+-- ---- الشريط العلوي ----
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 40)
+TopBar.BackgroundColor3 = Color3.fromRGB(28, 20, 34)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = Main
+
+local TopCorner = Instance.new("UICorner")
+TopCorner.CornerRadius = UDim.new(0, 12)
+TopCorner.Parent = TopBar
+
+-- نظبط الزوايا السفلية (نخفيها بقص)
+local fixBottom = Instance.new("Frame")
+fixBottom.Size = UDim2.new(1, 0, 0, 12)
+fixBottom.Position = UDim2.new(0, 0, 1, -12)
+fixBottom.BackgroundColor3 = TopBar.BackgroundColor3
+fixBottom.BorderSizePixel = 0
+fixBottom.Parent = TopBar
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -50, 1, 0)
+Title.Position = UDim2.new(0, 14, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "♥ Timebomb AutoPlay"
+Title.TextColor3 = Color3.fromRGB(230, 200, 240)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 15
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TopBar
+
+-- زر التصغير
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 26, 0, 26)
+MinBtn.Position = UDim2.new(1, -60, 0, 7)
+MinBtn.BackgroundColor3 = Color3.fromRGB(60, 40, 70)
+MinBtn.Text = "—"
+MinBtn.TextColor3 = Color3.fromRGB(230, 200, 240)
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.TextSize = 14
+MinBtn.BorderSizePixel = 0
+MinBtn.AutoButtonColor = true
+MinBtn.Parent = TopBar
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 6)
+
+-- زر الإغلاق
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 26, 0, 26)
+CloseBtn.Position = UDim2.new(1, -30, 0, 7)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(90, 35, 50)
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 210, 220)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Parent = TopBar
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 6)
+
+-- ---- حاوية المحتوى ----
+local Content = Instance.new("Frame")
+Content.Size = UDim2.new(1, -20, 1, -50)
+Content.Position = UDim2.new(0, 10, 0, 45)
+Content.BackgroundTransparency = 1
+Content.Parent = Main
+
+local Layout = Instance.new("UIListLayout")
+Layout.Padding = UDim.new(0, 8)
+Layout.SortOrder = Enum.SortOrder.LayoutOrder
+Layout.Parent = Content
+
+-- ================================================================
+-- 4) مكونات الواجهة
+-- ================================================================
+local function makeToggle(name, default, callback)
+    local Row = Instance.new("Frame")
+    Row.Size = UDim2.new(1, 0, 0, 30)
+    Row.BackgroundColor3 = Color3.fromRGB(24, 18, 30)
+    Row.BorderSizePixel = 0
+    Row.Parent = Content
+    Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 8)
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -60, 1, 0)
+    Label.Position = UDim2.new(0, 12, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = name
+    Label.TextColor3 = Color3.fromRGB(220, 200, 230)
+    Label.Font = Enum.Font.Gotham
+    Label.TextSize = 13
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Row
+
+    local state = default
+
+    local Btn = Instance.new("TextButton")
+    Btn.Size = UDim2.new(0, 42, 0, 20)
+    Btn.Position = UDim2.new(1, -52, 0, 5)
+    Btn.BackgroundColor3 = state and Color3.fromRGB(160, 90, 190)
+                             or Color3.fromRGB(50, 40, 60)
+    Btn.Text = ""
+    Btn.BorderSizePixel = 0
+    Btn.Parent = Row
+    Instance.new("UICorner", Btn).CornerRadius = UDim.new(1, 0)
+
+    local Knob = Instance.new("Frame")
+    Knob.Size = UDim2.new(0, 16, 0, 16)
+    Knob.Position = state and UDim2.new(1, -18, 0, 2)
+                        or UDim2.new(0, 2, 0, 2)
+    Knob.BackgroundColor3 = Color3.fromRGB(240, 225, 245)
+    Knob.BorderSizePixel = 0
+    Knob.Parent = Btn
+    Instance.new("UICorner", Knob).CornerRadius = UDim.new(1, 0)
+
+    Btn.MouseButton1Click:Connect(function()
+        state = not state
+        TweenS:Create(Btn, TweenInfo.new(0.18), {
+            BackgroundColor3 = state and Color3.fromRGB(160, 90, 190)
+                                       or Color3.fromRGB(50, 40, 60)
+        }):Play()
+        TweenS:Create(Knob, TweenInfo.new(0.18), {
+            Position = state and UDim2.new(1, -18, 0, 2)
+                               or UDim2.new(0, 2, 0, 2)
+        }):Play()
+        if callback then callback(state) end
+    end)
+
+    return { set = function(v) state = v end }
+end
+
+local function makeSlider(name, min, max, default, callback)
+    local Row = Instance.new("Frame")
+    Row.Size = UDim2.new(1, 0, 0, 48)
+    Row.BackgroundColor3 = Color3.fromRGB(24, 18, 30)
+    Row.BorderSizePixel = 0
+    Row.Parent = Content
+    Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 8)
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -20, 0, 22)
+    Label.Position = UDim2.new(0, 12, 0, 2)
+    Label.BackgroundTransparency = 1
+    Label.Text = name .. "  •  " .. tostring(default)
+    Label.TextColor3 = Color3.fromRGB(220, 200, 230)
+    Label.Font = Enum.Font.Gotham
+    Label.TextSize = 13
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Row
+
+    local Track = Instance.new("Frame")
+    Track.Size = UDim2.new(1, -24, 0, 6)
+    Track.Position = UDim2.new(0, 12, 0, 30)
+    Track.BackgroundColor3 = Color3.fromRGB(45, 35, 55)
+    Track.BorderSizePixel = 0
+    Track.Parent = Row
+    Instance.new("UICorner", Track).CornerRadius = UDim.new(1, 0)
+
+    local Fill = Instance.new("Frame")
+    local startPct = (default - min) / (max - min)
+    Fill.Size = UDim2.new(startPct, 0, 1, 0)
+    Fill.BackgroundColor3 = Color3.fromRGB(180, 110, 200)
+    Fill.BorderSizePixel = 0
+    Fill.Parent = Track
+    Instance.new("UICorner", Fill).CornerRadius = UDim.new(1, 0)
+
+    local Drag = Instance.new("TextButton")
+    Drag.Size = UDim2.new(1, 0, 1, 0)
+    Drag.BackgroundTransparency = 1
+    Drag.Text = ""
+    Drag.Parent = Track
+
+    local dragging = false
+    local value = default
+
+    local function update(input)
+        local rel = math.clamp((input.Position.X - Track.AbsolutePosition.X) / Track.AbsoluteSize.X, 0, 1)
+        value = min + (max - min) * rel
+        value = math.floor(value * 100 + 0.5) / 100
+        Fill.Size = UDim2.new(rel, 0, 1, 0)
+        Label.Text = name .. "  •  " .. tostring(value)
+        if callback then callback(value) end
+    end
+
+    Drag.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+           or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            update(i)
         end
-    end
-    return Camera.CFrame, events, centerPos
-end
-
-local PRY = require(ReplicatedStorage:FindFirstChild('PRY', true))
-local Network = getupvalue(PRY, 6)
-local Constants = getupvalue(PRY, 3)
-local Convert = getupvalue(PRY, 4)
-
-local Hash1 = getupvalue(PRY, 8)
-local Hash2 = Constants[2]
-local Hash3 = function()
-    local Constant = Convert(Hash2, 'TIME')
-    local Time = tostring(math.floor(workspace:GetServerTimeNow() * 100))
-    local Encoded = {}
-    for i = 1, #Time do
-        local s1 = string.byte(Constant, ((i - 1) % #Constant) + 1)
-        Encoded[i] = string.char(bit32.bxor((string.byte(Time, i) + i) % 256, s1))
-    end
-    return table.concat(Encoded)
-end
-
-local ParryRemote = nil
-do
-    local RemoteName = string.gsub(game.JobId, '-', '')
-    local GetRemote = Network.RemoteEvent
-    task.spawn(function()
-        setthreadidentity(2)
-        setfenv(0, getfenv(PRY))
-        setfenv(1, getfenv(PRY))
-        ParryRemote = GetRemote(Network, RemoteName)
+    end)
+    Drag.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement
+           or i.UserInputType == Enum.UserInputType.Touch) then
+            update(i)
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+           or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
     end)
 end
 
--- // [ إرسال أمر الصد (Send Parry) ] // --
-local function SendParry()
-    if not ParryRemote then return false end
-    local camCF, events, mousePos = GetParryData()
-    local modifiedCF = ApplyCurveToCFrame(camCF)
-    local success, err = pcall(function()
-        ParryRemote:FireServer(
-            Hash1,
-            Hash2,
-            Hash3(),
-            0.025,
-            modifiedCF,
-            events,
-            mousePos,
-            false
-        )
+local function makeButton(name, callback)
+    local Btn = Instance.new("TextButton")
+    Btn.Size = UDim2.new(1, 0, 0, 30)
+    Btn.BackgroundColor3 = Color3.fromRGB(140, 75, 170)
+    Btn.Text = name
+    Btn.TextColor3 = Color3.fromRGB(245, 230, 250)
+    Btn.Font = Enum.Font.GothamBold
+    Btn.TextSize = 13
+    Btn.BorderSizePixel = 0
+    Btn.Parent = Content
+    Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 8)
+    Btn.MouseButton1Click:Connect(function()
+        if callback then callback() end
     end)
-    if success and cfg.animfix then
-        task.spawn(PlayParryAnimation)
-    end
-    return success
 end
 
--- // [ نظام Auto Parry الرئيسي ] // --
-local function ProcessAutoParry(ball)
-    if not cfg.parry or spamActive then return end
-    local bID = ball:GetDebugId()
-    if ball:GetAttribute("target") ~= player.Name or parried_balls[bID] then
-        return
-    end
-    if Is_Curved(ball) then
-        return
-    end
-    local charPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-    if not charPart then return end
-    
-    local velocity = ball.zoomies.VectorVelocity
-    local ballPos = ball.Position
-    local playerPos = charPart.Position
-    local dist = (playerPos - ballPos).Magnitude
-    local ping = GetPing()
-    local threshold = (velocity.Magnitude / cfg.accuracy) + (ping / 10)
-    
-    if dist <= threshold or dist <= 20 then
-        parried_balls[bID] = true
-        SendParry()
-        ball:GetAttributeChangedSignal("target"):Once(function()
-            parried_balls[bID] = nil
-        end)
-    end
-end
+-- ---- ملء الواجهة ----
+makeToggle("AutoPlay", _G.AutoPlay, function(v) _G.AutoPlay = v end)
+makeToggle("Stop after pass", _G.StopOnBombLoss, function(v) _G.StopOnBombLoss = v end)
 
--- // [ خيط السبام السريع (Spam Loop) ] // --
+makeSlider("Speed Multiplier", 1.0, 1.3, _G.SpeedMult, function(v) _G.SpeedMult = v end)
+makeSlider("Touch Range", 2.5, 6.0, _G.TouchRange, function(v) _G.TouchRange = v end)
+makeSlider("Chase Range", 3.0, 8.0, _G.ChaseRange, function(v) _G.ChaseRange = v end)
+makeSlider("Smooth", 0.1, 0.9, _G.Smooth, function(v) _G.Smooth = v end)
+
+makeButton("Reset Defaults", function()
+    _G.SpeedMult = 1.15
+    _G.TouchRange = 3.2
+    _G.ChaseRange = 4.5
+    _G.Smooth = 0.4
+    print("[Nyx] Defaults restored")
+end)
+
+-- ---- حالة تحتية (Footer) ----
+local Footer = Instance.new("TextLabel")
+Footer.Size = UDim2.new(1, 0, 0, 16)
+Footer.BackgroundTransparency = 1
+Footer.Text = "Nyx ♥ stealth build"
+Footer.TextColor3 = Color3.fromRGB(150, 120, 160)
+Footer.Font = Enum.Font.Gotham
+Footer.TextSize = 11
+Footer.Parent = Content
+
+-- ================================================================
+-- 5) أزرار الشريط العلوي
+-- ================================================================
+local minimized = false
+local origSize = Main.Size
+
+MinBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    TweenS:Create(Main, TweenInfo.new(0.22, Enum.EasingStyle.Quad),
+        { Size = minimized and UDim2.new(0, 300, 0, 40) or origSize }):Play()
+    Content.Visible = not minimized
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    _G.AutoPlay = false
+    ScreenGui:Destroy()
+    print("[Nyx] UI closed")
+end)
+
+-- ================================================================
+-- 6) Main Loop (نفس المنطق النظيف)
+-- ================================================================
 task.spawn(function()
+    local stuckTimer, lastPos, strafe = 0, Vector3.zero, 1
     while true do
-        if spamActive and ParryRemote then
-            local delay = 1 / cfg.cps
-            if tick() - lastSpamTime >= delay then
-                SendParry()
-                lastSpamTime = tick()
+        task.wait(_G.UpdateRate)
+        if not _G.AutoPlay then continue end
+
+        local myHRP = getHRP()
+        local myHum = getHumanoid()
+        if not myHRP or not myHum or myHum.Health <= 0 then continue end
+
+        local bomb = hasBomb()
+        if not bomb and _G.StopOnBombLoss then
+            myHum:MoveTo(myHRP.Position)
+            continue
+        end
+        if not bomb then continue end
+
+        local targets = getTargets()
+        if #targets == 0 then continue end
+        local target, dist = getNearest(targets)
+        if not target then continue end
+
+        local thrp = getHRP(target)
+        if not thrp then continue end
+
+        if dist <= _G.TouchRange then
+            myHum:MoveTo(myHRP.Position)
+            if (thrp.Position - myHRP.Position).Magnitude > 0.1 then
+                myHRP.CFrame = CFrame.lookAt(myHRP.Position, thrp.Position)
             end
+            continue
         end
-        task.wait(0.001)
+
+        if (myHRP.Position - lastPos).Magnitude < 0.15 then
+            stuckTimer = stuckTimer + _G.UpdateRate
+        else
+            stuckTimer = 0
+        end
+        lastPos = myHRP.Position
+
+        local targetPos = jitter(thrp.Position)
+        if stuckTimer > 0.5 then
+            strafe = strafe * -1
+            targetPos = targetPos + myHRP.CFrame.RightVector * (2.5 * strafe)
+            stuckTimer = 0
+        end
+
+        local dir = (targetPos - myHRP.Position)
+        if dir.Magnitude > 0.1 then
+            dir = dir.Unit
+            local wp = myHRP.Position + dir * 8
+            myHum:MoveTo(Vector3.new(wp.X, myHRP.Position.Y, wp.Z))
+        end
+
+        local targetSpeed = 20 * _G.SpeedMult
+        myHum.WalkSpeed = myHum.WalkSpeed + (targetSpeed - myHum.WalkSpeed) * _G.Smooth
+        if dist < _G.ChaseRange + 2 then
+            myHum.WalkSpeed = myHum.WalkSpeed * 0.85
+        end
     end
 end)
 
--- // [ الحلقة الرئيسية (Heartbeat Loop) ] // --
-RunService.Heartbeat:Connect(function()
-    if not ParryRemote then return end
-    local ball = nil
-    for _, v in pairs(workspace.Balls:GetChildren()) do
-        if v:GetAttribute("realBall") then
-            ball = v
-            break
-        end
-    end
-    if ball then
-        if not spamActive and cfg.parry then
-            ProcessAutoParry(ball)
-        end
+-- ================================================================
+-- 7) Anti-AFK
+-- ================================================================
+local VU = game:GetService("VirtualUser")
+LocalPlayer.Idled:Connect(function()
+    VU:CaptureController()
+    VU:ClickButton2(Vector2.new())
+end)
+
+-- ================================================================
+-- 8) زر تصغير الواجهة (K = hide/show)
+-- ================================================================
+UIS.InputBegan:Connect(function(i, gpe)
+    if gpe then return end
+    if i.KeyCode == Enum.KeyCode.RightControl then
+        Main.Visible = not Main.Visible
     end
 end)
 
--- إيقاف الأنيميشن عند نجاح الصد من السيرفر
-ReplicatedStorage.Remotes.ParrySuccess.OnClientEvent:Connect(function()
-    local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-    if not hum or not hum:FindFirstChild("Animator") then return end
-    for _, track in pairs(hum.Animator:GetPlayingAnimationTracks()) do
-        if track.Name:find("Grab") or track.Name:find("Parry") then
-            track:Stop(0.1)
-        end
-    end
-end)
+print("[Nyx] UI loaded ❤️  — اضغطي RightCtrl لإخفاء/إظهار الواجهة")
