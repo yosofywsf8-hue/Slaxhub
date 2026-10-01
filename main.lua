@@ -1,6 +1,6 @@
 -- ================================================================
--- Timebomb Duels | AutoPlay — Minimal Tab
--- Nyx | one toggle. one tab. clean.
+-- Timebomb Duels | AutoPlay — Human Behavior Edition
+-- Nyx | randomized, delayed, breaks patterns
 -- ================================================================
 
 local Players     = game:GetService("Players")
@@ -9,24 +9,22 @@ local TweenS      = game:GetService("TweenService")
 local CoreGui     = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
--- ================================================================
--- 1) الإعدادات الداخلية (لا تُعرض)
--- ================================================================
+-- ============ إعدادات داخلية ============
 local CFG = {
-    AutoPlay       = true,
-    TouchRange     = 3.2,
-    ChaseRange     = 4.5,
-    SpeedMult      = 1.0,
-    UpdateRate     = 1/40,
-    Smooth         = 0.45,
-    Jitter         = 0.03,
-    StopOnBombLoss = true,
-    SlowdownNear   = true,
+    AutoPlay        = true,
+    UpdateRate      = 0.1,      -- 10Hz بدل 40Hz (بصمة أقل بكثير)
+    MinIdleTime     = 0.8,      -- أقل وقت "وقوف"
+    MaxIdleTime     = 2.4,      -- أطول وقت "وقوف"
+    MinRunTime      = 3.0,      -- أقل وقت ملاحقة
+    MaxRunTime      = 7.0,      -- أطول وقت ملاحقة
+    TouchRange      = 3.5,
+    ChaseRange      = 5.0,
+    Jitter          = 0.08,     -- اهتزاز أكبر
+    LookAround      = true,     -- يلتفت حوله وأنت واقف
+    StartDelay      = 3.0,      -- ينتظر قبل ما يبدأ كل مرة
 }
 
--- ================================================================
--- 2) مساعدات
--- ================================================================
+-- ============ مساعدات ============
 local function getHRP(plr)
     plr = plr or LocalPlayer
     if plr.Character then
@@ -47,24 +45,19 @@ local function hasBomb()
     for _, obj in ipairs(char:GetChildren()) do
         local n = obj.Name:lower()
         if n:find("bomb") or n:find("c4") or n:find("tnt")
-           or n:find("device") or n:find("payload") or n:find("قنبلة") then
+           or n:find("device") or n:find("payload") then
             return true
         end
     end
     for _, attr in ipairs(LocalPlayer:GetAttributes()) do
         local a = attr:lower()
-        if (a:find("bomb") or a:find("carrier") or a:find("has") or a:find("holding"))
+        if (a:find("bomb") or a:find("carrier") or a:find("has"))
            and LocalPlayer:GetAttribute(attr) == true then
             return true
         end
     end
     if LocalPlayer:HasTag("HasBomb") or LocalPlayer:HasTag("Bomb") then return true end
     if char:HasTag("HasBomb") or char:HasTag("Bomb") then return true end
-    for _, obj in ipairs(char:GetDescendants()) do
-        if (obj:IsA("Highlight") or obj:IsA("BillboardGui")) and obj.Enabled then
-            if obj.Name:lower():find("bomb") then return true end
-        end
-    end
     return false
 end
 
@@ -81,18 +74,26 @@ local function getTargets()
     return list
 end
 
-local function getNearest(players)
-    local myHRP = getHRP()
-    if not myHRP then return nil, math.huge end
-    local closest, dist = nil, math.huge
-    for _, plr in ipairs(players) do
-        local hrp = getHRP(plr)
-        if hrp then
-            local d = (hrp.Position - myHRP.Position).Magnitude
-            if d < dist then closest, dist = plr, d end
+local function getRandomTarget(players)
+    if #players == 0 then return nil end
+    -- أحياناً يختار أقرب، أحياناً عشوائي (يكسر الـ pattern)
+    if math.random() < 0.6 then
+        -- أقرب
+        local myHRP = getHRP()
+        if not myHRP then return players[1] end
+        local closest, dist = nil, math.huge
+        for _, plr in ipairs(players) do
+            local hrp = getHRP(plr)
+            if hrp then
+                local d = (hrp.Position - myHRP.Position).Magnitude
+                if d < dist then closest, dist = plr, d end
+            end
         end
+        return closest
+    else
+        -- عشوائي
+        return players[math.random(1, #players)]
     end
-    return closest, dist
 end
 
 local function jitter(v)
@@ -102,9 +103,7 @@ local function jitter(v)
     )
 end
 
--- ================================================================
--- 3) الواجهة — Tab واحد فقط
--- ================================================================
+-- ============ الواجهة — Tab واحد ============
 local parentGui = (gethui and gethui()) or CoreGui
 local old = parentGui:FindFirstChild("NyxTimebombUI")
 if old then old:Destroy() end
@@ -131,7 +130,6 @@ Stroke.Thickness = 1.2
 Stroke.Transparency = 0.35
 Stroke.Parent = Main
 
--- التاب (شريط الاسم)
 local Tab = Instance.new("Frame")
 Tab.Size = UDim2.new(1, 0, 0, 26)
 Tab.BackgroundColor3 = Color3.fromRGB(28, 20, 34)
@@ -157,7 +155,6 @@ TabTitle.TextSize = 12
 TabTitle.TextXAlignment = Enum.TextXAlignment.Left
 TabTitle.Parent = Tab
 
--- زر الـ Toggle الوحيد
 local ToggleBtn = Instance.new("TextButton")
 ToggleBtn.Size = UDim2.new(1, -20, 0, 26)
 ToggleBtn.Position = UDim2.new(0, 10, 0, 32)
@@ -170,25 +167,15 @@ ToggleBtn.BorderSizePixel = 0
 ToggleBtn.Parent = Main
 Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 7)
 
--- ================================================================
--- 4) التوجل
--- ================================================================
 ToggleBtn.MouseButton1Click:Connect(function()
     CFG.AutoPlay = not CFG.AutoPlay
-    if CFG.AutoPlay then
-        TweenS:Create(ToggleBtn, TweenInfo.new(0.18), {
-            BackgroundColor3 = Color3.fromRGB(160, 90, 190)
-        }):Play()
-        ToggleBtn.Text = "ON"
-    else
-        TweenS:Create(ToggleBtn, TweenInfo.new(0.18), {
-            BackgroundColor3 = Color3.fromRGB(80, 45, 60)
-        }):Play()
-        ToggleBtn.Text = "OFF"
-    end
+    TweenS:Create(ToggleBtn, TweenInfo.new(0.18), {
+        BackgroundColor3 = CFG.AutoPlay and Color3.fromRGB(160, 90, 190)
+                                          or Color3.fromRGB(80, 45, 60)
+    }):Play()
+    ToggleBtn.Text = CFG.AutoPlay and "ON" or "OFF"
 end)
 
--- RightCtrl يخفي/يظهر
 UIS.InputBegan:Connect(function(i, gpe)
     if gpe then return end
     if i.KeyCode == Enum.KeyCode.RightControl then
@@ -196,78 +183,129 @@ UIS.InputBegan:Connect(function(i, gpe)
     end
 end)
 
--- ================================================================
--- 5) Main Loop
--- ================================================================
+-- ============ Main Loop — Human Behavior ============
 task.spawn(function()
-    local stuckTimer, lastPos, strafe = 0, Vector3.zero, 1
+    -- تأخير أولي
+    task.wait(CFG.StartDelay)
+
+    local state = "idle"         -- idle / chase
+    local stateTimer = 0
+    local currentTarget = nil
+    local lookAngle = 0
+
     while true do
         task.wait(CFG.UpdateRate)
-        if not CFG.AutoPlay then continue end
+        if not CFG.AutoPlay then
+            state = "idle"
+            stateTimer = 0
+            continue
+        end
 
         local myHRP = getHRP()
         local myHum = getHumanoid()
         if not myHRP or not myHum or myHum.Health <= 0 then continue end
 
+        -- ما عندي قنبلة؟ وقف تماماً
         if not hasBomb() then
-            if CFG.StopOnBombLoss then
-                myHum:MoveTo(myHRP.Position)
-            end
-            continue
-        end
-
-        local targets = getTargets()
-        if #targets == 0 then continue end
-        local target, dist = getNearest(targets)
-        if not target then continue end
-
-        local thrp = getHRP(target)
-        if not thrp then continue end
-
-        if dist <= CFG.TouchRange then
             myHum:MoveTo(myHRP.Position)
-            if (thrp.Position - myHRP.Position).Magnitude > 0.1 then
-                myHRP.CFrame = CFrame.lookAt(myHRP.Position, thrp.Position)
+            state = "idle"
+            stateTimer = 0
+            continue
+        end
+
+        -- ---- حالة "وقوف": يلتفت حوله بدون حركة ----
+        if state == "idle" then
+            stateTimer = stateTimer + CFG.UpdateRate
+
+            -- يلتفت ببطء حوله
+            if CFG.LookAround then
+                lookAngle = lookAngle + CFG.UpdateRate * 0.6
+                local radius = 8
+                local lookAt = myHRP.Position + Vector3.new(
+                    math.cos(lookAngle) * radius, 0,
+                    math.sin(lookAngle) * radius
+                )
+                myHRP.CFrame = CFrame.lookAt(myHRP.Position, lookAt)
+            end
+
+            if stateTimer >= math.random(CFG.MinIdleTime, CFG.MaxIdleTime) then
+                state = "chase"
+                stateTimer = 0
+                local targets = getTargets()
+                currentTarget = getRandomTarget(targets)
             end
             continue
         end
 
-        if (myHRP.Position - lastPos).Magnitude < 0.15 then
-            stuckTimer = stuckTimer + CFG.UpdateRate
-        else
-            stuckTimer = 0
-        end
-        lastPos = myHRP.Position
+        -- ---- حالة "ملاحقة" ----
+        if state == "chase" then
+            stateTimer = stateTimer + CFG.UpdateRate
 
-        local targetPos = jitter(thrp.Position)
-        if stuckTimer > 0.5 then
-            strafe = strafe * -1
-            targetPos = targetPos + myHRP.CFrame.RightVector * (2.5 * strafe)
-            stuckTimer = 0
-        end
+            -- نوقف الملاحقة إذا:
+            -- - مضى وقت كافي
+            -- - أو ما فيه هدف
+            -- - أو ما فيه أهداف
+            if stateTimer >= math.random(CFG.MinRunTime, CFG.MaxRunTime) then
+                state = "idle"
+                stateTimer = 0
+                currentTarget = nil
+                myHum:MoveTo(myHRP.Position)
+                continue
+            end
 
-        local dir = (targetPos - myHRP.Position)
-        if dir.Magnitude > 0.1 then
-            dir = dir.Unit
-            local wp = myHRP.Position + dir * 8
-            myHum:MoveTo(Vector3.new(wp.X, myHRP.Position.Y, wp.Z))
-        end
+            local targets = getTargets()
+            if #targets == 0 then
+                state = "idle"
+                stateTimer = 0
+                continue
+            end
 
-        local targetSpeed = 20 * CFG.SpeedMult
-        myHum.WalkSpeed = myHum.WalkSpeed + (targetSpeed - myHum.WalkSpeed) * CFG.Smooth
-        if CFG.SlowdownNear and dist < CFG.ChaseRange + 2 then
-            myHum.WalkSpeed = myHum.WalkSpeed * 0.85
+            -- لو الهدف مات أو اختفى، نختار غيره
+            if not currentTarget or not currentTarget.Character
+               or not currentTarget.Character:FindFirstChild("HumanoidRootPart")
+               or not currentTarget.Character:FindFirstChildOfClass("Humanoid")
+               or currentTarget.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+                currentTarget = getRandomTarget(targets)
+            end
+
+            if not currentTarget then
+                state = "idle"
+                stateTimer = 0
+                continue
+            end
+
+            local thrp = getHRP(currentTarget)
+            if not thrp then
+                state = "idle"
+                stateTimer = 0
+                continue
+            end
+
+            local dist = (thrp.Position - myHRP.Position).Magnitude
+
+            -- وصلنا؟ نوقف ونتجه نحوهم
+            if dist <= CFG.TouchRange then
+                myHum:MoveTo(myHRP.Position)
+                if dist > 0.1 then
+                    myHRP.CFrame = CFrame.lookAt(myHRP.Position, thrp.Position)
+                end
+                -- أحياناً "يتصرف بشكل بشري": يدور حولهم
+                if math.random() < 0.15 then
+                    local offset = myHRP.CFrame.RightVector * (math.random() - 0.5) * 2
+                    myHum:MoveTo(myHRP.Position + offset)
+                end
+                continue
+            end
+
+            -- حركة عادية نحو الهدف
+            local dir = (jitter(thrp.Position) - myHRP.Position)
+            if dir.Magnitude > 0.1 then
+                dir = dir.Unit
+                local wp = myHRP.Position + dir * 8
+                myHum:MoveTo(Vector3.new(wp.X, myHRP.Position.Y, wp.Z))
+            end
         end
     end
 end)
 
--- ================================================================
--- 6) Anti-AFK
--- ================================================================
-local VU = game:GetService("VirtualUser")
-LocalPlayer.Idled:Connect(function()
-    VU:CaptureController()
-    VU:ClickButton2(Vector2.new())
-end)
-
-print("[Nyx] Minimal tab loaded ❤️")
+print("[Nyx] Human behavior build loaded ❤️")
