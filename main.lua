@@ -1,28 +1,23 @@
 -- ================================================================
--- Timebomb Duels | AutoPlay — Human Behavior Edition
--- Nyx | randomized, delayed, breaks patterns
+-- Timebomb Duels | Assist — Stops on Pass
+-- Nyx | يتوقف لحظة التسليم
 -- ================================================================
 
 local Players     = game:GetService("Players")
 local UIS         = game:GetService("UserInputService")
-local TweenS      = game:GetService("TweenService")
-local CoreGui     = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
--- ============ إعدادات داخلية ============
-local CFG = {
-    AutoPlay        = true,
-    UpdateRate      = 0.1,      -- 10Hz بدل 40Hz (بصمة أقل بكثير)
-    MinIdleTime     = 0.8,      -- أقل وقت "وقوف"
-    MaxIdleTime     = 2.4,      -- أطول وقت "وقوف"
-    MinRunTime      = 3.0,      -- أقل وقت ملاحقة
-    MaxRunTime      = 7.0,      -- أطول وقت ملاحقة
-    TouchRange      = 3.5,
-    ChaseRange      = 5.0,
-    Jitter          = 0.08,     -- اهتزاز أكبر
-    LookAround      = true,     -- يلتفت حوله وأنت واقف
-    StartDelay      = 3.0,      -- ينتظر قبل ما يبدأ كل مرة
+-- ============ الإعدادات ============
+local CONFIG = {
+    RUN_TIME      = 3.0,     -- حد أقصى للملاحقة (احتياطي)
+    TICK          = 0.15,
+    TOUCH_RANGE   = 3.8,
+    JITTER        = 0.06,
+    HOLD_AT_TOUCH = 0.4,     -- وقت انتظار عند التلامس قبل ما يقرر
+    KEYBIND       = Enum.KeyCode.G,
 }
+
+local active = false
 
 -- ============ مساعدات ============
 local function getHRP(plr)
@@ -61,243 +56,108 @@ local function hasBomb()
     return false
 end
 
-local function getTargets()
-    local list = {}
+local function getNearestTarget()
+    local myHRP = getHRP()
+    if not myHRP then return nil end
+    local closest, dist = nil, math.huge
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
-            local hum, hrp = getHumanoid(plr), getHRP(plr)
-            if hum and hrp and hum.Health > 0 then
-                table.insert(list, plr)
-            end
-        end
-    end
-    return list
-end
-
-local function getRandomTarget(players)
-    if #players == 0 then return nil end
-    -- أحياناً يختار أقرب، أحياناً عشوائي (يكسر الـ pattern)
-    if math.random() < 0.6 then
-        -- أقرب
-        local myHRP = getHRP()
-        if not myHRP then return players[1] end
-        local closest, dist = nil, math.huge
-        for _, plr in ipairs(players) do
+            local hum = getHumanoid(plr)
             local hrp = getHRP(plr)
-            if hrp then
+            if hum and hrp and hum.Health > 0 then
                 local d = (hrp.Position - myHRP.Position).Magnitude
                 if d < dist then closest, dist = plr, d end
             end
         end
-        return closest
-    else
-        -- عشوائي
-        return players[math.random(1, #players)]
     end
+    return closest
 end
 
 local function jitter(v)
     return v + Vector3.new(
-        (math.random() - 0.5) * CFG.Jitter, 0,
-        (math.random() - 0.5) * CFG.Jitter
+        (math.random() - 0.5) * CONFIG.JITTER, 0,
+        (math.random() - 0.5) * CONFIG.JITTER
     )
 end
 
--- ============ الواجهة — Tab واحد ============
-local parentGui = (gethui and gethui()) or CoreGui
-local old = parentGui:FindFirstChild("NyxTimebombUI")
-if old then old:Destroy() end
+-- ============ المنطق — يتوقف أول ما تعطي القنبلة ============
+local function runOnce()
+    if active then return end
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "NyxTimebombUI"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = parentGui
+    -- تأكد إن عندك القنبلة قبل ما تبدأ
+    if not hasBomb() then return end
 
-local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 200, 0, 62)
-Main.Position = UDim2.new(0, 30, 0, 100)
-Main.BackgroundColor3 = Color3.fromRGB(18, 14, 22)
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.Draggable = true
-Main.Parent = ScreenGui
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
+    active = true
+    local startTime = os.clock()
+    local touchStartTime = nil   -- وقت بداية التلامس
 
-local Stroke = Instance.new("UIStroke")
-Stroke.Color = Color3.fromRGB(180, 110, 200)
-Stroke.Thickness = 1.2
-Stroke.Transparency = 0.35
-Stroke.Parent = Main
-
-local Tab = Instance.new("Frame")
-Tab.Size = UDim2.new(1, 0, 0, 26)
-Tab.BackgroundColor3 = Color3.fromRGB(28, 20, 34)
-Tab.BorderSizePixel = 0
-Tab.Parent = Main
-Instance.new("UICorner", Tab).CornerRadius = UDim.new(0, 10)
-
-local hideBottom = Instance.new("Frame")
-hideBottom.Size = UDim2.new(1, 0, 0, 8)
-hideBottom.Position = UDim2.new(0, 0, 1, -8)
-hideBottom.BackgroundColor3 = Tab.BackgroundColor3
-hideBottom.BorderSizePixel = 0
-hideBottom.Parent = Tab
-
-local TabTitle = Instance.new("TextLabel")
-TabTitle.Size = UDim2.new(1, -12, 1, 0)
-TabTitle.Position = UDim2.new(0, 10, 0, 0)
-TabTitle.BackgroundTransparency = 1
-TabTitle.Text = "♥ AutoPlay"
-TabTitle.TextColor3 = Color3.fromRGB(230, 200, 240)
-TabTitle.Font = Enum.Font.GothamBold
-TabTitle.TextSize = 12
-TabTitle.TextXAlignment = Enum.TextXAlignment.Left
-TabTitle.Parent = Tab
-
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(1, -20, 0, 26)
-ToggleBtn.Position = UDim2.new(0, 10, 0, 32)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(160, 90, 190)
-ToggleBtn.Text = "ON"
-ToggleBtn.TextColor3 = Color3.fromRGB(250, 240, 255)
-ToggleBtn.Font = Enum.Font.GothamBold
-ToggleBtn.TextSize = 13
-ToggleBtn.BorderSizePixel = 0
-ToggleBtn.Parent = Main
-Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 7)
-
-ToggleBtn.MouseButton1Click:Connect(function()
-    CFG.AutoPlay = not CFG.AutoPlay
-    TweenS:Create(ToggleBtn, TweenInfo.new(0.18), {
-        BackgroundColor3 = CFG.AutoPlay and Color3.fromRGB(160, 90, 190)
-                                          or Color3.fromRGB(80, 45, 60)
-    }):Play()
-    ToggleBtn.Text = CFG.AutoPlay and "ON" or "OFF"
-end)
-
-UIS.InputBegan:Connect(function(i, gpe)
-    if gpe then return end
-    if i.KeyCode == Enum.KeyCode.RightControl then
-        Main.Visible = not Main.Visible
+    local function stop()
+        active = false
+        local myHum = getHumanoid()
+        if myHum then
+            myHum:MoveTo(getHRP().Position)  -- يوقف فوراً
+        end
     end
-end)
 
--- ============ Main Loop — Human Behavior ============
-task.spawn(function()
-    -- تأخير أولي
-    task.wait(CFG.StartDelay)
+    local function tick()
+        if not active then return end
 
-    local state = "idle"         -- idle / chase
-    local stateTimer = 0
-    local currentTarget = nil
-    local lookAngle = 0
-
-    while true do
-        task.wait(CFG.UpdateRate)
-        if not CFG.AutoPlay then
-            state = "idle"
-            stateTimer = 0
-            continue
+        -- 1) فحص: هل لسا عندي القنبلة؟
+        -- إذا لا → التسليم صار → وقف فوراً
+        if not hasBomb() then
+            stop()
+            return
         end
 
+        -- 2) فحص الوقت الأقصى (احتياطي عشان ما يظل شغال للأبد)
+        if os.clock() - startTime >= CONFIG.RUN_TIME then
+            stop()
+            return
+        end
+
+        -- 3) فحص الجسم
         local myHRP = getHRP()
         local myHum = getHumanoid()
-        if not myHRP or not myHum or myHum.Health <= 0 then continue end
+        if not myHRP or not myHum or myHum.Health <= 0 then
+            stop()
+            return
+        end
 
-        -- ما عندي قنبلة؟ وقف تماماً
-        if not hasBomb() then
+        -- 4) الهدف
+        local target = getNearestTarget()
+        if not target then
+            stop()
+            return
+        end
+
+        local thrp = getHRP(target)
+        if not thrp then
+            stop()
+            return
+        end
+
+        local dist = (thrp.Position - myHRP.Position).Magnitude
+
+        -- 5) وصلنا لمسافة التلامس؟
+        if dist <= CONFIG.TOUCH_RANGE then
+            -- نوقف الحركة، نخلي الـ TouchTransmitter يسوي شغله
             myHum:MoveTo(myHRP.Position)
-            state = "idle"
-            stateTimer = 0
-            continue
-        end
+            myHRP.CFrame = CFrame.lookAt(myHRP.Position, thrp.Position)
 
-        -- ---- حالة "وقوف": يلتفت حوله بدون حركة ----
-        if state == "idle" then
-            stateTimer = stateTimer + CFG.UpdateRate
-
-            -- يلتفت ببطء حوله
-            if CFG.LookAround then
-                lookAngle = lookAngle + CFG.UpdateRate * 0.6
-                local radius = 8
-                local lookAt = myHRP.Position + Vector3.new(
-                    math.cos(lookAngle) * radius, 0,
-                    math.sin(lookAngle) * radius
-                )
-                myHRP.CFrame = CFrame.lookAt(myHRP.Position, lookAt)
+            -- نبدأ عداد التلامس
+            if not touchStartTime then
+                touchStartTime = os.clock()
             end
 
-            if stateTimer >= math.random(CFG.MinIdleTime, CFG.MaxIdleTime) then
-                state = "chase"
-                stateTimer = 0
-                local targets = getTargets()
-                currentTarget = getRandomTarget(targets)
+            -- إذا مر وقت كافي عند التلامس ولم تسلم بعد، نستنى شوي زيادة
+            -- إذا التسليم صار، الفحص #1 فوق راح يوقفه
+            if os.clock() - touchStartTime > CONFIG.HOLD_AT_TOUCH then
+                -- نستمر في التلامس (بدون حركة) لين ما التسليم يصير
+                -- أو ينتهي RUN_TIME
             end
-            continue
-        end
-
-        -- ---- حالة "ملاحقة" ----
-        if state == "chase" then
-            stateTimer = stateTimer + CFG.UpdateRate
-
-            -- نوقف الملاحقة إذا:
-            -- - مضى وقت كافي
-            -- - أو ما فيه هدف
-            -- - أو ما فيه أهداف
-            if stateTimer >= math.random(CFG.MinRunTime, CFG.MaxRunTime) then
-                state = "idle"
-                stateTimer = 0
-                currentTarget = nil
-                myHum:MoveTo(myHRP.Position)
-                continue
-            end
-
-            local targets = getTargets()
-            if #targets == 0 then
-                state = "idle"
-                stateTimer = 0
-                continue
-            end
-
-            -- لو الهدف مات أو اختفى، نختار غيره
-            if not currentTarget or not currentTarget.Character
-               or not currentTarget.Character:FindFirstChild("HumanoidRootPart")
-               or not currentTarget.Character:FindFirstChildOfClass("Humanoid")
-               or currentTarget.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
-                currentTarget = getRandomTarget(targets)
-            end
-
-            if not currentTarget then
-                state = "idle"
-                stateTimer = 0
-                continue
-            end
-
-            local thrp = getHRP(currentTarget)
-            if not thrp then
-                state = "idle"
-                stateTimer = 0
-                continue
-            end
-
-            local dist = (thrp.Position - myHRP.Position).Magnitude
-
-            -- وصلنا؟ نوقف ونتجه نحوهم
-            if dist <= CFG.TouchRange then
-                myHum:MoveTo(myHRP.Position)
-                if dist > 0.1 then
-                    myHRP.CFrame = CFrame.lookAt(myHRP.Position, thrp.Position)
-                end
-                -- أحياناً "يتصرف بشكل بشري": يدور حولهم
-                if math.random() < 0.15 then
-                    local offset = myHRP.CFrame.RightVector * (math.random() - 0.5) * 2
-                    myHum:MoveTo(myHRP.Position + offset)
-                end
-                continue
-            end
-
-            -- حركة عادية نحو الهدف
+        else
+            -- نلحق
+            touchStartTime = nil
             local dir = (jitter(thrp.Position) - myHRP.Position)
             if dir.Magnitude > 0.1 then
                 dir = dir.Unit
@@ -305,7 +165,71 @@ task.spawn(function()
                 myHum:MoveTo(Vector3.new(wp.X, myHRP.Position.Y, wp.Z))
             end
         end
+
+        task.delay(CONFIG.TICK, tick)
+    end
+
+    task.delay(CONFIG.TICK, tick)
+end
+
+-- ============ الزرار ============
+UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == CONFIG.KEYBIND then
+        runOnce()
     end
 end)
 
-print("[Nyx] Human behavior build loaded ❤️")
+-- ============ زر على الشاشة (للجوال) ============
+local parentGui = (gethui and gethui()) or game:GetService("CoreGui")
+local old = parentGui:FindFirstChild("NyxAssistBtn")
+if old then old:Destroy() end
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "NyxAssistBtn"
+sg.ResetOnSpawn = false
+sg.Parent = parentGui
+
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.new(0, 60, 0, 60)
+btn.Position = UDim2.new(0, 30, 0.5, -30)
+btn.BackgroundColor3 = Color3.fromRGB(60, 40, 70)
+btn.BackgroundTransparency = 0.35
+btn.Text = "G"
+btn.TextColor3 = Color3.fromRGB(230, 210, 240)
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 20
+btn.BorderSizePixel = 0
+btn.Active = true
+btn.Draggable = true
+btn.Parent = sg
+Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+
+-- تأثير بصري لما يشتغل
+local function setBtnState(on)
+    btn.BackgroundColor3 = on and Color3.fromRGB(160, 90, 190)
+                                or Color3.fromRGB(60, 40, 70)
+    btn.Text = on and "…" or "G"
+end
+
+local oldRun = runOnce
+runOnce = function()
+    if active then return end
+    if not hasBomb() then
+        -- ما عندك قنبلة، ما يشتغل
+        return
+    end
+    setBtnState(true)
+    oldRun()
+    -- نراقب متى يخلص
+    task.spawn(function()
+        while active do task.wait(0.1) end
+        setBtnState(false)
+    end)
+end
+
+btn.MouseButton1Click:Connect(function()
+    runOnce()
+end)
+
+print("[Nyx] Assist loaded — يوقف فوراً لما يعطي القنبلة ❤️")
