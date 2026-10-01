@@ -1,7 +1,8 @@
 -- ============================================================
--- Blade Ball — MANUAL-TEACH AUTO-PARRY
--- Lu parry manual beberapa kali, hook rekam timing-nya,
--- abis itu autoparry pakai timing yang lu ajarin.
+-- Blade Ball — TEACH AUTO-PARRY
+-- Single-file, drag ke executor, execute.
+-- Lu parry manual N kali → script belajar timing lu → autoparry ON.
+-- Target: Roblox client, Lua executor (Synapse / Delta / Codex / Wave / Solara)
 -- ============================================================
 
 local RunService = game:GetService("RunService")
@@ -24,24 +25,31 @@ end)
 -- CONFIG
 -- ============================================================
 local CFG = {
-    enabled       = false,   -- autoparry baru nyala setelah belajar
-    teachTarget   = 5,       -- berapa parry manual buat "lulus"
-    parryWindow   = 0.18,    -- default, akan di-override hasil belajar
-    cooldown      = 0.15,
-    maxDist       = 60,
-    minSpeed      = 40,
-    useLearned    = true,    -- pakai timing hasil belajar
+    enabled     = false,     -- autoparry nyala setelah belajar selesai
+    teachTarget = 5,         -- jumlah parry manual yang harus direkam
+    parryWindow = 0.18,      -- default sebelum belajar, di-override hasil belajar
+    cooldown    = 0.15,      -- jeda minimal antar-parry
+    maxDist     = 60,        -- studs, filter ball jauh
+    minSpeed    = 40,        -- studs/s, filter ball diam
+    leadFactor  = 1.0,       -- tuning prediksi
 }
 
 local Learn = {
-    samples   = {},          -- TTI saat lu parry manual
-    done      = false,
+    samples = {},
+    done    = false,
+    active  = false,
+}
+
+local Stats = {
+    currentTTI = math.huge,
+    parries    = 0,
 }
 
 -- ============================================================
 -- REMOTE DISCOVERY
 -- ============================================================
 local parryRemote = nil
+
 local function scanRemotes()
     parryRemote = nil
     for _, v in ipairs(RS:GetDescendants()) do
@@ -53,16 +61,19 @@ local function scanRemotes()
             end
         end
     end
+    -- fallback: cari remote bernama generik
+    for _, v in ipairs(RS:GetDescendants()) do
+        if v:IsA("RemoteEvent") and v.Name:lower() == "remote" then
+            parryRemote = v
+            return
+        end
+    end
 end
 scanRemotes()
 
 -- ============================================================
--- DETECT MANUAL PARRY
--- Hook FireServer di remote parry.
--- Kalau LP kirim parry TANPA autoparry aktif → itu manual.
+-- PARRY HOOK — deteksi parry manual Redz
 -- ============================================================
-local learning = false
-
 local function installParryHook()
     if not parryRemote then scanRemotes() end
     if not parryRemote then return end
@@ -73,17 +84,20 @@ local function installParryHook()
         mt.__index = newcclosure(function(t, k)
             if k == "FireServer" then
                 return newcclosure(function(_, ...)
-                    if learning and not CFG.enabled then
-                        -- manual parry terdeteksi → rekam TTI sekarang
-                        if Stats.currentTTI and Stats.currentTTI < math.huge then
-                            table.insert(Learn.samples, Stats.currentTTI)
+                    if Learn.active and not CFG.enabled then
+                        -- manual parry terdeteksi → rekam TTI saat ini
+                        local tti = Stats.currentTTI
+                        if tti and tti < math.huge and tti > 0 then
+                            table.insert(Learn.samples, tti)
                             if #Learn.samples >= CFG.teachTarget then
-                                Learn.done = true
-                                learning = false
-                                CFG.enabled = true
-                                -- hitung rata-rata TTI parry manual
+                                Learn.done   = true
+                                Learn.active = false
+                                CFG.enabled  = true
+                                -- rata-rata TTI parry manual
                                 local sum = 0
-                                for _, v in ipairs(Learn.samples) do sum = sum + v end
+                                for _, v in ipairs(Learn.samples) do
+                                    sum = sum + v
+                                end
                                 CFG.parryWindow = sum / #Learn.samples
                                 print(string.format(
                                     "[TEACH] belajar selesai. parry window = %.3f (%d sampel)",
@@ -103,11 +117,8 @@ end
 installParryHook()
 
 -- ============================================================
--- BALL TRACKING (dipakai buat rekam + trigger)
+-- BALL TRACKING — hitung TTI tiap frame
 -- ============================================================
-Stats = Stats or {}
-Stats.currentTTI = math.huge
-
 local function getBalls()
     local c = WS:FindFirstChild("Balls") or WS:FindFirstChild("Ball")
     return c and c:GetChildren() or {}
@@ -121,13 +132,13 @@ local function timeToImpact(ballPos, ballVel, myPos)
     if speed < CFG.minSpeed then return math.huge end
     local closing = ballVel:Dot(toMe.Unit)
     if closing <= 0 then return math.huge end
-    return dist / closing
+    return (dist / closing) * CFG.leadFactor
 end
 
 RunService.RenderStepped:Connect(function()
     if not HRP or not HRP.Parent then return end
     local myPos = HRP.Position
-    local best = math.huge
+    local best  = math.huge
     for _, ball in ipairs(getBalls()) do
         if ball:IsA("BasePart") then
             local t = timeToImpact(ball.Position, ball.AssemblyLinearVelocity, myPos)
@@ -146,6 +157,7 @@ local function fireParry()
     if not parryRemote then scanRemotes() end
     if not parryRemote then return end
     pcall(function() parryRemote:FireServer() end)
+    Stats.parries = Stats.parries + 1
 end
 
 RunService.RenderStepped:Connect(function()
@@ -169,7 +181,7 @@ local function make(class, props, children)
 end
 
 local gui = make("ScreenGui", {
-    Name = "TeachParry",
+    Name = "TeachAutoParry",
     ResetOnSpawn = false,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 }, {})
@@ -177,7 +189,8 @@ local ok = pcall(function() gui.Parent = CoreGui end)
 if not ok then gui.Parent = LP:WaitForChild("PlayerGui") end
 
 local main = make("Frame", {
-    Size = UDim2.new(0, 300, 0, 280),
+    Name = "Main",
+    Size = UDim2.new(0, 300, 0, 320),
     Position = UDim2.new(0.05, 0, 0.3, 0),
     BackgroundColor3 = Color3.fromRGB(18, 18, 22),
     BorderSizePixel = 0,
@@ -186,8 +199,9 @@ local main = make("Frame", {
 }, {})
 main.Parent = gui
 make("UICorner", {CornerRadius = UDim.new(0, 10)}, {}).Parent = main
-make("UIStroke", {Color = Color3.fromRGB(60, 60, 70)}, {}).Parent = main
+make("UIStroke", {Color = Color3.fromRGB(60, 60, 70), Thickness = 1}, {}).Parent = main
 
+-- Title bar
 local title = make("Frame", {
     Size = UDim2.new(1, 0, 0, 36),
     BackgroundColor3 = Color3.fromRGB(28, 28, 34),
@@ -207,7 +221,7 @@ make("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
 }, {}).Parent = title
 
-local close = make("TextButton", {
+local closeBtn = make("TextButton", {
     Size = UDim2.new(0, 24, 0, 24),
     Position = UDim2.new(1, -30, 0, 6),
     BackgroundColor3 = Color3.fromRGB(45, 45, 55),
@@ -218,19 +232,23 @@ local close = make("TextButton", {
     BorderSizePixel = 0,
     AutoButtonColor = false,
 }, {})
-close.Parent = title
-make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = close
-close.MouseButton1Click:Connect(function() gui.Enabled = false end)
+closeBtn.Parent = title
+make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = closeBtn
+closeBtn.MouseButton1Click:Connect(function() gui.Enabled = false end)
 
+-- Content
 local content = make("Frame", {
     Size = UDim2.new(1, -20, 1, -56),
     Position = UDim2.new(0, 10, 0, 46),
     BackgroundTransparency = 1,
 }, {})
 content.Parent = main
-make("UIListLayout", {Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder}, {}).Parent = content
+make("UIListLayout", {
+    Padding = UDim.new(0, 8),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+}, {}).Parent = content
 
--- Teach count input
+-- Teach count row
 local teachRow = make("Frame", {
     Size = UDim2.new(1, 0, 0, 56),
     BackgroundColor3 = Color3.fromRGB(26, 26, 32),
@@ -264,7 +282,7 @@ local countLabel = make("TextLabel", {
 countLabel.Parent = teachRow
 make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = countLabel
 
-local minus = make("TextButton", {
+local minusBtn = make("TextButton", {
     Size = UDim2.new(0, 30, 0, 30),
     Position = UDim2.new(0, 78, 0, 22),
     BackgroundColor3 = Color3.fromRGB(50, 50, 60),
@@ -274,10 +292,10 @@ local minus = make("TextButton", {
     TextSize = 14,
     BorderSizePixel = 0,
 }, {})
-minus.Parent = teachRow
-make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = minus
+minusBtn.Parent = teachRow
+make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = minusBtn
 
-local plus = make("TextButton", {
+local plusBtn = make("TextButton", {
     Size = UDim2.new(0, 30, 0, 30),
     Position = UDim2.new(0, 114, 0, 22),
     BackgroundColor3 = Color3.fromRGB(50, 50, 60),
@@ -287,21 +305,21 @@ local plus = make("TextButton", {
     TextSize = 14,
     BorderSizePixel = 0,
 }, {})
-plus.Parent = teachRow
-make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = plus
+plusBtn.Parent = teachRow
+make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = plusBtn
 
-minus.MouseButton1Click:Connect(function()
-    if CFG.enabled then return end
+minusBtn.MouseButton1Click:Connect(function()
+    if CFG.enabled or Learn.active then return end
     CFG.teachTarget = math.max(1, CFG.teachTarget - 1)
     countLabel.Text = tostring(CFG.teachTarget)
 end)
-plus.MouseButton1Click:Connect(function()
-    if CFG.enabled then return end
+plusBtn.MouseButton1Click:Connect(function()
+    if CFG.enabled or Learn.active then return end
     CFG.teachTarget = math.min(50, CFG.teachTarget + 1)
     countLabel.Text = tostring(CFG.teachTarget)
 end)
 
--- Start teach button
+-- Start button
 local startBtn = make("TextButton", {
     Size = UDim2.new(1, 0, 0, 36),
     BackgroundColor3 = Color3.fromRGB(60, 200, 100),
@@ -315,6 +333,7 @@ local startBtn = make("TextButton", {
 startBtn.Parent = content
 make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = startBtn
 
+-- Status label
 local statusLabel = make("TextLabel", {
     Size = UDim2.new(1, 0, 0, 30),
     BackgroundColor3 = Color3.fromRGB(20, 20, 26),
@@ -332,7 +351,7 @@ make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = statusLabel
 local learnedLabel = make("TextLabel", {
     Size = UDim2.new(1, 0, 0, 50),
     BackgroundColor3 = Color3.fromRGB(20, 20, 26),
-    Text = "Belajar: 0/0 | Window: -",
+    Text = "Belajar: 0/0 | Window: - | Remote: -",
     TextColor3 = Color3.fromRGB(180, 180, 200),
     Font = Enum.Font.Code,
     TextSize = 11,
@@ -342,43 +361,83 @@ local learnedLabel = make("TextLabel", {
 learnedLabel.Parent = content
 make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = learnedLabel
 
+-- Remote name label
+local remoteLabel = make("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 24),
+    BackgroundTransparency = 1,
+    Text = "Remote: " .. (parryRemote and parryRemote:GetFullName() or "N/A"),
+    TextColor3 = Color3.fromRGB(140, 140, 160),
+    Font = Enum.Font.Code,
+    TextSize = 10,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextWrapped = true,
+    LayoutOrder = 5,
+}, {})
+remoteLabel.Parent = content
+
+-- Start button logic
 startBtn.MouseButton1Click:Connect(function()
-    if CFG.enabled then
-        CFG.enabled = false
+    if Learn.active then
+        -- batalkan belajar
+        Learn.active = false
         Learn.samples = {}
-        Learn.done = false
+        CFG.enabled = false
         startBtn.Text = "MULAI BELAJAR"
         startBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 100)
-        statusLabel.Text = "Status: idle"
-        learnedLabel.Text = "Belajar: 0/0 | Window: -"
+        return
+    end
+    if CFG.enabled then
+        -- matiin autoparry
+        CFG.enabled = false
+        Learn.done = false
+        Learn.samples = {}
+        startBtn.Text = "MULAI BELAJAR"
+        startBtn.BackgroundColor3 = Color3.fromRGB(60, 200, 100)
+        return
+    end
+    -- mulai belajar
+    if not parryRemote then scanRemotes() end
+    if not parryRemote then
+        statusLabel.Text = "Status: remote parry nggak ketemu"
         return
     end
     Learn.samples = {}
-    Learn.done = false
-    learning = true
-    CFG.enabled = false
+    Learn.done    = false
+    Learn.active  = true
+    CFG.enabled   = false
     startBtn.Text = "BATAL BELAJAR"
     startBtn.BackgroundColor3 = Color3.fromRGB(200, 80, 80)
-    statusLabel.Text = "Status: rekam parry manual lu..."
+    statusLabel.Text = "Status: parry manual sekarang..."
 end)
 
--- Update loop UI
+-- UI updater
 task.spawn(function()
     while gui.Parent do
-        if learning then
-            statusLabel.Text = string.format("Status: rekam %d/%d manual parry",
-                #Learn.samples, CFG.teachTarget)
-            learnedLabel.Text = string.format("Belajar: %d/%d | Window: -",
-                #Learn.samples, CFG.teachTarget)
+        if Learn.active then
+            statusLabel.Text = string.format(
+                "Status: rekam %d/%d manual parry", #Learn.samples, CFG.teachTarget)
+            learnedLabel.Text = string.format(
+                "Belajar: %d/%d | Window: - | Parries: %d",
+                #Learn.samples, CFG.teachTarget, Stats.parries)
         elseif CFG.enabled then
             statusLabel.Text = "Status: AUTO-PARRY ON"
-            learnedLabel.Text = string.format("Belajar: selesai (%d) | Window: %.3f",
-                #Learn.samples, CFG.parryWindow)
+            learnedLabel.Text = string.format(
+                "Belajar: selesai (%d) | Window: %.3f | Parries: %d",
+                #Learn.samples, CFG.parryWindow, Stats.parries)
         else
             statusLabel.Text = "Status: idle"
+            if Learn.done then
+                learnedLabel.Text = string.format(
+                    "Belajar: selesai (%d) | Window: %.3f | Parries: %d",
+                    #Learn.samples, CFG.parryWindow, Stats.parries)
+            else
+                learnedLabel.Text = "Belajar: 0/0 | Window: - | Parries: 0"
+            end
         end
+        remoteLabel.Text = "Remote: " .. (parryRemote and parryRemote:GetFullName() or "N/A")
         task.wait(0.1)
     end
 end)
 
-print("[TEACH AUTO-PARRY] loaded")
+print("[TEACH AUTO-PARRY] loaded | remote:",
+    parryRemote and parryRemote:GetFullName() or "none")
