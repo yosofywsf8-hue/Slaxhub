@@ -1,36 +1,27 @@
 --[[
-    BLADE BALL — MOBILE AUTOPARRY
-    Works on: Delta, Codex, Solara, Arceus X, Fluxus, Wave
+    BLADE BALL — SILENT AUTOPARRY
+    zero hooks. zero remote calls. zero detection vectors.
     
-    Bypass approach:
-    → No GC scanning (unreliable across updates)
-    → Pure __namecall capture + replay
-    → Ball found by properties, not name
-    → Touch-friendly UI
+    method: find the game's parry button → fire its signal
+    the game itself handles tokens, remotes, anti-cheat. 
+    we just "click" the button programmatically.
 ]]
 
---// services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
---// detect executor capabilities
-local EXECUTOR = {
-    has_hookmetamethod = typeof(hookmetamethod) == 'function',
-    has_getgc = typeof(getgc) == 'function',
-    has_getconnections = typeof(getconnections) == 'function',
-    has_cloneref = typeof(cloneref) == 'function',
-    has_firetouch = typeof(firetouchinterest) == 'function',
-    has_fireclick = typeof(fireclickdetector) == 'function',
-    has_mouse1click = typeof(mouse1click) == 'function',
-    has_virtualinput = typeof(game:GetService('VirtualInputManager')) == 'userdata',
-}
+--// detect executor features
+local has_firesignal = typeof(firesignal) == 'function'
+local has_getconnections = typeof(getconnections) == 'function'
+local has_gethui = typeof(gethui) == 'function'
+local has_mouse1click = typeof(mouse1click) == 'function'
+local has_gethuiParent = typeof(gethuiParent) == 'function'
 
 --// ================================================================
 -- STATE
@@ -41,112 +32,155 @@ local State = {
     spam = false,
     parry_count = 0,
     last_fire = 0,
-    min_gap = 0.06,
+    min_gap = 0.07,
 
-    -- captured data
-    captured_remote = nil,
-    captured_args = nil,
-    captured = false,
+    -- parry button
+    parry_button = nil,
+    button_found = false,
+
+    -- method
+    method = "none",
 
     -- ball
     ball = nil,
-    ball_found_time = 0,
 
     -- settings
-    distance = 16,
-    tti_threshold = 0.4,
+    distance = 18,
+    tti_threshold = 0.45,
 
-    -- bypass method
-    method = "none",
+    -- ui
+    hidden = false,
 }
 
 --// ================================================================
--- BALL FINDER — property-based, not name-based
+-- FIND THE PARRY BUTTON
+-- Blade Ball has a parry button on screen (especially mobile)
+-- we scan PlayerGui for it by looking at size, position, and connections
 -- ================================================================
 
-local function is_ball(part)
-    if not part:IsA('BasePart') then return false end
-    if part:IsA('Terrain') then return false end
+local function scan_for_parry_button()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return nil end
 
-    -- skip character parts
-    local model = part:FindFirstAncestorOfClass('Model')
-    if model and Players:GetPlayerFromCharacter(model) then
-        return false
-    end
+    local candidates = {}
 
-    local vel = part.AssemblyLinearVelocity or Vector3.zero
+    local function scan_gui(container, depth)
+        if depth > 6 then return end -- don't go too deep
 
-    -- blade ball is always fast
-    if vel.Magnitude < 30 then return false end
+        for _, obj in ipairs(container:GetChildren()) do
+            if obj:IsA("GuiButton") then
+                -- check for parry-related text nearby
+                local text = ""
 
-    -- blade ball is typically small
-    local size = part.Size
-    if size.X > 15 or size.Y > 15 or size.Z > 15 then return false end
-
-    -- not anchored
-    if part.Anchored then return false end
-
-    -- can't be a spawn location or map part
-    if part:IsA('SpawnLocation') then return false end
-
-    return true
-end
-
-local function find_ball()
-    -- fast path: cached
-    if State.ball and State.ball.Parent then
-        local vel = State.ball.AssemblyLinearVelocity or Vector3.zero
-        if vel.Magnitude > 5 then
-            return State.ball
-        end
-        -- ball might have stopped (between rallies)
-        -- keep it cached for 3 seconds
-        if os.clock() - State.ball_found_time < 3 then
-            return State.ball
-        end
-    end
-
-    -- direct name check (fast)
-    local names = {'Ball', 'ball', 'BALL', 'Projectile', 'projectile'}
-    for _, name in ipairs(names) do
-        local b = Workspace:FindFirstChild(name)
-        if b and b:IsA('BasePart') then
-            State.ball = b
-            State.ball_found_time = os.clock()
-            return b
-        end
-    end
-
-    -- search deeper — folders
-    local folders = {'Game', 'Map', 'Elements', 'Arena', 'Active'}
-    for _, folderName in ipairs(folders) do
-        local folder = Workspace:FindFirstChild(folderName)
-        if folder then
-            for _, child in ipairs(folder:GetChildren()) do
-                if child:IsA('BasePart') and is_ball(child) then
-                    State.ball = child
-                    State.ball_found_time = os.clock()
-                    return child
+                -- the button itself might have text
+                if obj:IsA("TextButton") then
+                    text = obj.Text or ""
                 end
+
+                -- or a child label
+                for _, child in ipairs(obj:GetChildren()) do
+                    if child:IsA("TextLabel") then
+                        text = text .. " " .. (child.Text or "")
+                    end
+                end
+
+                -- check the parent's siblings for labels
+                if obj.Parent and not obj.Parent:IsA("ScreenGui") then
+                    for _, sibling in ipairs(obj.Parent:GetChildren()) do
+                        if sibling:IsA("TextLabel") then
+                            text = text .. " " .. (sibling.Text or "")
+                        end
+                    end
+                end
+
+                local lower = string.lower(text)
+
+                -- match parry-related text
+                if lower:find("parry") or lower:find("deflect")
+                    or lower:find("block") or lower:find("swing")
+                    or lower:find("hit") or lower:find("tap")
+                    or lower:find("click") or lower:find("slash") then
+
+                    table.insert(candidates, {
+                        button = obj,
+                        text = text,
+                        depth = depth,
+                        connections = 0,
+                    })
+                end
+            end
+
+            -- recurse into frames
+            if obj:IsA("Frame") or obj:IsA("ScreenGui")
+                or obj:IsA("ScrollingFrame") or obj:IsA("CanvasGroup") then
+                scan_gui(obj, depth + 1)
+            end
+
+            -- some games wrap buttons in Billboards or other containers
+            if obj:IsA("Folder") then
+                scan_gui(obj, depth + 1)
             end
         end
     end
 
-    -- property scan — everything in workspace
-    for _, obj in ipairs(Workspace:GetChildren()) do
-        if obj:IsA('BasePart') and is_ball(obj) then
-            State.ball = obj
-            State.ball_found_time = os.clock()
-            return obj
+    scan_gui(playerGui, 0)
+
+    -- if we found named candidates, pick the best one
+    if #candidates > 0 then
+        -- prefer buttons with firesignal connections
+        if has_getconnections then
+            for _, candidate in ipairs(candidates) do
+                local connections = getconnections(candidate.button.MouseButton1Click)
+                if #connections > 0 then
+                    candidate.connections = #connections
+                end
+                -- also check Activated for mobile
+                local activated = getconnections(candidate.button.Activated)
+                if #activated > 0 then
+                    candidate.connections += #activated
+                end
+            end
         end
 
-        -- check inside models/folders
-        if obj:IsA('Model') or obj:IsA('Folder') then
-            for _, child in ipairs(obj:GetChildren()) do
-                if child:IsA('BasePart') and is_ball(child) then
-                    State.ball = child
-                    State.ball_found_time = os.clock()
-                    return child
+        -- sort by connections (most connected = most likely the real button)
+        table.sort(candidates, function(a, b)
+            return a.connections > b.connections
+        end)
+
+        return candidates[1].button
+    end
+
+    -- fallback: look for large centered buttons that are always visible
+    -- blade ball's parry button is typically large, center-bottom or center-screen
+    for _, gui in ipairs(playerGui:GetChildren()) do
+        if gui:IsA("ScreenGui") then
+            for _, obj in ipairs(gui:GetDescendants()) do
+                if obj:IsA("GuiButton") then
+                    local pos = obj.Position
+                    local size = obj.Size
+
+                    -- large button in center-ish area
+                    local center_x = pos.X.Scale + size.X.Scale / 2
+                    local center_y = pos.Y.Scale + size.Y.Scale / 2
+
+                    local is_center = center_x > 0.25 and center_x < 0.75
+                        and center_y > 0.3 and center_y < 0.9
+
+                    local is_big = size.X.Scale > 0.1 or size.X.Offset > 80
+                    local is_big_y = size.Y.Scale > 0.08 or size.Y.Offset > 60
+
+                    if is_center and is_big and is_big_y then
+                        -- check it has connections (is actually functional)
+                        if has_getconnections then
+                            local clicks = getconnections(obj.MouseButton1Click)
+                            local activated = getconnections(obj.Activated)
+                            if #clicks > 0 or #activated > 0 then
+                                return obj
+                            end
+                        else
+                            return obj
+                        end
+                    end
                 end
             end
         end
@@ -156,199 +190,198 @@ local function find_ball()
 end
 
 --// ================================================================
--- PARRY CAPTURE — hook ALL remote calls, grab the parry one
+-- FIRE THE PARRY BUTTON
+-- this is the bypass — we trigger the game's own button
+-- the game's own code handles everything (tokens, remotes, validation)
 -- ================================================================
 
-local function hook_remotes()
-    if State.captured then return end
+local function press_parry_button()
+    local button = State.parry_button
+    if not button or not button.Parent then return false end
 
-    if EXECUTOR.has_hookmetamethod then
-        local old
-        old = hookmetamethod(game, '__namecall', newcclosure(function(self, ...)
-            local method = getnamecallmethod()
-
-            if method == 'FireServer' or method == 'InvokeServer' then
-                if not State.captured and self:IsA('RemoteEvent') then
-                    local args = {...}
-                    local remote_name = string.lower(self.Name)
-
-                    -- broad match: anything that could be the parry remote
-                    local is_parry_remote = remote_name:find('parry')
-                        or remote_name:find('deflect')
-                        or remote_name:find('ability')
-                        or remote_name:find('swing')
-                        or remote_name:find('attack')
-                        or remote_name:find('combat')
-                        or remote_name:find('hit')
-                        or remote_name:find('skill')
-                        or remote_name:find('action')
-
-                    -- also capture if it has typical parry arg patterns
-                    if not is_parry_remote and #args >= 2 then
-                        local has_cframe = false
-                        local has_string = false
-                        local has_number = false
-                        for _, a in ipairs(args) do
-                            local t = typeof(a)
-                            if t == 'CFrame' then has_cframe = true end
-                            if t == 'string' then has_string = true end
-                            if t == 'number' then has_number = true end
-                        end
-                        -- parry packets typically have CFrame + string/number
-                        if has_cframe and (has_string or has_number) then
-                            is_parry_remote = true
-                        end
-                    end
-
-                    if is_parry_remote then
-                        State.captured_remote = self
-                        State.captured_args = args
-                        State.captured = true
-                        print(string.format('[BB] Captured remote: %s | args: %d',
-                            self.Name, #args))
-                    end
-                end
-            end
-
-            return old(self, ...)
-        end))
-    else
-        -- fallback: manual metatable hook
-        local meta = getrawmetatable(game)
-        if meta then
-            setreadonly(meta, false)
-            local old_namecall = meta.__namecall
-
-            meta.__namecall = newcclosure(function(self, ...)
-                local method = getnamecallmethod()
-
-                if (method == 'FireServer' or method == 'InvokeServer')
-                    and not State.captured
-                    and self:IsA('RemoteEvent') then
-
-                    local args = {...}
-                    local remote_name = string.lower(self.Name)
-
-                    if remote_name:find('parry') or remote_name:find('deflect')
-                        or remote_name:find('ability') or remote_name:find('swing')
-                        or remote_name:find('attack') or remote_name:find('combat')
-                        or remote_name:find('hit') or remote_name:find('skill') then
-
-                        State.captured_remote = self
-                        State.captured_args = args
-                        State.captured = true
-                        print(string.format('[BB] Captured remote: %s', self.Name))
-                    end
-                end
-
-                return old_namecall(self, ...)
-            end)
-
-            setreadonly(meta, true)
-        end
-    end
-end
-
---// ================================================================
--- PARRY EXECUTION — multi-method with fallback
--- ================================================================
-
-local function fire_parry()
-    local now = os.clock()
-    if now - State.last_fire < State.min_gap then return false end
-
-    -- METHOD 1: replay captured packet
-    if State.captured and State.captured_remote and State.captured_args then
-        local packet = {}
-        for i, arg in ipairs(State.captured_args) do
-            if typeof(arg) == 'CFrame' then
-                packet[i] = Camera.CFrame
-            else
-                packet[i] = arg
-            end
-        end
-
-        if State.captured_remote:IsA('RemoteEvent') then
-            State.captured_remote:FireServer(unpack(packet))
-        else
-            pcall(function()
-                State.captured_remote:InvokeServer(unpack(packet))
-            end)
-        end
-
+    -- METHOD 1: firesignal on the button's events
+    if has_firesignal then
+        pcall(function()
+            firesignal(button.MouseButton1Click)
+        end)
+        pcall(function()
+            firesignal(button.Activated)
+        end)
+        State.method = "signal"
         State.parry_count += 1
-        State.last_fire = now
-        State.method = "replay"
         return true
     end
 
-    -- METHOD 2: find remote by name and fire it
-    if not State.captured_remote then
-        local search_names = {'parry', 'Parry', 'Deflect', 'deflect',
-            'Ability', 'ability', 'Swing', 'swing', 'Attack', 'attack'}
+    -- METHOD 2: getconnections — call the connected functions directly
+    if has_getconnections then
+        local fired = false
 
-        for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-            if obj:IsA('RemoteEvent') then
-                for _, name in ipairs(search_names) do
-                    if obj.Name:find(name) then
-                        State.captured_remote = obj
-                        break
-                    end
-                end
-                if State.captured_remote then break end
+        for _, conn in ipairs(getconnections(button.MouseButton1Click)) do
+            if conn.Function then
+                pcall(function()
+                    conn:Fire()
+                end)
+                fired = true
             end
         end
 
-        -- also check workspace
-        if not State.captured_remote then
-            for _, obj in ipairs(Workspace:GetDescendants()) do
-                if obj:IsA('RemoteEvent') then
-                    for _, name in ipairs(search_names) do
-                        if obj.Name:find(name) then
-                            State.captured_remote = obj
-                            break
-                        end
-                    end
-                    if State.captured_remote then break end
-                end
+        for _, conn in ipairs(getconnections(button.Activated)) do
+            if conn.Function then
+                pcall(function()
+                    conn:Fire()
+                end)
+                fired = true
             end
         end
-    end
 
-    if State.captured_remote then
-        if State.captured_remote:IsA('RemoteEvent') then
-            State.captured_remote:FireServer()
-        else
-            pcall(function()
-                State.captured_remote:InvokeServer()
-            end)
+        if fired then
+            State.method = "connections"
+            State.parry_count += 1
+            return true
         end
-        State.parry_count += 1
-        State.last_fire = now
-        State.method = "remote"
-        return true
     end
 
-    -- METHOD 3: simulate click input
-    if EXECUTOR.has_virtualinput then
-        local vim = game:GetService('VirtualInputManager')
-        local mouse = LocalPlayer:GetMouse()
+    -- METHOD 3: virtual click via VirtualInputManager at button position
+    -- less safe but works when signals aren't available
+    local vim_ok, vim = pcall(function()
+        return game:GetService("VirtualInputManager")
+    end)
 
-        vim:SendMouseButtonEvent(mouse.X, mouse.Y, 0, true, game, 0)
-        task.wait(0.05)
-        vim:SendMouseButtonEvent(mouse.X, mouse.Y, 0, false, game, 0)
+    if vim_ok and vim then
+        local abs_pos = button.AbsolutePosition
+        local abs_size = button.AbsoluteSize
 
-        State.parry_count += 1
-        State.last_fire = now
-        State.method = "input"
-        return true
+        local click_x = abs_pos.X + abs_size.X / 2
+        local click_y = abs_pos.Y + abs_size.Y / 2
+
+        -- only use if button is actually on screen
+        if click_x > 0 and click_y > 0 and click_x < Camera.ViewportSize.X
+            and click_y < Camera.ViewportSize.Y then
+
+            vim:SendMouseButtonEvent(click_x, click_y, 0, true, game, 0)
+            task.wait(0.02)
+            vim:SendMouseButtonEvent(click_x, click_y, 0, false, game, 0)
+
+            State.method = "vim"
+            State.parry_count += 1
+            return true
+        end
+    end
+
+    -- METHOD 4: mouse1click at button position
+    if has_mouse1click then
+        local abs_pos = button.AbsolutePosition
+        local abs_size = button.AbsoluteSize
+
+        -- move mouse to button center and click
+        if mousemoverel then
+            -- this requires knowing current mouse pos, complex
+            -- skip for now
+        end
     end
 
     return false
 end
 
 --// ================================================================
--- BALL TRACKING — is it coming at us?
+-- BALL FINDER — property-based
+-- ================================================================
+
+local function is_ball_part(part)
+    if not part:IsA("BasePart") then return false end
+    if part:IsA("Terrain") then return false end
+    if part.Anchored then return false end
+    if part:IsA("SpawnLocation") then return false end
+
+    -- skip player character parts
+    local model = part:FindFirstAncestorOfClass("Model")
+    if model and Players:GetPlayerFromCharacter(model) then
+        return false
+    end
+
+    local vel = part.AssemblyLinearVelocity or Vector3.zero
+    if vel.Magnitude < 25 then return false end
+
+    -- blade ball is small
+    if part.Size.X > 20 or part.Size.Y > 20 or part.Size.Z > 20 then
+        return false
+    end
+
+    return true
+end
+
+local ball_cache = nil
+local ball_cache_time = 0
+
+local function find_ball()
+    -- cached
+    if ball_cache and ball_cache.Parent then
+        local vel = ball_cache.AssemblyLinearVelocity or Vector3.zero
+        if vel.Magnitude > 5 then
+            State.ball = ball_cache
+            return ball_cache
+        end
+        -- stale cache
+        if os.clock() - ball_cache_time > 3 then
+            ball_cache = nil
+        else
+            return ball_cache
+        end
+    end
+
+    -- direct name search (fast)
+    for _, name in ipairs({"Ball", "ball", "BALL", "Projectile", "projectile"}) do
+        local b = Workspace:FindFirstChild(name)
+        if b and b:IsA("BasePart") then
+            ball_cache = b
+            ball_cache_time = os.clock()
+            State.ball = b
+            return b
+        end
+    end
+
+    -- folder search
+    for _, folderName in ipairs({"Game", "Map", "Elements", "Arena", "Active", "Balls"}) do
+        local folder = Workspace:FindFirstChild(folderName)
+        if folder then
+            for _, child in ipairs(folder:GetChildren()) do
+                if child:IsA("BasePart") and is_ball_part(child) then
+                    ball_cache = child
+                    ball_cache_time = os.clock()
+                    State.ball = child
+                    return child
+                end
+            end
+        end
+    end
+
+    -- deep property scan
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if obj:IsA("BasePart") and is_ball_part(obj) then
+            ball_cache = obj
+            ball_cache_time = os.clock()
+            State.ball = obj
+            return obj
+        end
+
+        if not obj:IsA("Terrain") then
+            for _, child in ipairs(obj:GetChildren()) do
+                if child:IsA("BasePart") and is_ball_part(child) then
+                    ball_cache = child
+                    ball_cache_time = os.clock()
+                    State.ball = child
+                    return child
+                end
+            end
+        end
+    end
+
+    State.ball = nil
+    return nil
+end
+
+--// ================================================================
+-- BALL APPROACH DETECTION
 -- ================================================================
 
 local function get_ball_info()
@@ -357,7 +390,7 @@ local function get_ball_info()
 
     local char = LocalPlayer.Character
     if not char then return nil end
-    local root = char:FindFirstChild('HumanoidRootPart')
+    local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
 
     local ball_pos = ball.Position
@@ -367,23 +400,23 @@ local function get_ball_info()
     local dist = (ball_pos - my_pos).Magnitude
 
     if ball_vel.Magnitude < 1 then
-        return { ball = ball, dist = dist, approaching = false, tti = math.huge }
+        return { dist = dist, approaching = false, tti = math.huge }
     end
 
     local to_me = (my_pos - ball_pos).Unit
     local direction = ball_vel.Unit
     local dot = direction:Dot(to_me)
 
-    local approaching = dot > 0.4  -- generous, blade ball curves a lot
+    -- generous threshold because blade ball curves
+    local approaching = dot > 0.35
 
-    local closing_speed = ball_vel:Dot(to_me)
+    local closing = ball_vel:Dot(to_me)
     local tti = math.huge
-    if closing_speed > 1 then
-        tti = dist / closing_speed
+    if closing > 0.5 then
+        tti = dist / closing
     end
 
     return {
-        ball = ball,
         dist = dist,
         approaching = approaching,
         tti = tti,
@@ -393,104 +426,129 @@ local function get_ball_info()
 end
 
 --// ================================================================
--- MOBILE UI — touch-friendly, compact, draggable
+-- UI — parented to gethui() or CoreGui (not PlayerGui)
+-- this avoids GUI detection
 -- ================================================================
 
+-- determine safe parent
+local function get_ui_parent()
+    if has_gethui then
+        local ok, result = pcall(gethui)
+        if ok and result then return result end
+    end
+
+    -- try gethuiParent (some executors)
+    if has_gethuiParent then
+        local ok, result = pcall(gethuiParent)
+        if ok and result then return result end
+    end
+
+    -- CoreGui fallback
+    local ok, coreGui = pcall(function()
+        return game:GetService("CoreGui")
+    end)
+    if ok then return coreGui end
+
+    -- last resort: PlayerGui with random name
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local uiParent = get_ui_parent()
+
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "BBMobile"
+ScreenGui.Name = "GameUI_" .. tostring(math.random(1000, 9999))
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.DisplayOrder = 999
+ScreenGui.Parent = uiParent
 
 --// main panel
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 240, 0, 340)
-Main.Position = UDim2.new(0.5, -120, 0.5, -170)
-Main.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+Main.Size = UDim2.new(0, 230, 0, 350)
+Main.Position = UDim2.new(0.5, -115, 0.5, -175)
+Main.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
 Main.BorderSizePixel = 0
 Main.Active = true
 Main.Parent = ScreenGui
 
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
 
-local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(100, 80, 200)
-stroke.Thickness = 1
-stroke.Transparency = 0.4
-stroke.Parent = Main
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(70, 60, 160)
+MainStroke.Thickness = 1
+MainStroke.Transparency = 0.3
+MainStroke.Parent = Main
 
---// drag support (touch + mouse)
+--// drag support
 do
     local dragging = false
-    local drag_start, start_pos
+    local dragInput, dragStart, startPos
 
     Main.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
-            drag_start = input.Position
-            start_pos = Main.Position
+            dragStart = input.Position
+            startPos = Main.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
         end
     end)
 
     UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
             or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - drag_start
+            local delta = input.Position - dragStart
             Main.Position = UDim2.new(
-                start_pos.X.Scale, start_pos.X.Offset + delta.X,
-                start_pos.Y.Scale, start_pos.Y.Offset + delta.Y
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
             )
-        end
-    end)
-
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
         end
     end)
 end
 
 --// header
 local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 36)
-Header.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+Header.Size = UDim2.new(1, 0, 0, 38)
+Header.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
 Header.BorderSizePixel = 0
 Header.Parent = Main
 
 Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 10)
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -20, 1, 0)
-Title.Position = UDim2.new(0, 10, 0, 0)
+Title.Size = UDim2.new(1, -50, 1, 0)
+Title.Position = UDim2.new(0, 12, 0, 0)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 14
-Title.TextColor3 = Color3.fromRGB(130, 100, 255)
-Title.Text = "⚡ BLADE BALL AUTOPARRY"
+Title.TextSize = 13
+Title.TextColor3 = Color3.fromRGB(120, 100, 255)
+Title.Text = "BLADE BALL AP v5"
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
 
 --// content
 local Content = Instance.new("Frame")
-Content.Size = UDim2.new(1, -16, 1, -52)
-Content.Position = UDim2.new(0, 8, 0, 42)
+Content.Size = UDim2.new(1, -16, 1, -50)
+Content.Position = UDim2.new(0, 8, 0, 44)
 Content.BackgroundTransparency = 1
 Content.Parent = Main
 
 local Layout = Instance.new("UIListLayout")
 Layout.SortOrder = Enum.SortOrder.LayoutOrder
-Layout.Padding = UDim.new(0, 6)
+Layout.Padding = UDim.new(0, 5)
 Layout.Parent = Content
 
---// toggle helper (big touch targets)
+--// helpers (touch + mouse)
 local function make_toggle(text, default, order, callback)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 44)
+    btn.Size = UDim2.new(1, 0, 0, 46)
     btn.BackgroundColor3 = default
-        and Color3.fromRGB(60, 40, 140)
-        or Color3.fromRGB(30, 30, 40)
+        and Color3.fromRGB(45, 35, 110)
+        or Color3.fromRGB(25, 25, 35)
     btn.BorderSizePixel = 0
     btn.Text = ""
     btn.LayoutOrder = order
@@ -500,8 +558,8 @@ local function make_toggle(text, default, order, callback)
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
 
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -70, 1, 0)
-    label.Position = UDim2.new(0, 12, 0, 0)
+    label.Size = UDim2.new(1, -60, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.GothamBold
     label.TextSize = 13
@@ -511,11 +569,11 @@ local function make_toggle(text, default, order, callback)
     label.Parent = btn
 
     local indicator = Instance.new("Frame")
-    indicator.Size = UDim2.new(0, 44, 0, 20)
-    indicator.Position = UDim2.new(1, -54, 0.5, -10)
+    indicator.Size = UDim2.new(0, 40, 0, 20)
+    indicator.Position = UDim2.new(1, -50, 0.5, -10)
     indicator.BackgroundColor3 = default
-        and Color3.fromRGB(100, 255, 140)
-        or Color3.fromRGB(80, 80, 90)
+        and Color3.fromRGB(90, 255, 130)
+        or Color3.fromRGB(70, 70, 80)
     indicator.BorderSizePixel = 0
     indicator.Parent = btn
 
@@ -524,7 +582,7 @@ local function make_toggle(text, default, order, callback)
     local dot = Instance.new("Frame")
     dot.Size = UDim2.new(0, 16, 0, 16)
     dot.Position = default
-        and UDim2.new(1, -20, 0.5, -8)
+        and UDim2.new(1, -19, 0.5, -8)
         or UDim2.new(0, 2, 0.5, -8)
     dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     dot.BorderSizePixel = 0
@@ -534,71 +592,39 @@ local function make_toggle(text, default, order, callback)
 
     local state = default
 
-    btn.TouchTap:Connect(function()
+    local function toggle()
         state = not state
-        TweenService:Create(btn, TweenInfo.new(0.15), {
-            BackgroundColor3 = state
-                and Color3.fromRGB(60, 40, 140)
-                or Color3.fromRGB(30, 30, 40)
-        }):Play()
-        TweenService:Create(indicator, TweenInfo.new(0.15), {
-            BackgroundColor3 = state
-                and Color3.fromRGB(100, 255, 140)
-                or Color3.fromRGB(80, 80, 90)
-        }):Play()
-        TweenService:Create(dot, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {
-            Position = state
-                and UDim2.new(1, -20, 0.5, -8)
-                or UDim2.new(0, 2, 0.5, -8)
-        }):Play()
+        btn.BackgroundColor3 = state
+            and Color3.fromRGB(45, 35, 110)
+            or Color3.fromRGB(25, 25, 35)
+        indicator.BackgroundColor3 = state
+            and Color3.fromRGB(90, 255, 130)
+            or Color3.fromRGB(70, 70, 80)
+        dot.Position = state
+            and UDim2.new(1, -19, 0.5, -8)
+            or UDim2.new(0, 2, 0.5, -8)
         if callback then callback(state) end
-    end)
+    end
 
+    btn.TouchTap:Connect(toggle)
     btn.MouseButton1Click:Connect(function()
-        -- also work on pc
-        if UserInputService.TouchEnabled then return end
-        state = not state
-        TweenService:Create(btn, TweenInfo.new(0.15), {
-            BackgroundColor3 = state
-                and Color3.fromRGB(60, 40, 140)
-                or Color3.fromRGB(30, 30, 40)
-        }):Play()
-        TweenService:Create(indicator, TweenInfo.new(0.15), {
-            BackgroundColor3 = state
-                and Color3.fromRGB(100, 255, 140)
-                or Color3.fromRGB(80, 80, 90)
-        }):Play()
-        TweenService:Create(dot, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {
-            Position = state
-                and UDim2.new(1, -20, 0.5, -8)
-                or UDim2.new(0, 2, 0.5, -8)
-        }):Play()
-        if callback then callback(state) end
+        if not UserInputService.TouchEnabled then
+            toggle()
+        end
     end)
 
     return {
         set = function(v)
-            state = v
-            btn.BackgroundColor3 = state
-                and Color3.fromRGB(60, 40, 140)
-                or Color3.fromRGB(30, 30, 40)
-            indicator.BackgroundColor3 = state
-                and Color3.fromRGB(100, 255, 140)
-                or Color3.fromRGB(80, 80, 90)
-            dot.Position = state
-                and UDim2.new(1, -20, 0.5, -8)
-                or UDim2.new(0, 2, 0.5, -8)
-            if callback then callback(state) end
+            if state ~= v then toggle() end
         end,
         get = function() return state end,
     }
 end
 
---// slider helper (touch-friendly track)
 local function make_slider(text, min, max, default, order, callback)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 0, 56)
-    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    frame.Size = UDim2.new(1, 0, 0, 58)
+    frame.BackgroundColor3 = Color3.fromRGB(22, 22, 32)
     frame.BorderSizePixel = 0
     frame.LayoutOrder = order
     frame.Parent = Content
@@ -606,53 +632,53 @@ local function make_slider(text, min, max, default, order, callback)
     Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
 
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -60, 0, 20)
+    label.Size = UDim2.new(1, -55, 0, 20)
     label.Position = UDim2.new(0, 10, 0, 4)
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.GothamBold
-    label.TextSize = 12
+    label.TextSize = 11
     label.TextColor3 = Color3.fromRGB(180, 180, 200)
     label.Text = text
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = frame
 
-    local value_label = Instance.new("TextLabel")
-    value_label.Size = UDim2.new(0, 45, 0, 20)
-    value_label.Position = UDim2.new(1, -52, 0, 4)
-    value_label.BackgroundTransparency = 1
-    value_label.Font = Enum.Font.GothamBold
-    value_label.TextSize = 12
-    value_label.TextColor3 = Color3.fromRGB(130, 100, 255)
-    value_label.Text = tostring(default)
-    value_label.TextXAlignment = Enum.TextXAlignment.Right
-    value_label.Parent = frame
+    local valueLabel = Instance.new("TextLabel")
+    valueLabel.Size = UDim2.new(0, 45, 0, 20)
+    valueLabel.Position = UDim2.new(1, -50, 0, 4)
+    valueLabel.BackgroundTransparency = 1
+    valueLabel.Font = Enum.Font.GothamBold
+    valueLabel.TextSize = 11
+    valueLabel.TextColor3 = Color3.fromRGB(120, 100, 255)
+    valueLabel.Text = tostring(default)
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    valueLabel.Parent = frame
 
     local track = Instance.new("Frame")
-    track.Size = UDim2.new(1, -20, 0, 24)
+    track.Size = UDim2.new(1, -20, 0, 26)
     track.Position = UDim2.new(0, 10, 0, 28)
-    track.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    track.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
     track.BorderSizePixel = 0
     track.Parent = frame
 
-    Instance.new("UICorner", track).CornerRadius = UDim.new(0, 12)
+    Instance.new("UICorner", track).CornerRadius = UDim.new(0, 13)
 
     local fill = Instance.new("Frame")
     fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(90, 60, 200)
+    fill.BackgroundColor3 = Color3.fromRGB(80, 60, 190)
     fill.BorderSizePixel = 0
     fill.Parent = track
 
-    Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 12)
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 13)
 
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0, 20, 0, 20)
-    knob.Position = UDim2.new((default - min) / (max - min), -10, 0.5, -10)
-    knob.BackgroundColor3 = Color3.fromRGB(200, 190, 255)
+    knob.Size = UDim2.new(0, 22, 0, 22)
+    knob.Position = UDim2.new((default - min) / (max - min), -11, 0.5, -11)
+    knob.BackgroundColor3 = Color3.fromRGB(190, 180, 255)
     knob.BorderSizePixel = 0
     knob.ZIndex = 5
     knob.Parent = track
 
-    Instance.new("UICorner", knob).CornerRadius = UDim.new(0, 10)
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(0, 11)
 
     local value = default
     local dragging = false
@@ -661,8 +687,8 @@ local function make_slider(text, min, max, default, order, callback)
         local rel = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
         value = math.floor(min + (max - min) * rel + 0.5)
         fill.Size = UDim2.new(rel, 0, 1, 0)
-        knob.Position = UDim2.new(rel, -10, 0.5, -10)
-        value_label.Text = tostring(value)
+        knob.Position = UDim2.new(rel, -11, 0.5, -11)
+        valueLabel.Text = tostring(value)
         if callback then callback(value) end
     end
 
@@ -688,16 +714,13 @@ local function make_slider(text, min, max, default, order, callback)
         end
     end)
 
-    return {
-        get = function() return value end,
-    }
+    return { get = function() return value end }
 end
 
---// info bar helper
 local function make_info(text, order)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 0, 26)
-    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+    frame.Size = UDim2.new(1, 0, 0, 24)
+    frame.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
     frame.BorderSizePixel = 0
     frame.LayoutOrder = order
     frame.Parent = Content
@@ -705,12 +728,12 @@ local function make_info(text, order)
     Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
 
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -12, 1, 0)
-    label.Position = UDim2.new(0, 6, 0, 0)
+    label.Size = UDim2.new(1, -10, 1, 0)
+    label.Position = UDim2.new(0, 5, 0, 0)
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.Gotham
     label.TextSize = 10
-    label.TextColor3 = Color3.fromRGB(130, 130, 150)
+    label.TextColor3 = Color3.fromRGB(140, 140, 160)
     label.Text = text
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = frame
@@ -722,136 +745,157 @@ end
 -- BUILD UI
 -- ================================================================
 
-local status_bar = make_info("⏳ PARRY ONCE TO CAPTURE", 0)
+local status_bar = make_info("⏳ searching for parry button...", 0)
 
-local toggle_auto = make_toggle("AUTO PARRY", false, 1, function(state)
-    State.enabled = state
+local toggle_auto = make_toggle("AUTO PARRY", false, 1, function(v)
+    State.enabled = v
 end)
 
-local toggle_spam = make_toggle("SPAM MODE", false, 2, function(state)
-    State.spam = state
+local toggle_spam = make_toggle("SPAM MODE", false, 2, function(v)
+    State.spam = v
 end)
 
-local slider_distance = make_slider("Distance (studs)", 8, 30, 16, 3, function(v)
+local slider_dist = make_slider("Distance", 8, 30, 18, 3, function(v)
     State.distance = v
 end)
 
-local slider_timing = make_slider("Timing (ms)", 100, 600, 350, 4, function(v)
+local slider_timing = make_slider("Timing (ms)", 100, 600, 400, 4, function(v)
     State.tti_threshold = v / 1000
 end)
 
-local slider_cooldown = make_slider("Cooldown (ms)", 30, 500, 80, 5, function(v)
+local slider_cooldown = make_slider("Cooldown (ms)", 40, 500, 80, 5, function(v)
     State.min_gap = v / 1000
 end)
 
 local stats_bar = make_info("Parries: 0 | Method: --", 6)
-local hint_bar = make_info("Parry manually once, then turn ON", 7)
 
---// floating toggle button (always visible, tap to show/hide panel)
+--// floating toggle button
 local FloatBtn = Instance.new("TextButton")
-FloatBtn.Size = UDim2.new(0, 48, 0, 48)
-FloatBtn.Position = UDim2.new(1, -60, 0.5, -24)
-FloatBtn.BackgroundColor3 = Color3.fromRGB(90, 60, 200)
+FloatBtn.Size = UDim2.new(0, 44, 0, 44)
+FloatBtn.Position = UDim2.new(1, -55, 0.3, 0)
+FloatBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 200)
 FloatBtn.Text = "⚡"
-FloatBtn.TextSize = 22
+FloatBtn.TextSize = 20
 FloatBtn.Font = Enum.Font.GothamBold
 FloatBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 FloatBtn.Parent = ScreenGui
 FloatBtn.ZIndex = 100
 
-Instance.new("UICorner", FloatBtn).CornerRadius = UDim.new(0, 24)
+Instance.new("UICorner", FloatBtn).CornerRadius = UDim.new(0, 22)
 
 local ui_visible = true
-FloatBtn.TouchTap:Connect(function()
+local function toggle_ui()
     ui_visible = not ui_visible
     Main.Visible = ui_visible
+end
+
+FloatBtn.TouchTap:Connect(toggle_ui)
+FloatBtn.MouseButton1Click:Connect(function()
+    if not UserInputService.TouchEnabled then
+        toggle_ui()
+    end
 end)
 
-FloatBtn.MouseButton1Click:Connect(function()
-    if UserInputService.TouchEnabled then return end
-    ui_visible = not ui_visible
-    Main.Visible = ui_visible
+--// keyboard shortcut (pc)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.H then
+        toggle_auto.set(not State.enabled)
+    end
+end)
+
+--// ================================================================
+-- BUTTON SCANNER — keep looking for the parry button
+-- ================================================================
+
+task.spawn(function()
+    while true do
+        if not State.button_found or (State.parry_button and not State.parry_button.Parent) then
+            State.button_found = false
+            State.parry_button = nil
+
+            local btn = scan_for_parry_button()
+            if btn then
+                State.parry_button = btn
+                State.button_found = true
+                status_bar.Text = "✓ parry button: " .. btn.Name
+                print("[BB] Found parry button: " .. btn:GetFullName())
+            else
+                status_bar.Text = "⏳ searching... (join a match)"
+            end
+        end
+
+        task.wait(2)
+    end
 end)
 
 --// ================================================================
 -- MAIN LOOP
 -- ================================================================
 
-hook_remotes()
-
 RunService.Heartbeat:Connect(function()
-    -- update status
-    if State.captured then
-        status_bar.Text = "✓ Captured: " .. State.captured_remote.Name
-    else
-        -- try to find remote by name if not captured yet
-        if not State.captured_remote then
-            for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-                if obj:IsA('RemoteEvent') then
-                    local n = string.lower(obj.Name)
-                    if n:find('parry') or n:find('deflect')
-                        or n:find('ability') or n:find('swing')
-                        or n:find('attack') then
-                        State.captured_remote = obj
-                        print('[BB] Found remote by scan: ' .. obj.Name)
-                        break
-                    end
+    if not State.enabled and not State.spam then
+        stats_bar.Text = string.format("Parries: %d | Method: %s | Btn: %s",
+            State.parry_count, State.method,
+            State.button_found and "✓" or "✗")
+        return
+    end
+
+    if not State.button_found then
+        stats_bar.Text = "Parries: 0 | Waiting for button..."
+        return
+    end
+
+    local info = get_ball_info()
+    if not info then
+        stats_bar.Text = string.format("Parries: %d | Ball: not found",
+            State.parry_count)
+        return
+    end
+
+    -- rate limit
+    local now = os.clock()
+    if now - State.last_fire < State.min_gap then return end
+
+    -- SPAM MODE
+    if State.spam then
+        if info.dist <= State.distance then
+            if press_parry_button() then
+                State.last_fire = now
+            end
+        end
+        stats_bar.Text = string.format("Parries: %d | Method: %s | Ball: %d ⚡",
+            State.parry_count, State.method, math.floor(info.dist))
+        return
+    end
+
+    -- PRECISION MODE
+    if State.enabled then
+        if info.approaching and info.dist <= State.distance then
+            if info.tti <= State.tti_threshold then
+                if press_parry_button() then
+                    State.last_fire = now
                 end
             end
         end
-        if State.captured_remote then
-            status_bar.Text = "✓ Remote found: " .. State.captured_remote.Name
-        else
-            status_bar.Text = "⏳ PARRY ONCE TO CAPTURE"
-        end
     end
 
-    if not State.enabled and not State.spam then
-        stats_bar.Text = string.format("Parries: %d | Method: %s",
-            State.parry_count, State.method)
-        return
-    end
-
-    -- get ball info
-    local info = get_ball_info()
-
-    if not info then
-        stats_bar.Text = string.format("Parries: %d | Method: %s | Ball: ❌",
-            State.parry_count, State.method)
-        return
-    end
-
-    -- update stats
-    local status_str = string.format("Parries: %d | Method: %s | Ball: %d studs %s",
+    stats_bar.Text = string.format("Parries: %d | Method: %s | Ball: %d %s",
         State.parry_count, State.method, math.floor(info.dist),
         info.approaching and "→" or "←")
-
-    -- SPAM MODE: fire whenever ball is close
-    if State.spam then
-        if info.dist <= State.distance then
-            fire_parry()
-        end
-        stats_bar.Text = status_str .. " | SPAM"
-        return
-    end
-
-    -- PRECISION MODE: fire when ball approaching + within threshold
-    if State.enabled then
-        if info.approaching and info.dist <= State.distance then
-            -- fire when time to impact is short enough
-            if info.tti <= State.tti_threshold then
-                fire_parry()
-            end
-        end
-    end
-
-    stats_bar.Text = status_str
 end)
 
-print("[BB] === Blade Ball Mobile Autoparry ===")
-print("[BB] Executor: " .. (EXECUTOR.has_hookmetamethod and "full" or "limited"))
-print("[BB] Instructions:")
-print("[BB] 1. Join a match")
-print("[BB] 2. Parry manually ONCE (tap/click)")
-print("[BB] 3. Turn ON Auto Parry")
-print("[BB] 4. That's it.")
+--// ================================================================
+-- INIT
+-- ================================================================
+
+print("[BB] === Silent Autoparry v5 ===")
+print("[BB] Executor features:")
+print("[BB]   firesignal: " .. tostring(has_firesignal))
+print("[BB]   getconnections: " .. tostring(has_getconnections))
+print("[BB]   gethui: " .. tostring(has_gethui))
+print("[BB]   mouse1click: " .. tostring(has_mouse1click))
+print("[BB] UI parent: " .. uiParent.Name)
+print("[BB] No hooks installed. No remotes touched.")
+print("[BB] The game's own button will be triggered.")
+print("[BB] Waiting for parry button detection...")
