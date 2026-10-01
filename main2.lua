@@ -1,471 +1,266 @@
 --[[
-    BLADE BALL — PREMIUM AUTOPARRY
-    multi-method bypass + prediction engine + full UI
+    BLADE BALL — MOBILE AUTOPARRY
+    Works on: Delta, Codex, Solara, Arceus X, Fluxus, Wave
     
-    methods (auto-fallback chain):
-        1. direct function call from GC heap (bypasses remote entirely)
-        2. remote fire with forged token (GC-extracted generator)
-        3. captured packet replay with fresh CFrame
-        4. raw remote spam (brute force fallback)
+    Bypass approach:
+    → No GC scanning (unreliable across updates)
+    → Pure __namecall capture + replay
+    → Ball found by properties, not name
+    → Touch-friendly UI
 ]]
 
 --// services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
---// ================================================================
--- BYPASS ENGINE
--- ================================================================
-
-local Bypass = {
-    method = nil,        -- "function" | "token" | "replay" | "spam"
-    internal_function = nil,  -- direct parry function from GC
-    token_generator = nil,    -- token gen function from GC
-    target_remote = nil,      -- parry remote instance
-    captured_args = nil,      -- captured packet template
-    remote_name = nil,
+--// detect executor capabilities
+local EXECUTOR = {
+    has_hookmetamethod = typeof(hookmetamethod) == 'function',
+    has_getgc = typeof(getgc) == 'function',
+    has_getconnections = typeof(getconnections) == 'function',
+    has_cloneref = typeof(cloneref) == 'function',
+    has_firetouch = typeof(firetouchinterest) == 'function',
+    has_fireclick = typeof(fireclickdetector) == 'function',
+    has_mouse1click = typeof(mouse1click) == 'function',
+    has_virtualinput = typeof(game:GetService('VirtualInputManager')) == 'userdata',
 }
 
---// METHOD 1: find the actual parry function inside the GC heap
--- this is the cleanest bypass — call the game's own code directly
-local function scan_gc_for_parry_function()
-    local results = {}
-
-    for _, obj in getgc(true) do
-        if type(obj) ~= 'function' then continue end
-
-        local source = debug.info(obj, 's') or ''
-        local params = debug.info(obj, 'u') or 0
-
-        -- look for the core parry handler
-        if source:find('Parry', 1, true)
-            or source:find('parry', 1, true)
-            or source:find('PRY', 1, true)
-            or source:find('Deflect', 1, true) then
-
-            -- parry functions typically take 0-2 params
-            if params <= 3 then
-                table.insert(results, { fn = obj, source = source, params = params })
-            end
-        end
-    end
-
-    -- prefer functions from client-side game scripts
-    for _, result in ipairs(results) do
-        local src = result.source
-        if src:find('Client') or src:find('client') or src:find('Controller')
-            or src:find('controller') or src:find('Main') or src:find('main') then
-            return result.fn, result.source
-        end
-    end
-
-    -- fallback to any result
-    if #results > 0 then
-        return results[1].fn, results[1].source
-    end
-
-    return nil, nil
-end
-
---// METHOD 2: find token generator from GC
-local function scan_gc_for_token_generator()
-    for _, obj in getgc(true) do
-        if type(obj) ~= 'function' then continue end
-
-        local source = debug.info(obj, 's') or ''
-        if not (source:find('PRY', 1, true)
-            or source:find('Parry', 1, true)
-            or source:find('parry', 1, true)
-            or source:find('Security', 1, true)
-            or source:find('Token', 1, true)) then
-            continue
-        end
-
-        -- scan upvalues for nested function that generates tokens
-        local ok, upvalues = pcall(debug.getupvalues, obj)
-        if not ok then continue end
-
-        for _, upval in ipairs(upvalues) do
-            if type(upval) == 'function' then
-                local up_params = debug.info(upval, 'u') or 0
-                -- token generators take (uid, salt) → string
-                if up_params == 2 then
-                    -- verify it returns a string when called safely
-                    local test_ok, test_result = pcall(upval, "test", "TIME")
-                    if test_ok and type(test_result) == 'string' and #test_result > 0 then
-                        return upval
-                    end
-                end
-            end
-        end
-    end
-
-    return nil
-end
-
---// METHOD 3: find the parry remote directly
-local function find_parry_remote()
-    -- direct name scan
-    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-        if obj:IsA('RemoteEvent') or obj:IsA('RemoteFunction') then
-            local name = string.lower(obj.Name)
-            if name:find('parry') or name:find('deflect')
-                or name:find('ability') or name:find('attack')
-                or name:find('swing') or name:find('hit') then
-                return obj
-            end
-        end
-    end
-
-    -- check workspace too (some versions put remotes there)
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA('RemoteEvent') or obj:IsA('RemoteFunction') then
-            local name = string.lower(obj.Name)
-            if name:find('parry') or name:find('deflect')
-                or name:find('ability') or name:find('swing') then
-                return obj
-            end
-        end
-    end
-
-    return nil
-end
-
---// namecall hook to capture the actual parry packet
-local captured = false
-local capture_args = nil
-local capture_remote = nil
-
-local function is_parry_packet(args)
-    -- flexible validation: 5-10 args, contains string + number + CFrame
-    local has_string = false
-    local has_number = false
-    local has_cframe = false
-
-    for _, arg in ipairs(args) do
-        local t = typeof(arg)
-        if t == 'string' then has_string = true end
-        if t == 'number' then has_number = true end
-        if t == 'CFrame' then has_cframe = true end
-    end
-
-    return #args >= 4 and has_string and has_number
-end
-
--- install the hook
-local old_namecall
-old_namecall = hookmetamethod(game, '__namecall', newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-
-    if (method == 'FireServer' or method == 'InvokeServer')
-        and not captured
-        and (self:IsA('RemoteEvent') or self:IsA('RemoteFunction')) then
-
-        local args = {...}
-        local remote_name = string.lower(self.Name)
-
-        -- check if this remote is parry-related
-        if remote_name:find('parry') or remote_name:find('deflect')
-            or remote_name:find('ability') or remote_name:find('swing')
-            or remote_name:find('attack') or remote_name:find('hit') then
-
-            if is_parry_packet(args) then
-                captured = true
-                capture_args = args
-                capture_remote = self
-                Bypass.target_remote = self
-                Bypass.captured_args = args
-                Bypass.remote_name = self.Name
-            end
-        end
-    end
-
-    return old_namecall(self, ...)
-end))
-
---// token forge (if we have the generator)
-local function forge_token(uid)
-    if not Bypass.token_generator then return nil end
-
-    local ok, result = pcall(function()
-        local time = tostring(math.floor(Workspace:GetServerTimeNow() * 100))
-        local key = Bypass.token_generator(uid, 'TIME')
-        local out = table.create(#time)
-
-        for i = 1, #time do
-            out[i] = string.char(bit32.bxor(
-                (string.byte(time, i) + i) % 256,
-                string.byte(key, (i - 1) % #key + 1)
-            ))
-        end
-
-        return table.concat(out)
-    end)
-
-    return ok and result or nil
-end
-
 --// ================================================================
--- BALL ENGINE — tracking + prediction
+-- STATE
 -- ================================================================
 
-local Ball = {
-    instance = nil,
-    last_position = Vector3.zero,
-    last_velocity = Vector3.zero,
-    velocity_history = {},
-    curve_detected = false,
-    curve_rate = Vector3.zero,
+local State = {
+    enabled = false,
+    spam = false,
+    parry_count = 0,
+    last_fire = 0,
+    min_gap = 0.06,
+
+    -- captured data
+    captured_remote = nil,
+    captured_args = nil,
+    captured = false,
+
+    -- ball
+    ball = nil,
+    ball_found_time = 0,
+
+    -- settings
+    distance = 16,
+    tti_threshold = 0.4,
+
+    -- bypass method
+    method = "none",
 }
+
+--// ================================================================
+-- BALL FINDER — property-based, not name-based
+-- ================================================================
+
+local function is_ball(part)
+    if not part:IsA('BasePart') then return false end
+    if part:IsA('Terrain') then return false end
+
+    -- skip character parts
+    local model = part:FindFirstAncestorOfClass('Model')
+    if model and Players:GetPlayerFromCharacter(model) then
+        return false
+    end
+
+    local vel = part.AssemblyLinearVelocity or Vector3.zero
+
+    -- blade ball is always fast
+    if vel.Magnitude < 30 then return false end
+
+    -- blade ball is typically small
+    local size = part.Size
+    if size.X > 15 or size.Y > 15 or size.Z > 15 then return false end
+
+    -- not anchored
+    if part.Anchored then return false end
+
+    -- can't be a spawn location or map part
+    if part:IsA('SpawnLocation') then return false end
+
+    return true
+end
 
 local function find_ball()
     -- fast path: cached
-    if Ball.instance and Ball.instance.Parent then
-        return Ball.instance
+    if State.ball and State.ball.Parent then
+        local vel = State.ball.AssemblyLinearVelocity or Vector3.zero
+        if vel.Magnitude > 5 then
+            return State.ball
+        end
+        -- ball might have stopped (between rallies)
+        -- keep it cached for 3 seconds
+        if os.clock() - State.ball_found_time < 3 then
+            return State.ball
+        end
     end
 
-    -- direct names
-    local names = {'Ball', 'ball', 'Projectile', 'NeonBall', 'Orb', 'Sword'}
+    -- direct name check (fast)
+    local names = {'Ball', 'ball', 'BALL', 'Projectile', 'projectile'}
     for _, name in ipairs(names) do
         local b = Workspace:FindFirstChild(name)
         if b and b:IsA('BasePart') then
-            Ball.instance = b
+            State.ball = b
+            State.ball_found_time = os.clock()
             return b
         end
     end
 
-    -- scan for fast-moving parts
-    for _, obj in ipairs(Workspace:GetChildren()) do
-        if obj:IsA('BasePart') then
-            local vel = obj.AssemblyLinearVelocity or Vector3.zero
-            if vel.Magnitude > 50 then
-                local lower = string.lower(obj.Name)
-                if lower:find('ball') or lower:find('proj') or lower:find('orb')
-                    or lower:find('neon') or lower:find('sword') then
-                    Ball.instance = obj
-                    return obj
+    -- search deeper — folders
+    local folders = {'Game', 'Map', 'Elements', 'Arena', 'Active'}
+    for _, folderName in ipairs(folders) do
+        local folder = Workspace:FindFirstChild(folderName)
+        if folder then
+            for _, child in ipairs(folder:GetChildren()) do
+                if child:IsA('BasePart') and is_ball(child) then
+                    State.ball = child
+                    State.ball_found_time = os.clock()
+                    return child
                 end
             end
         end
     end
 
-    -- last resort: any part with extreme velocity
+    -- property scan — everything in workspace
     for _, obj in ipairs(Workspace:GetChildren()) do
-        if obj:IsA('BasePart') and not obj:IsA('Terrain') then
-            local vel = obj.AssemblyLinearVelocity or Vector3.zero
-            if vel.Magnitude > 80 then
-                Ball.instance = obj
-                return obj
+        if obj:IsA('BasePart') and is_ball(obj) then
+            State.ball = obj
+            State.ball_found_time = os.clock()
+            return obj
+        end
+
+        -- check inside models/folders
+        if obj:IsA('Model') or obj:IsA('Folder') then
+            for _, child in ipairs(obj:GetChildren()) do
+                if child:IsA('BasePart') and is_ball(child) then
+                    State.ball = child
+                    State.ball_found_time = os.clock()
+                    return child
+                end
             end
         end
     end
 
-    Ball.instance = nil
     return nil
 end
 
-local function update_ball_tracking()
-    local ball = find_ball()
-    if not ball then return end
-
-    local pos = ball.Position
-    local vel = ball.AssemblyLinearVelocity or Vector3.zero
-
-    -- store velocity history for curve detection
-    table.insert(Ball.velocity_history, {
-        vel = vel,
-        pos = pos,
-        time = os.clock()
-    })
-
-    -- keep last 20 samples
-    if #Ball.velocity_history > 20 then
-        table.remove(Ball.velocity_history, 1)
-    end
-
-    -- detect curve (homing) behavior
-    if #Ball.velocity_history >= 10 then
-        local old = Ball.velocity_history[1]
-        local new = Ball.velocity_history[#Ball.velocity_history]
-
-        local vel_change = new.vel - old.vel
-        local time_diff = new.time - old.time
-
-        if time_diff > 0 and vel_change.Magnitude > 5 then
-            Ball.curve_detected = true
-            Ball.curve_rate = vel_change / time_diff
-        else
-            Ball.curve_detected = false
-            Ball.curve_rate = Vector3.zero
-        end
-    end
-
-    Ball.last_position = pos
-    Ball.last_velocity = vel
-end
-
---// predict where the ball will be at time t
-local function predict_ball_position(t)
-    local ball = Ball.instance
-    if not ball then return nil end
-
-    local pos = ball.Position
-    local vel = ball.AssemblyLinearVelocity or Vector3.zero
-
-    -- linear prediction
-    local linear_pos = pos + vel * t
-
-    -- if curve detected, apply quadratic correction
-    if Ball.curve_detected then
-        -- x(t) = x0 + v0*t + 0.5*a*t^2
-        local curved_pos = pos + vel * t + Ball.curve_rate * 0.5 * t * t
-
-        -- blend between linear and curved based on confidence
-        local confidence = math.min(#Ball.velocity_history / 20, 1)
-        return linear_pos:Lerp(curved_pos, confidence * 0.7)
-    end
-
-    return linear_pos
-end
-
---// time until ball reaches us
-local function time_to_impact()
-    local char = LocalPlayer.Character
-    if not char then return math.huge, false, 0 end
-    local root = char:FindFirstChild('HumanoidRootPart')
-    if not root then return math.huge, false, 0 end
-
-    local ball = Ball.instance
-    if not ball then return math.huge, false, 0 end
-
-    local my_pos = root.Position
-    local ball_pos = ball.Position
-    local ball_vel = ball.AssemblyLinearVelocity or Vector3.zero
-
-    if ball_vel.Magnitude < 5 then return math.huge, false, 0 end
-
-    local to_me = (my_pos - ball_pos).Unit
-    local direction = ball_vel.Unit
-    local dot = direction:Dot(to_me)
-
-    -- is it coming at us?
-    local approaching = dot > 0.55
-
-    -- distance
-    local dist = (ball_pos - my_pos).Magnitude
-    local speed = ball_vel.Magnitude
-
-    -- linear TTI
-    local closing = ball_vel:Dot(to_me)
-    if closing < 1 then return math.huge, approaching, dist end
-
-    local tti_linear = dist / closing
-
-    -- curved TTI: simulate the ball forward
-    if Ball.curve_detected then
-        for t = 0.1, 2.0, 0.1 do
-            local predicted = predict_ball_position(t)
-            if predicted then
-                local pred_dist = (predicted - my_pos).Magnitude
-                if pred_dist < 4 then
-                    return t, approaching, dist
-                end
-            end
-        end
-    end
-
-    return tti_linear, approaching, dist
-end
-
 --// ================================================================
--- PARRY ENGINE
+-- PARRY CAPTURE — hook ALL remote calls, grab the parry one
 -- ================================================================
 
-local Parry = {
-    enabled = false,
-    count = 0,
-    last_fire = 0,
-    min_gap = 0.05,
-    spam_mode = false,
-    spam_rate = 0.03,
-    distance_mode = true,
-    max_distance = 14,
-    tti_threshold = 0.35,
-    method_used = "none",
-}
+local function hook_remotes()
+    if State.captured then return end
 
---// execute the parry using whatever method is available
-local function execute_parry()
-    local now = os.clock()
-    if now - Parry.last_fire < Parry.min_gap then return false end
+    if EXECUTOR.has_hookmetamethod then
+        local old
+        old = hookmetamethod(game, '__namecall', newcclosure(function(self, ...)
+            local method = getnamecallmethod()
 
-    -- METHOD 1: direct function call (best bypass)
-    if Bypass.internal_function then
-        local ok = pcall(Bypass.internal_function)
-        if ok then
-            Parry.count += 1
-            Parry.last_fire = now
-            Parry.method_used = "internal"
-            return true
-        end
-    end
+            if method == 'FireServer' or method == 'InvokeServer' then
+                if not State.captured and self:IsA('RemoteEvent') then
+                    local args = {...}
+                    local remote_name = string.lower(self.Name)
 
-    -- METHOD 2: token-forged remote fire
-    if Bypass.target_remote and Bypass.captured_args and Bypass.token_generator then
-        local template = Bypass.captured_args
-        local uid = nil
+                    -- broad match: anything that could be the parry remote
+                    local is_parry_remote = remote_name:find('parry')
+                        or remote_name:find('deflect')
+                        or remote_name:find('ability')
+                        or remote_name:find('swing')
+                        or remote_name:find('attack')
+                        or remote_name:find('combat')
+                        or remote_name:find('hit')
+                        or remote_name:find('skill')
+                        or remote_name:find('action')
 
-        -- find the string that serves as UID (typically args[2])
-        for i, arg in ipairs(template) do
-            if type(arg) == 'string' and #arg > 5 then
-                uid = arg
-                break
+                    -- also capture if it has typical parry arg patterns
+                    if not is_parry_remote and #args >= 2 then
+                        local has_cframe = false
+                        local has_string = false
+                        local has_number = false
+                        for _, a in ipairs(args) do
+                            local t = typeof(a)
+                            if t == 'CFrame' then has_cframe = true end
+                            if t == 'string' then has_string = true end
+                            if t == 'number' then has_number = true end
+                        end
+                        -- parry packets typically have CFrame + string/number
+                        if has_cframe and (has_string or has_number) then
+                            is_parry_remote = true
+                        end
+                    end
+
+                    if is_parry_remote then
+                        State.captured_remote = self
+                        State.captured_args = args
+                        State.captured = true
+                        print(string.format('[BB] Captured remote: %s | args: %d',
+                            self.Name, #args))
+                    end
+                end
             end
-        end
 
-        if uid then
-            local fresh_token = forge_token(uid)
-            if fresh_token then
-                local packet = {}
-                for i, arg in ipairs(template) do
-                    if typeof(arg) == 'CFrame' then
-                        packet[i] = Camera.CFrame
-                    elseif type(arg) == 'string' and arg == uid and i > 2 then
-                        packet[i] = fresh_token
-                    else
-                        packet[i] = arg
+            return old(self, ...)
+        end))
+    else
+        -- fallback: manual metatable hook
+        local meta = getrawmetatable(game)
+        if meta then
+            setreadonly(meta, false)
+            local old_namecall = meta.__namecall
+
+            meta.__namecall = newcclosure(function(self, ...)
+                local method = getnamecallmethod()
+
+                if (method == 'FireServer' or method == 'InvokeServer')
+                    and not State.captured
+                    and self:IsA('RemoteEvent') then
+
+                    local args = {...}
+                    local remote_name = string.lower(self.Name)
+
+                    if remote_name:find('parry') or remote_name:find('deflect')
+                        or remote_name:find('ability') or remote_name:find('swing')
+                        or remote_name:find('attack') or remote_name:find('combat')
+                        or remote_name:find('hit') or remote_name:find('skill') then
+
+                        State.captured_remote = self
+                        State.captured_args = args
+                        State.captured = true
+                        print(string.format('[BB] Captured remote: %s', self.Name))
                     end
                 end
 
-                if Bypass.target_remote:IsA('RemoteEvent') then
-                    Bypass.target_remote:FireServer(unpack(packet))
-                else
-                    pcall(function()
-                        Bypass.target_remote:InvokeServer(unpack(packet))
-                    end)
-                end
+                return old_namecall(self, ...)
+            end)
 
-                Parry.count += 1
-                Parry.last_fire = now
-                Parry.method_used = "token"
-                return true
-            end
+            setreadonly(meta, true)
         end
     end
+end
 
-    -- METHOD 3: replay captured packet with updated CFrame
-    if Bypass.target_remote and Bypass.captured_args then
-        local template = Bypass.captured_args
+--// ================================================================
+-- PARRY EXECUTION — multi-method with fallback
+-- ================================================================
+
+local function fire_parry()
+    local now = os.clock()
+    if now - State.last_fire < State.min_gap then return false end
+
+    -- METHOD 1: replay captured packet
+    if State.captured and State.captured_remote and State.captured_args then
         local packet = {}
-
-        for i, arg in ipairs(template) do
+        for i, arg in ipairs(State.captured_args) do
             if typeof(arg) == 'CFrame' then
                 packet[i] = Camera.CFrame
             else
@@ -473,36 +268,79 @@ local function execute_parry()
             end
         end
 
-        if Bypass.target_remote:IsA('RemoteEvent') then
-            Bypass.target_remote:FireServer(unpack(packet))
+        if State.captured_remote:IsA('RemoteEvent') then
+            State.captured_remote:FireServer(unpack(packet))
         else
             pcall(function()
-                Bypass.target_remote:InvokeServer(unpack(packet))
+                State.captured_remote:InvokeServer(unpack(packet))
             end)
         end
 
-        Parry.count += 1
-        Parry.last_fire = now
-        Parry.method_used = "replay"
+        State.parry_count += 1
+        State.last_fire = now
+        State.method = "replay"
         return true
     end
 
-    -- METHOD 4: brute force remote (find and fire)
-    if not Bypass.target_remote then
-        Bypass.target_remote = find_parry_remote()
+    -- METHOD 2: find remote by name and fire it
+    if not State.captured_remote then
+        local search_names = {'parry', 'Parry', 'Deflect', 'deflect',
+            'Ability', 'ability', 'Swing', 'swing', 'Attack', 'attack'}
+
+        for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+            if obj:IsA('RemoteEvent') then
+                for _, name in ipairs(search_names) do
+                    if obj.Name:find(name) then
+                        State.captured_remote = obj
+                        break
+                    end
+                end
+                if State.captured_remote then break end
+            end
+        end
+
+        -- also check workspace
+        if not State.captured_remote then
+            for _, obj in ipairs(Workspace:GetDescendants()) do
+                if obj:IsA('RemoteEvent') then
+                    for _, name in ipairs(search_names) do
+                        if obj.Name:find(name) then
+                            State.captured_remote = obj
+                            break
+                        end
+                    end
+                    if State.captured_remote then break end
+                end
+            end
+        end
     end
 
-    if Bypass.target_remote then
-        if Bypass.target_remote:IsA('RemoteEvent') then
-            Bypass.target_remote:FireServer()
+    if State.captured_remote then
+        if State.captured_remote:IsA('RemoteEvent') then
+            State.captured_remote:FireServer()
         else
             pcall(function()
-                Bypass.target_remote:InvokeServer()
+                State.captured_remote:InvokeServer()
             end)
         end
-        Parry.count += 1
-        Parry.last_fire = now
-        Parry.method_used = "spam"
+        State.parry_count += 1
+        State.last_fire = now
+        State.method = "remote"
+        return true
+    end
+
+    -- METHOD 3: simulate click input
+    if EXECUTOR.has_virtualinput then
+        local vim = game:GetService('VirtualInputManager')
+        local mouse = LocalPlayer:GetMouse()
+
+        vim:SendMouseButtonEvent(mouse.X, mouse.Y, 0, true, game, 0)
+        task.wait(0.05)
+        vim:SendMouseButtonEvent(mouse.X, mouse.Y, 0, false, game, 0)
+
+        State.parry_count += 1
+        State.last_fire = now
+        State.method = "input"
         return true
     end
 
@@ -510,243 +348,266 @@ local function execute_parry()
 end
 
 --// ================================================================
--- INITIALIZATION
+-- BALL TRACKING — is it coming at us?
 -- ================================================================
 
-print("[BB] === initializing bypass engine ===")
+local function get_ball_info()
+    local ball = find_ball()
+    if not ball then return nil end
 
--- scan for internal function
-Bypass.internal_function = scan_gc_for_parry_function()
-if Bypass.internal_function then
-    print("[BB] ✓ internal parry function found in GC")
-else
-    print("[BB] ✗ internal function not found, trying token generator...")
-    Bypass.token_generator = scan_gc_for_token_generator()
-    if Bypass.token_generator then
-        print("[BB] ✓ token generator found")
-    else
-        print("[BB] ✗ token generator not found, will use packet capture")
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local root = char:FindFirstChild('HumanoidRootPart')
+    if not root then return nil end
+
+    local ball_pos = ball.Position
+    local ball_vel = ball.AssemblyLinearVelocity or Vector3.zero
+    local my_pos = root.Position
+
+    local dist = (ball_pos - my_pos).Magnitude
+
+    if ball_vel.Magnitude < 1 then
+        return { ball = ball, dist = dist, approaching = false, tti = math.huge }
     end
-end
 
--- scan for remote
-Bypass.target_remote = find_parry_remote()
-if Bypass.target_remote then
-    print(string.format("[BB] ✓ parry remote found: %s (%s)",
-        Bypass.target_remote.Name,
-        Bypass.target_remote:IsA('RemoteEvent') and 'RemoteEvent' or 'RemoteFunction'))
-else
-    print("[BB] ✗ parry remote not found by name scan — waiting for capture...")
-end
+    local to_me = (my_pos - ball_pos).Unit
+    local direction = ball_vel.Unit
+    local dot = direction:Dot(to_me)
 
-print("[BB] bypass engine ready")
-print("[BB] parry manually once to capture the packet template")
+    local approaching = dot > 0.4  -- generous, blade ball curves a lot
+
+    local closing_speed = ball_vel:Dot(to_me)
+    local tti = math.huge
+    if closing_speed > 1 then
+        tti = dist / closing_speed
+    end
+
+    return {
+        ball = ball,
+        dist = dist,
+        approaching = approaching,
+        tti = tti,
+        speed = ball_vel.Magnitude,
+        dot = dot,
+    }
+end
 
 --// ================================================================
--- PREMIUM UI
+-- MOBILE UI — touch-friendly, compact, draggable
 -- ================================================================
 
---// create UI
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "BBPremium"
+ScreenGui.Name = "BBMobile"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
---// main container
+--// main panel
 local Main = Instance.new("Frame")
-Main.Name = "Main"
-Main.Size = UDim2.new(0, 320, 0, 420)
-Main.Position = UDim2.new(0.5, -160, 0.5, -210)
-Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+Main.Size = UDim2.new(0, 240, 0, 340)
+Main.Position = UDim2.new(0.5, -120, 0.5, -170)
+Main.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 Main.BorderSizePixel = 0
-Main.ClipsDescendants = true
 Main.Active = true
-Main.Draggable = true
 Main.Parent = ScreenGui
 
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 12)
-MainCorner.Parent = Main
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
 
-local MainStroke = Instance.new("UIStroke")
-MainStroke.Color = Color3.fromRGB(80, 80, 120)
-MainStroke.Thickness = 1
-MainStroke.Transparency = 0.5
-MainStroke.Parent = Main
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(100, 80, 200)
+stroke.Thickness = 1
+stroke.Transparency = 0.4
+stroke.Parent = Main
+
+--// drag support (touch + mouse)
+do
+    local dragging = false
+    local drag_start, start_pos
+
+    Main.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            drag_start = input.Position
+            start_pos = Main.Position
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - drag_start
+            Main.Position = UDim2.new(
+                start_pos.X.Scale, start_pos.X.Offset + delta.X,
+                start_pos.Y.Scale, start_pos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+end
 
 --// header
 local Header = Instance.new("Frame")
-Header.Name = "Header"
-Header.Size = UDim2.new(1, 0, 0, 50)
-Header.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+Header.Size = UDim2.new(1, 0, 0, 36)
+Header.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
 Header.BorderSizePixel = 0
 Header.Parent = Main
 
-local HeaderCorner = Instance.new("UICorner")
-HeaderCorner.CornerRadius = UDim.new(0, 12)
-HeaderCorner.Parent = Header
+Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 10)
 
--- header gradient
-local HeaderGradient = Instance.new("UIGradient")
-HeaderGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(35, 25, 50)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 20, 30)),
-})
-HeaderGradient.Rotation = 90
-HeaderGradient.Parent = Header
-
--- title
 local Title = Instance.new("TextLabel")
-Title.Name = "Title"
-Title.Size = UDim2.new(1, -60, 1, 0)
-Title.Position = UDim2.new(0, 15, 0, 0)
+Title.Size = UDim2.new(1, -20, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Font = Enum.Font.GothamBlack
-Title.TextSize = 18
-Title.TextColor3 = Color3.fromRGB(120, 100, 255)
-Title.Text = "BLADE BALL — PREMIUM"
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.TextColor3 = Color3.fromRGB(130, 100, 255)
+Title.Text = "⚡ BLADE BALL AUTOPARRY"
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
 
--- version badge
-local Version = Instance.new("TextLabel")
-Version.Name = "Version"
-Version.Size = UDim2.new(0, 50, 0, 20)
-Version.Position = UDim2.new(1, -55, 0.5, -10)
-Version.BackgroundTransparency = 1
-Version.Font = Enum.Font.GothamBold
-Version.TextSize = 10
-Version.TextColor3 = Color3.fromRGB(100, 100, 140)
-Version.Text = "v4.2"
-Version.Parent = Header
-
---// content area
+--// content
 local Content = Instance.new("Frame")
-Content.Name = "Content"
-Content.Size = UDim2.new(1, -20, 1, -70)
-Content.Position = UDim2.new(0, 10, 0, 55)
+Content.Size = UDim2.new(1, -16, 1, -52)
+Content.Position = UDim2.new(0, 8, 0, 42)
 Content.BackgroundTransparency = 1
 Content.Parent = Main
 
-local ContentList = Instance.new("UIListLayout")
-ContentList.SortOrder = Enum.SortOrder.LayoutOrder
-ContentList.Padding = UDim.new(0, 8)
-ContentList.Parent = Content
+local Layout = Instance.new("UIListLayout")
+Layout.SortOrder = Enum.SortOrder.LayoutOrder
+Layout.Padding = UDim.new(0, 6)
+Layout.Parent = Content
 
---// helper: toggle button
-local function create_toggle(parent, text, default, order, callback)
-    local frame = Instance.new("Frame")
-    frame.Name = text
-    frame.Size = UDim2.new(1, 0, 0, 42)
-    frame.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
-    frame.BorderSizePixel = 0
-    frame.LayoutOrder = order
-    frame.Parent = parent
+--// toggle helper (big touch targets)
+local function make_toggle(text, default, order, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 44)
+    btn.BackgroundColor3 = default
+        and Color3.fromRGB(60, 40, 140)
+        or Color3.fromRGB(30, 30, 40)
+    btn.BorderSizePixel = 0
+    btn.Text = ""
+    btn.LayoutOrder = order
+    btn.AutoButtonColor = false
+    btn.Parent = Content
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = frame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
 
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -80, 1, 0)
+    label.Size = UDim2.new(1, -70, 1, 0)
     label.Position = UDim2.new(0, 12, 0, 0)
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.GothamBold
     label.TextSize = 13
-    label.TextColor3 = Color3.fromRGB(200, 200, 220)
+    label.TextColor3 = Color3.fromRGB(220, 220, 240)
     label.Text = text
     label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = frame
+    label.Parent = btn
 
-    -- toggle visual
-    local toggle_bg = Instance.new("Frame")
-    toggle_bg.Name = "ToggleBG"
-    toggle_bg.Size = UDim2.new(0, 46, 0, 22)
-    toggle_bg.Position = UDim2.new(1, -58, 0.5, -11)
-    toggle_bg.BackgroundColor3 = default
-        and Color3.fromRGB(90, 60, 200)
-        or Color3.fromRGB(45, 45, 55)
-    toggle_bg.BorderSizePixel = 0
-    toggle_bg.Parent = frame
+    local indicator = Instance.new("Frame")
+    indicator.Size = UDim2.new(0, 44, 0, 20)
+    indicator.Position = UDim2.new(1, -54, 0.5, -10)
+    indicator.BackgroundColor3 = default
+        and Color3.fromRGB(100, 255, 140)
+        or Color3.fromRGB(80, 80, 90)
+    indicator.BorderSizePixel = 0
+    indicator.Parent = btn
 
-    local toggle_corner = Instance.new("UICorner")
-    toggle_corner.CornerRadius = UDim.new(0, 11)
-    toggle_corner.Parent = toggle_bg
+    Instance.new("UICorner", indicator).CornerRadius = UDim.new(0, 10)
 
-    local toggle_knob = Instance.new("Frame")
-    toggle_knob.Name = "Knob"
-    toggle_knob.Size = UDim2.new(0, 18, 0, 18)
-    toggle_knob.Position = default
-        and UDim2.new(1, -21, 0.5, -9)
-        or UDim2.new(0, 2, 0.5, -9)
-    toggle_knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    toggle_knob.BorderSizePixel = 0
-    toggle_knob.Parent = toggle_bg
+    local dot = Instance.new("Frame")
+    dot.Size = UDim2.new(0, 16, 0, 16)
+    dot.Position = default
+        and UDim2.new(1, -20, 0.5, -8)
+        or UDim2.new(0, 2, 0.5, -8)
+    dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    dot.BorderSizePixel = 0
+    dot.Parent = indicator
 
-    local knob_corner = Instance.new("UICorner")
-    knob_corner.CornerRadius = UDim.new(0, 9)
-    knob_corner.Parent = toggle_knob
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(0, 8)
 
     local state = default
 
-    local function set_state(new_state)
-        state = new_state
-
-        TweenService:Create(toggle_bg, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+    btn.TouchTap:Connect(function()
+        state = not state
+        TweenService:Create(btn, TweenInfo.new(0.15), {
             BackgroundColor3 = state
-                and Color3.fromRGB(90, 60, 200)
-                or Color3.fromRGB(45, 45, 55)
+                and Color3.fromRGB(60, 40, 140)
+                or Color3.fromRGB(30, 30, 40)
         }):Play()
-
-        TweenService:Create(toggle_knob, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        TweenService:Create(indicator, TweenInfo.new(0.15), {
+            BackgroundColor3 = state
+                and Color3.fromRGB(100, 255, 140)
+                or Color3.fromRGB(80, 80, 90)
+        }):Play()
+        TweenService:Create(dot, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {
             Position = state
-                and UDim2.new(1, -21, 0.5, -9)
-                or UDim2.new(0, 2, 0.5, -9)
+                and UDim2.new(1, -20, 0.5, -8)
+                or UDim2.new(0, 2, 0.5, -8)
         }):Play()
-
         if callback then callback(state) end
-    end
-
-    toggle_bg.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            set_state(not state)
-        end
     end)
 
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            set_state(not state)
-        end
+    btn.MouseButton1Click:Connect(function()
+        -- also work on pc
+        if UserInputService.TouchEnabled then return end
+        state = not state
+        TweenService:Create(btn, TweenInfo.new(0.15), {
+            BackgroundColor3 = state
+                and Color3.fromRGB(60, 40, 140)
+                or Color3.fromRGB(30, 30, 40)
+        }):Play()
+        TweenService:Create(indicator, TweenInfo.new(0.15), {
+            BackgroundColor3 = state
+                and Color3.fromRGB(100, 255, 140)
+                or Color3.fromRGB(80, 80, 90)
+        }):Play()
+        TweenService:Create(dot, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {
+            Position = state
+                and UDim2.new(1, -20, 0.5, -8)
+                or UDim2.new(0, 2, 0.5, -8)
+        }):Play()
+        if callback then callback(state) end
     end)
 
     return {
-        frame = frame,
-        set = set_state,
+        set = function(v)
+            state = v
+            btn.BackgroundColor3 = state
+                and Color3.fromRGB(60, 40, 140)
+                or Color3.fromRGB(30, 30, 40)
+            indicator.BackgroundColor3 = state
+                and Color3.fromRGB(100, 255, 140)
+                or Color3.fromRGB(80, 80, 90)
+            dot.Position = state
+                and UDim2.new(1, -20, 0.5, -8)
+                or UDim2.new(0, 2, 0.5, -8)
+            if callback then callback(state) end
+        end,
         get = function() return state end,
-        label = label,
     }
 end
 
---// helper: slider
-local function create_slider(parent, text, min, max, default, order, callback)
+--// slider helper (touch-friendly track)
+local function make_slider(text, min, max, default, order, callback)
     local frame = Instance.new("Frame")
-    frame.Name = text
-    frame.Size = UDim2.new(1, 0, 0, 58)
-    frame.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+    frame.Size = UDim2.new(1, 0, 0, 56)
+    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
     frame.BorderSizePixel = 0
     frame.LayoutOrder = order
-    frame.Parent = parent
+    frame.Parent = Content
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = frame
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
 
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -70, 0, 20)
-    label.Position = UDim2.new(0, 12, 0, 6)
+    label.Size = UDim2.new(1, -60, 0, 20)
+    label.Position = UDim2.new(0, 10, 0, 4)
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.GothamBold
     label.TextSize = 12
@@ -756,70 +617,52 @@ local function create_slider(parent, text, min, max, default, order, callback)
     label.Parent = frame
 
     local value_label = Instance.new("TextLabel")
-    value_label.Size = UDim2.new(0, 50, 0, 20)
-    value_label.Position = UDim2.new(1, -60, 0, 6)
+    value_label.Size = UDim2.new(0, 45, 0, 20)
+    value_label.Position = UDim2.new(1, -52, 0, 4)
     value_label.BackgroundTransparency = 1
     value_label.Font = Enum.Font.GothamBold
     value_label.TextSize = 12
-    value_label.TextColor3 = Color3.fromRGB(120, 100, 255)
+    value_label.TextColor3 = Color3.fromRGB(130, 100, 255)
     value_label.Text = tostring(default)
     value_label.TextXAlignment = Enum.TextXAlignment.Right
     value_label.Parent = frame
 
-    -- slider track
     local track = Instance.new("Frame")
-    track.Name = "Track"
-    track.Size = UDim2.new(1, -24, 0, 6)
-    track.Position = UDim2.new(0, 12, 0, 36)
-    track.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+    track.Size = UDim2.new(1, -20, 0, 24)
+    track.Position = UDim2.new(0, 10, 0, 28)
+    track.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
     track.BorderSizePixel = 0
     track.Parent = frame
 
-    local track_corner = Instance.new("UICorner")
-    track_corner.CornerRadius = UDim.new(0, 3)
-    track_corner.Parent = track
+    Instance.new("UICorner", track).CornerRadius = UDim.new(0, 12)
 
-    -- slider fill
     local fill = Instance.new("Frame")
-    fill.Name = "Fill"
     fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
     fill.BackgroundColor3 = Color3.fromRGB(90, 60, 200)
     fill.BorderSizePixel = 0
     fill.Parent = track
 
-    local fill_corner = Instance.new("UICorner")
-    fill_corner.CornerRadius = UDim.new(0, 3)
-    fill_corner.Parent = fill
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 12)
 
-    -- slider knob
     local knob = Instance.new("Frame")
-    knob.Name = "Knob"
-    knob.Size = UDim2.new(0, 14, 0, 14)
-    knob.Position = UDim2.new((default - min) / (max - min), -7, 0.5, -7)
+    knob.Size = UDim2.new(0, 20, 0, 20)
+    knob.Position = UDim2.new((default - min) / (max - min), -10, 0.5, -10)
     knob.BackgroundColor3 = Color3.fromRGB(200, 190, 255)
     knob.BorderSizePixel = 0
     knob.ZIndex = 5
     knob.Parent = track
 
-    local knob_corner = Instance.new("UICorner")
-    knob_corner.CornerRadius = UDim.new(0, 7)
-    knob_corner.Parent = knob
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(0, 10)
 
     local value = default
     local dragging = false
 
-    local function update(input_pos)
-        local relative = math.clamp(
-            (input_pos - track.AbsolutePosition.X) / track.AbsoluteSize.X,
-            0, 1
-        )
-
-        value = math.floor(min + (max - min) * relative + 0.5)
-
-        fill.Size = UDim2.new(relative, 0, 1, 0)
-        knob.Position = UDim2.new(relative, -7, 0.5, -7)
+    local function update(x)
+        local rel = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+        value = math.floor(min + (max - min) * rel + 0.5)
+        fill.Size = UDim2.new(rel, 0, 1, 0)
+        knob.Position = UDim2.new(rel, -10, 0.5, -10)
         value_label.Text = tostring(value)
-
         if callback then callback(value) end
     end
 
@@ -832,7 +675,8 @@ local function create_slider(parent, text, min, max, default, order, callback)
     end)
 
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
             update(input.Position.X)
         end
     end)
@@ -845,39 +689,28 @@ local function create_slider(parent, text, min, max, default, order, callback)
     end)
 
     return {
-        frame = frame,
         get = function() return value end,
-        set = function(v)
-            value = v
-            local rel = (v - min) / (max - min)
-            fill.Size = UDim2.new(rel, 0, 1, 0)
-            knob.Position = UDim2.new(rel, -7, 0.5, -7)
-            value_label.Text = tostring(v)
-        end,
     }
 end
 
---// helper: info bar
-local function create_info(parent, text, order)
+--// info bar helper
+local function make_info(text, order)
     local frame = Instance.new("Frame")
-    frame.Name = text
-    frame.Size = UDim2.new(1, 0, 0, 30)
-    frame.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+    frame.Size = UDim2.new(1, 0, 0, 26)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
     frame.BorderSizePixel = 0
     frame.LayoutOrder = order
-    frame.Parent = parent
+    frame.Parent = Content
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = frame
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
 
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -16, 1, 0)
-    label.Position = UDim2.new(0, 8, 0, 0)
+    label.Size = UDim2.new(1, -12, 1, 0)
+    label.Position = UDim2.new(0, 6, 0, 0)
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.Gotham
-    label.TextSize = 11
-    label.TextColor3 = Color3.fromRGB(140, 140, 160)
+    label.TextSize = 10
+    label.TextColor3 = Color3.fromRGB(130, 130, 150)
     label.Text = text
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = frame
@@ -886,154 +719,139 @@ local function create_info(parent, text, order)
 end
 
 --// ================================================================
--- BUILD UI SECTIONS
+-- BUILD UI
 -- ================================================================
 
---// status bar
-local status_label = create_info(Content, "⚠ Waiting for packet capture...", 0)
+local status_bar = make_info("⏳ PARRY ONCE TO CAPTURE", 0)
 
---// main toggle
-local auto_toggle = create_toggle(Content, "Auto Parry", false, 1, function(state)
-    Parry.enabled = state
+local toggle_auto = make_toggle("AUTO PARRY", false, 1, function(state)
+    State.enabled = state
 end)
 
---// spam toggle
-local spam_toggle = create_toggle(Content, "Spam Parry (Brute Force)", false, 2, function(state)
-    Parry.spam_mode = state
+local toggle_spam = make_toggle("SPAM MODE", false, 2, function(state)
+    State.spam = state
 end)
 
---// curve prediction toggle
-local curve_toggle = create_toggle(Content, "Curve Ball Prediction", true, 3, function(state)
-    -- curve prediction is handled in the engine
-    -- this toggle is read during prediction
-    BALL_CURVE_ENABLED = state
-end)
-BALL_CURVE_ENABLED = true
-
---// distance slider
-local dist_slider = create_slider(Content, "Parry Distance (studs)", 6, 25, 14, 4, function(value)
-    Parry.max_distance = value
+local slider_distance = make_slider("Distance (studs)", 8, 30, 16, 3, function(v)
+    State.distance = v
 end)
 
---// timing slider
-local timing_slider = create_slider(Content, "Timing Precision (ms)", 50, 500, 100, 5, function(value)
-    Parry.tti_threshold = value / 1000
+local slider_timing = make_slider("Timing (ms)", 100, 600, 350, 4, function(v)
+    State.tti_threshold = v / 1000
 end)
 
---// cooldown slider
-local cooldown_slider = create_slider(Content, "Parry Cooldown (ms)", 30, 300, 60, 6, function(value)
-    Parry.min_gap = value / 1000
+local slider_cooldown = make_slider("Cooldown (ms)", 30, 500, 80, 5, function(v)
+    State.min_gap = v / 1000
 end)
 
---// stats bar
-local stats_label = create_info(Content, "Parries: 0 | Method: -- | Ball: --", 7)
+local stats_bar = make_info("Parries: 0 | Method: --", 6)
+local hint_bar = make_info("Parry manually once, then turn ON", 7)
 
---// method indicator
-local method_label = create_info(Content, "Bypass: initializing...", 8)
+--// floating toggle button (always visible, tap to show/hide panel)
+local FloatBtn = Instance.new("TextButton")
+FloatBtn.Size = UDim2.new(0, 48, 0, 48)
+FloatBtn.Position = UDim2.new(1, -60, 0.5, -24)
+FloatBtn.BackgroundColor3 = Color3.fromRGB(90, 60, 200)
+FloatBtn.Text = "⚡"
+FloatBtn.TextSize = 22
+FloatBtn.Font = Enum.Font.GothamBold
+FloatBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+FloatBtn.Parent = ScreenGui
+FloatBtn.ZIndex = 100
 
---// hotkey hint
-local hotkey_label = create_info(Content, "[H] toggle | [RightShift] hide UI", 9)
+Instance.new("UICorner", FloatBtn).CornerRadius = UDim.new(0, 24)
+
+local ui_visible = true
+FloatBtn.TouchTap:Connect(function()
+    ui_visible = not ui_visible
+    Main.Visible = ui_visible
+end)
+
+FloatBtn.MouseButton1Click:Connect(function()
+    if UserInputService.TouchEnabled then return end
+    ui_visible = not ui_visible
+    Main.Visible = ui_visible
+end)
 
 --// ================================================================
--- MAIN ENGINE LOOP
+-- MAIN LOOP
 -- ================================================================
 
-local hidden = false
+hook_remotes()
 
-UserInputService.InputBegan:Connect(function(input, game_processed)
-    if game_processed then return end
-
-    if input.KeyCode == Enum.KeyCode.H then
-        auto_toggle.set(not Parry.enabled)
-
-    elseif input.KeyCode == Enum.KeyCode.RightShift then
-        hidden = not hidden
-        Main.Visible = not hidden
-    end
-end)
-
---// update bypass method indicator
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-
-        local method = "none"
-        if Bypass.internal_function then
-            method = "internal ✓"
-        elseif Bypass.token_generator then
-            method = "token ✓"
-        elseif captured then
-            method = "replay ✓"
-        elseif Bypass.target_remote then
-            method = "remote ✓"
-        end
-
-        method_label.Text = "Bypass: " .. method
-
-        if captured and status_label then
-            status_label.Text = "✓ Packet captured — ready"
-        elseif Bypass.target_remote then
-            status_label.Text = "✓ Remote found — " .. Bypass.target_remote.Name
-        elseif Bypass.internal_function then
-            status_label.Text = "✓ Internal function active"
-        else
-            status_label.Text = "⚠ Parry manually once to capture"
-        end
-    end
-end)
-
---// main loop
 RunService.Heartbeat:Connect(function()
-    if not Parry.enabled then return end
-
-    -- update ball tracking every frame
-    update_ball_tracking()
-
-    local ball = Ball.instance
-    if not ball then
-        stats_label.Text = string.format("Parries: %d | Method: %s | Ball: not found",
-            Parry.count, Parry.method_used)
-        return
-    end
-
-    -- spam mode: just fire as fast as possible when ball is close
-    if Parry.spam_mode then
-        local char = LocalPlayer.Character
-        if char then
-            local root = char:FindFirstChild('HumanoidRootPart')
-            if root then
-                local dist = (ball.Position - root.Position).Magnitude
-                if dist < Parry.max_distance then
-                    -- fire at spam rate
-                    local now = os.clock()
-                    if now - Parry.last_fire >= Parry.spam_rate then
-                        execute_parry()
+    -- update status
+    if State.captured then
+        status_bar.Text = "✓ Captured: " .. State.captured_remote.Name
+    else
+        -- try to find remote by name if not captured yet
+        if not State.captured_remote then
+            for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+                if obj:IsA('RemoteEvent') then
+                    local n = string.lower(obj.Name)
+                    if n:find('parry') or n:find('deflect')
+                        or n:find('ability') or n:find('swing')
+                        or n:find('attack') then
+                        State.captured_remote = obj
+                        print('[BB] Found remote by scan: ' .. obj.Name)
+                        break
                     end
                 end
             end
         end
+        if State.captured_remote then
+            status_bar.Text = "✓ Remote found: " .. State.captured_remote.Name
+        else
+            status_bar.Text = "⏳ PARRY ONCE TO CAPTURE"
+        end
+    end
+
+    if not State.enabled and not State.spam then
+        stats_bar.Text = string.format("Parries: %d | Method: %s",
+            State.parry_count, State.method)
         return
     end
 
-    -- precision mode: calculate exact timing
-    local tti, approaching, dist = time_to_impact()
+    -- get ball info
+    local info = get_ball_info()
 
-    if not approaching then
-        stats_label.Text = string.format("Parries: %d | Method: %s | Ball: %d studs (away)",
-            Parry.count, Parry.method_used, math.floor(dist))
+    if not info then
+        stats_bar.Text = string.format("Parries: %d | Method: %s | Ball: ❌",
+            State.parry_count, State.method)
         return
     end
 
-    stats_label.Text = string.format("Parries: %d | Method: %s | Ball: %d studs | TTI: %.2fs | %s",
-        Parry.count, Parry.method_used, math.floor(dist), tti,
-        Ball.curve_detected and "CURVED" or "straight")
+    -- update stats
+    local status_str = string.format("Parries: %d | Method: %s | Ball: %d studs %s",
+        State.parry_count, State.method, math.floor(info.dist),
+        info.approaching and "→" or "←")
 
-    -- parry when conditions are met
-    if dist <= Parry.max_distance and tti <= Parry.tti_threshold then
-        execute_parry()
+    -- SPAM MODE: fire whenever ball is close
+    if State.spam then
+        if info.dist <= State.distance then
+            fire_parry()
+        end
+        stats_bar.Text = status_str .. " | SPAM"
+        return
     end
+
+    -- PRECISION MODE: fire when ball approaching + within threshold
+    if State.enabled then
+        if info.approaching and info.dist <= State.distance then
+            -- fire when time to impact is short enough
+            if info.tti <= State.tti_threshold then
+                fire_parry()
+            end
+        end
+    end
+
+    stats_bar.Text = status_str
 end)
 
-print("[BB] === premium autoparry loaded ===")
-print("[BB] press H to toggle | right-shift to hide UI")
-print("[BB] parry manually once to enable token bypass")
+print("[BB] === Blade Ball Mobile Autoparry ===")
+print("[BB] Executor: " .. (EXECUTOR.has_hookmetamethod and "full" or "limited"))
+print("[BB] Instructions:")
+print("[BB] 1. Join a match")
+print("[BB] 2. Parry manually ONCE (tap/click)")
+print("[BB] 3. Turn ON Auto Parry")
+print("[BB] 4. That's it.")
