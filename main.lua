@@ -1,8 +1,7 @@
 -- ================================================================
 -- Slax Hub | Timebomb Duels — Full Build v3
--- Nyx Edition | WindUI-style + All Features
--- AutoPlay + Noclip + FFlag Boost + Cosmetics + Music
--- + Parry/Dodge + Infinite Jump + ESP + HUD + Server Hop
+-- Nyx Edition | AutoPlay + Noclip + FFlag Boost + Cosmetics + Music
+-- + Parry/Dodge + Auto-Swing + Infinite Jump + ESP + HUD + Anti-AFK
 -- ================================================================
 
 local Players      = game:GetService("Players")
@@ -196,13 +195,11 @@ local function makeTab(name, order)
     return page
 end
 
--- ============ Sections ============
 local function makeSection(parent, title)
     local section = Instance.new("Frame")
     section.Size = UDim2.new(1, 0, 0, 22)
     section.BackgroundTransparency = 1
     section.Parent = parent
-
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, 0, 1, 0)
     label.Position = UDim2.new(0, 4, 0, 0)
@@ -229,50 +226,32 @@ local function makeButton(parent, text, callback)
     btn.AutoButtonColor = false
     btn.Parent = parent
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-
     local stroke = Instance.new("UIStroke")
     stroke.Color = Color3.fromRGB(60, 65, 80)
     stroke.Thickness = 1
     stroke.Transparency = 0.5
     stroke.Parent = btn
-
     btn.MouseButton1Click:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.1), {
-            BackgroundColor3 = Color3.fromRGB(50, 55, 70)
-        }):Play()
-        task.wait(0.1)
-        TweenService:Create(btn, TweenInfo.new(0.1), {
-            BackgroundColor3 = Color3.fromRGB(30, 34, 44)
-        }):Play()
         if callback then callback() end
     end)
-
     return btn
 end
 
 -- ================================================================
--- MAIN LOGIC STATE
+-- STATE + HELPERS
 -- ================================================================
 local state = {
-    AutoPlay      = false,
-    Noclip        = false,
-    Bloxstrap     = false,
-    Korblox       = false,
-    Headless      = false,
-    Parry         = false,
-    AutoSwing     = false,
-    InfiniteJump  = false,
-    ESP           = false,
-    HUD           = false,
-    AntiAFK       = false,
-}
-
-local runFlags = {
-    tick          = 0,
-    lastJump      = 0,
-    lastParry     = 0,
-    lastSwing     = 0,
-    idleTimer     = 0,
+    AutoPlay = false,
+    Noclip = false,
+    Bloxstrap = false,
+    Korblox = false,
+    Headless = false,
+    Parry = false,
+    AutoSwing = false,
+    InfiniteJump = false,
+    ESP = false,
+    HUD = false,
+    AntiAFK = false,
 }
 
 local originalProps = {}
@@ -284,11 +263,13 @@ local function saveProp(inst, prop)
     end
 end
 
-local function getChar()      return LocalPlayer.Character end
-local function getHRP(plr)    plr = plr or LocalPlayer
+local function getChar() return LocalPlayer.Character end
+local function getHRP(plr)
+    plr = plr or LocalPlayer
     if plr.Character then return plr.Character:FindFirstChild("HumanoidRootPart") end
 end
-local function getHum(plr)    plr = plr or LocalPlayer
+local function getHum(plr)
+    plr = plr or LocalPlayer
     if plr.Character then return plr.Character:FindFirstChildOfClass("Humanoid") end
 end
 
@@ -297,8 +278,13 @@ local function hasBomb()
     if not char then return false end
     for _, obj in ipairs(char:GetChildren()) do
         local n = obj.Name:lower()
-        if n:find("bomb") or n:find("c4") or n:find("tnt")
-           or n:find("device") or n:find("payload") then
+        if obj:IsA("Tool") and (n:find("bomb") or n:find("c4") or n:find("tnt") or n:find("device")) then
+            return true
+        end
+    end
+    for _, obj in ipairs(LocalPlayer.Backpack:GetChildren()) do
+        local n = obj.Name:lower()
+        if obj:IsA("Tool") and (n:find("bomb") or n:find("c4") or n:find("tnt") or n:find("device")) then
             return true
         end
     end
@@ -353,6 +339,19 @@ local function applyKorblox(on)
         local part = char:FindFirstChild(name)
         if part and part:IsA("BasePart") then table.insert(found, part) end
     end
+    if #found == 0 then
+        for _, obj in ipairs(char:GetChildren()) do
+            if obj:IsA("BasePart") then
+                for _, att in ipairs(obj:GetChildren()) do
+                    if att:IsA("Attachment")
+                       and (att.Name:find("RightHip") or att.Name:find("Right Leg")) then
+                        table.insert(found, obj)
+                        break
+                    end
+                end
+            end
+        end
+    end
     for _, part in ipairs(found) do
         if on then
             saveProp(part, "Transparency")
@@ -375,6 +374,29 @@ local function applyKorblox(on)
                     child.Transparency = 1
                 elseif originalProps[child] then
                     child.Transparency = originalProps[child].Transparency or 0
+                end
+            end
+        end
+    end
+    for _, obj in ipairs(char:GetChildren()) do
+        if obj:IsA("Accessory") or obj:IsA("Accoutrement") then
+            local handle = obj:FindFirstChild("Handle")
+            if handle then
+                for _, att in ipairs(handle:GetChildren()) do
+                    if att:IsA("Attachment")
+                       and (att.Name:find("RightHip") or att.Name:find("Right Leg")) then
+                        if on then
+                            saveProp(handle, "Transparency")
+                            saveProp(handle, "LocalTransparencyModifier")
+                            handle.Transparency = 1
+                            handle.LocalTransparencyModifier = 1
+                        elseif originalProps[handle] then
+                            for prop, val in pairs(originalProps[handle]) do
+                                pcall(function() handle[prop] = val end)
+                            end
+                        end
+                        break
+                    end
                 end
             end
         end
@@ -426,11 +448,13 @@ local function applyHeadless(on)
                     if att:IsA("Attachment") and att.Name:find("Head") then
                         if on then
                             saveProp(handle, "Transparency")
+                            saveProp(handle, "LocalTransparencyModifier")
                             handle.Transparency = 1
                             handle.LocalTransparencyModifier = 1
                         elseif originalProps[handle] then
-                            handle.Transparency = originalProps[handle].Transparency or 0
-                            handle.LocalTransparencyModifier = originalProps[handle].LocalTransparencyModifier or 0
+                            for prop, val in pairs(originalProps[handle]) do
+                                pcall(function() handle[prop] = val end)
+                            end
                         end
                         break
                     end
@@ -441,7 +465,7 @@ local function applyHeadless(on)
 end
 
 -- ================================================================
--- MUSIC
+-- MUSIC SYSTEM
 -- ================================================================
 local currentSound = Instance.new("Sound")
 currentSound.Name = "SlaxLocalSound"
@@ -454,6 +478,17 @@ local savedSongsList = {
     {Name = "Song 2 🎶", Id = 86503267790406,  Loud = false},
     {Name = "Song 3 🔊", Id = 111018848542448, Loud = true},
 }
+
+local function playSongById(id)
+    if id then
+        currentSound.SoundId = "rbxassetid://" .. tostring(id)
+        currentSound:Play()
+    end
+end
+
+local function stopSong()
+    currentSound:Stop()
+end
 
 -- ================================================================
 -- BLOXSTRAP FFLAG BOOST
@@ -475,12 +510,12 @@ local disabledEffects = {}
 local function enableBoost()
     local fflags = {
         ["DFIntTaskSchedulerTargetFps"] = 240,
-        ["FFlagCommitToGraphicsQualityFix"] = "True",
-        ["DFFlagTextureQualityOverrideEnabled"] = "True",
         ["DFIntTextureQualityOverride"] = 0,
         ["FIntRenderShadowIntensity"] = 0,
         ["FIntFRMMinGrassDistance"] = 0,
         ["FIntFRMMaxGrassDistance"] = 0,
+        ["FIntFRMMinTerrainDistance"] = 0,
+        ["FIntFRMMaxTerrainDistance"] = 0,
         ["FFlagDisablePostFx"] = "True",
         ["FFlagDisableBloom"] = "True",
         ["FFlagDisableDOF"] = "True",
@@ -489,6 +524,7 @@ local function enableBoost()
         ["FFlagDisableMSAA"] = "True",
         ["FFlagDisableFXAA"] = "True",
         ["FFlagRenderFastClear"] = "True",
+        ["FFlagOptimizeMotionBlur"] = "True",
     }
     for flag, value in pairs(fflags) do
         pcall(function() sethiddenproperty(game, flag, value) end)
@@ -499,17 +535,31 @@ local function enableBoost()
         Lighting.Brightness = 2
         Lighting.EnvironmentDiffuseScale = 0
         Lighting.EnvironmentSpecularScale = 0
+        Lighting.OutdoorAmbient = Color3.fromRGB(178, 178, 178)
+        Lighting.FogEnd = 100000
+        Lighting.FogStart = 0
     end)
     for _, v in ipairs(Lighting:GetDescendants()) do
         if v:IsA("PostEffect") and v.Enabled then
             disabledEffects[v] = true
             v.Enabled = false
         end
+        if v:IsA("Sky") or v:IsA("Atmosphere") then
+            pcall(function() v.Parent = nil end)
+        end
     end
     pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+    pcall(function()
+        if Workspace.StreamingEnabled then
+            Workspace.StreamingTargetRadius = 256
+        end
+    end)
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("ParticleEmitter") or obj:IsA("Fire")
            or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+            pcall(function() obj.Enabled = false end)
+        end
+        if obj:IsA("Trail") or obj:IsA("Beam") then
             pcall(function() obj.Enabled = false end)
         end
         if obj:IsA("BasePart") then
@@ -534,45 +584,23 @@ local function disableBoost()
         end
     end
     disabledEffects = {}
+    for _, part in ipairs(Workspace:GetDescendants()) do
+        if part:IsA("BasePart") then
+            pcall(function() part.CastShadow = true end)
+        end
+    end
     pcall(function() RunService:SetPhysicsThrottleEnabled(false) end)
 end
 
 -- ================================================================
--- PARRY / SWING / JUMP
--- ================================================================
-local function tryParry()
-    local vim = game:GetService("VirtualInputManager")
-    pcall(function()
-        vim:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-        task.wait(0.03)
-        vim:SendKeyEvent(false, Enum.KeyCode.F, false, game)
-    end)
-end
-
-local function trySwing()
-    local vim = game:GetService("VirtualInputManager")
-    pcall(function()
-        vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-        task.wait(0.03)
-        vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-    end)
-end
-
-local function tryJump()
-    local hum = getHum()
-    if hum then
-        pcall(function() hum.Jump = true end)
-    end
-end
-
--- ================================================================
--- ESP + HUD
+-- ESP
 -- ================================================================
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "SlaxHubESP"
 ESPFolder.Parent = Workspace
 
 local function createESP(plr)
+    if not plr.Character then return end
     local box = Instance.new("Highlight")
     box.Name = "SlaxESP_" .. plr.Name
     box.Adornee = plr.Character
@@ -583,13 +611,13 @@ local function createESP(plr)
     box.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     box.Parent = ESPFolder
 
-    local nameTag = Instance.new("BillboardGui")
-    nameTag.Name = "SlaxTag_" .. plr.Name
-    nameTag.Size = UDim2.new(0, 100, 0, 22)
-    nameTag.StudsOffset = Vector3.new(0, 3, 0)
-    nameTag.AlwaysOnTop = true
-    nameTag.Adornee = plr.Character
-    nameTag.Parent = ESPFolder
+    local tag = Instance.new("BillboardGui")
+    tag.Name = "SlaxTag_" .. plr.Name
+    tag.Size = UDim2.new(0, 100, 0, 22)
+    tag.StudsOffset = Vector3.new(0, 3, 0)
+    tag.AlwaysOnTop = true
+    tag.Adornee = plr.Character
+    tag.Parent = ESPFolder
 
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, 0, 1, 0)
@@ -599,19 +627,11 @@ local function createESP(plr)
     label.Font = Enum.Font.GothamBold
     label.TextSize = 12
     label.TextStrokeTransparency = 0.3
-    label.Parent = nameTag
-end
-
-local function removeESP(plr)
-    for _, obj in ipairs(ESPFolder:GetChildren()) do
-        if obj.Name:find(plr.Name) then obj:Destroy() end
-    end
+    label.Parent = tag
 end
 
 local function refreshESP()
-    for _, obj in ipairs(ESPFolder:GetChildren()) do
-        obj:Destroy()
-    end
+    for _, obj in ipairs(ESPFolder:GetChildren()) do obj:Destroy() end
     if state.ESP then
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Humanoid") then
@@ -621,7 +641,9 @@ local function refreshESP()
     end
 end
 
+-- ================================================================
 -- HUD
+-- ================================================================
 local hudGui = Instance.new("ScreenGui")
 hudGui.Name = "SlaxHubHUD"
 hudGui.ResetOnSpawn = false
@@ -671,11 +693,11 @@ local timeLine = makeHudLine("Time: --")
 -- ================================================================
 -- BUILD UI PAGES
 -- ================================================================
-local mainPage = makeTab("Main", 1)
+local mainPage   = makeTab("Main", 1)
 local combatPage = makeTab("Combat", 2)
 local visualPage = makeTab("Visual", 3)
-local musicPage = makeTab("Music", 4)
-local miscPage = makeTab("Misc", 5)
+local musicPage  = makeTab("Music", 4)
+local miscPage   = makeTab("Misc", 5)
 
 -- ========== MAIN ==========
 makeSection(mainPage, "AutoPlay")
@@ -765,20 +787,245 @@ end)
 
 -- ========== MUSIC ==========
 makeSection(musicPage, "Now Playing")
-local statusLbl = Instance.new("TextLabel")
-statusLbl.Size = UDim2.new(1, 0, 0, 18)
-statusLbl.Text = "Status: Ready 🎧"
-statusLbl.TextColor3 = Color3.fromRGB(160, 165, 180)
-statusLbl.BackgroundTransparency = 1
-statusLbl.Font = Enum.Font.Gotham
-statusLbl.TextSize = 10
-statusLbl.Parent = musicPage
+local musicStatusLbl = Instance.new("TextLabel")
+musicStatusLbl.Size = UDim2.new(1, 0, 0, 18)
+musicStatusLbl.Text = "Status: Ready 🎧"
+musicStatusLbl.TextColor3 = Color3.fromRGB(160, 165, 180)
+musicStatusLbl.BackgroundTransparency = 1
+musicStatusLbl.Font = Enum.Font.Gotham
+musicStatusLbl.TextSize = 10
+musicStatusLbl.Parent = musicPage
 
 makeSection(musicPage, "Play by ID")
-local idFrame = Instance.new("Frame")
-idFrame.Size = UDim2.new(1, 0, 0, 32)
-idFrame.BackgroundTransparency = 1
-idFrame.Parent = musicPage
+local idRow = Instance.new("Frame")
+idRow.Size = UDim2.new(1, 0, 0, 32)
+idRow.BackgroundTransparency = 1
+idRow.Parent = musicPage
 
 local MusicBox = Instance.new("TextBox")
-MusicBox.Size = UDim2.new(0.6, 0,
+MusicBox.Size = UDim2.new(0.6, 0, 1, 0)
+MusicBox.PlaceholderText = "🎵 حط ID هنا"
+MusicBox.Text = ""
+MusicBox.BackgroundColor3 = Color3.fromRGB(25, 30, 42)
+MusicBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+MusicBox.PlaceholderColor3 = Color3.fromRGB(140, 150, 170)
+MusicBox.Font = Enum.Font.Gotham
+MusicBox.TextSize = 9
+MusicBox.Parent = idRow
+Instance.new("UICorner", MusicBox).CornerRadius = UDim.new(0, 6)
+
+local PlayMusicBtn = Instance.new("TextButton")
+PlayMusicBtn.Size = UDim2.new(0.18, 0, 1, 0)
+PlayMusicBtn.Position = UDim2.new(0.62, 0, 0, 0)
+PlayMusicBtn.Text = "▶️"
+PlayMusicBtn.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
+PlayMusicBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+PlayMusicBtn.Font = Enum.Font.GothamBold
+PlayMusicBtn.TextSize = 10
+PlayMusicBtn.Parent = idRow
+Instance.new("UICorner", PlayMusicBtn).CornerRadius = UDim.new(0, 6)
+
+local StopMusicBtn = Instance.new("TextButton")
+StopMusicBtn.Size = UDim2.new(0.18, 0, 1, 0)
+StopMusicBtn.Position = UDim2.new(0.82, 0, 0, 0)
+StopMusicBtn.Text = "⏹️"
+StopMusicBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
+StopMusicBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+StopMusicBtn.Font = Enum.Font.GothamBold
+StopMusicBtn.TextSize = 10
+StopMusicBtn.Parent = idRow
+Instance.new("UICorner", StopMusicBtn).CornerRadius = UDim.new(0, 6)
+
+PlayMusicBtn.MouseButton1Click:Connect(function()
+    local id = tonumber(MusicBox.Text:match("%d+"))
+    if id then
+        playSongById(id)
+        musicStatusLbl.Text = "Status: Playing " .. id .. " ▶️"
+        musicStatusLbl.TextColor3 = Color3.fromRGB(0, 180, 255)
+    else
+        MusicBox.Text = ""
+        MusicBox.PlaceholderText = "ID غير صحيح! ❌"
+    end
+end)
+
+StopMusicBtn.MouseButton1Click:Connect(function()
+    stopSong()
+    musicStatusLbl.Text = "Status: Stopped ⏹️"
+    musicStatusLbl.TextColor3 = Color3.fromRGB(200, 50, 50)
+end)
+
+makeSection(musicPage, "Quick Songs")
+for i, song in ipairs(savedSongsList) do
+    makeButton(musicPage, song.Name, function()
+        playSongById(song.Id)
+        musicStatusLbl.Text = "Status: Playing " .. song.Id .. " ▶️"
+        musicStatusLbl.TextColor3 = Color3.fromRGB(0, 180, 255)
+    end)
+end
+
+-- ========== MISC ==========
+makeSection(miscPage, "Credits")
+local credits = Instance.new("TextLabel")
+credits.Size = UDim2.new(1, 0, 0, 20)
+credits.Text = "Made by aki | TT: 1x.ud | DC: oa2a"
+credits.TextColor3 = Color3.fromRGB(180, 190, 210)
+credits.BackgroundTransparency = 1
+credits.Font = Enum.Font.Gotham
+credits.TextSize = 9
+credits.Parent = miscPage
+
+-- ================================================================
+-- UI EVENTS
+-- ================================================================
+ToggleButton.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    state.AutoPlay = false
+    state.Noclip = false
+    state.Bloxstrap = false
+    state.Korblox = false
+    state.Headless = false
+    state.Parry = false
+    state.AutoSwing = false
+    state.InfiniteJump = false
+    state.ESP = false
+    state.HUD = false
+    currentSound:Destroy()
+    for _, obj in ipairs(ESPFolder:GetChildren()) do obj:Destroy() end
+    if LocalPlayer.Character then
+        for _, part in pairs(LocalPlayer.Character:GetChildren()) do
+            if part:IsA("BasePart") then part.CanCollide = true end
+        end
+    end
+    ScreenGui:Destroy()
+    hudGui:Destroy()
+end)
+
+-- ================================================================
+-- INFINITE JUMP
+-- ================================================================
+UIS.JumpRequest:Connect(function()
+    if state.InfiniteJump then
+        local hum = getHum()
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+-- ================================================================
+-- CHARACTER RESPAWN
+-- ================================================================
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    if state.Korblox then applyKorblox(true) end
+    if state.Headless then applyHeadless(true) end
+end)
+
+-- ================================================================
+-- MAIN LOOP
+-- ================================================================
+local lastJump = 0
+local lastParry = 0
+local lastSwing = 0
+local lastIdle = 0
+local fpsCount = 0
+local lastFPSUpdate = tick()
+
+RunService.Heartbeat:Connect(function(dt)
+    local char = getChar()
+    if not char then return end
+    local hrp = getHRP()
+    local hum = getHum()
+    if not hrp or not hum then return end
+
+    -- Noclip
+    if state.Noclip then
+        for _, part in ipairs(char:GetChildren()) do
+            if part:IsA("BasePart") then part.CanCollide = false end
+        end
+    end
+
+    -- AutoPlay
+    if state.AutoPlay and hasBomb() then
+        local tgt = getNearestTarget()
+        if tgt then
+            local thrp = getHRP(tgt)
+            if thrp then
+                local dir = (jitter(thrp.Position) - hrp.Position)
+                if dir.Magnitude > 0.05 then
+                    dir = dir.Unit
+                    local wp = hrp.Position + dir * 8
+                    hum:MoveTo(Vector3.new(wp.X, hrp.Position.Y, wp.Z))
+                    hrp.CFrame = CFrame.lookAt(hrp.Position, thrp.Position)
+                end
+            end
+        end
+    end
+
+    -- Auto Parry
+    if state.Parry then
+        local tgt, d = getNearestTarget(12)
+        if tgt and d and d < 12 then
+            local thrp = getHRP(tgt)
+            if thrp and thrp.AssemblyLinearVelocity.Magnitude > 3 then
+                if tick() - lastParry > 0.3 then
+                    lastParry = tick()
+                    pcall(function()
+                        local vim = game:GetService("VirtualInputManager")
+                        vim:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+                        task.wait(0.03)
+                        vim:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+                    end)
+                end
+            end
+        end
+    end
+
+    -- Auto Swing
+    if state.AutoSwing then
+        local tgt, d = getNearestTarget(15)
+        if tgt and d and d < 15 then
+            if tick() - lastSwing > 0.4 then
+                lastSwing = tick()
+                pcall(function()
+                    local vim = game:GetService("VirtualInputManager")
+                    vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                    task.wait(0.03)
+                    vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                end)
+            end
+        end
+    end
+
+    -- HUD
+    if state.HUD then
+        fpsCount = fpsCount + 1
+        if tick() - lastFPSUpdate >= 1 then
+            fpsLine.Text = "FPS: " .. fpsCount
+            fpsCount = 0
+            lastFPSUpdate = tick()
+        end
+        local ok, ping = pcall(function()
+            return game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+        end)
+        pingLine.Text = "Ping: " .. (ok and math.floor(ping) or "--") .. " ms"
+        bombLine.Text = "Bomb: " .. (hasBomb() and "YES ❤️" or "no")
+        local t = math.floor(tick())
+        timeLine.Text = "Time: " .. string.format("%02d:%02d", math.floor(t/60) % 60, t % 60)
+    end
+
+    -- Anti-AFK
+    if tick() - lastIdle > 60 then
+        lastIdle = tick()
+        pcall(function()
+            local VU = game:GetService("VirtualUser")
+            VU:CaptureController()
+            VU:ClickButton2(Vector2.new())
+        end)
+    end
+end)
+
+print("[Nyx] Slax Hub Full Build loaded ❤️")
+print("  - 5 tabs: Main, Combat, Visual, Music, Misc")
+print("  - Toggle: الأيقونة الحمراء على يسار الشاشة")
