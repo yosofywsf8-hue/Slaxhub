@@ -1,36 +1,67 @@
 -- ============================================================
--- Blade Ball — TEACH AUTO-PARRY v3
--- Fokus UI: header clean, live TTI meter, mode badge, log panel.
--- Lu parry manual N kali → script belajar timing lu → autoparry ON.
--- Fallback CLICK mode kalau hook nggak support.
+-- BLADE BALL — AUTO-PARRY FULL FINAL
+-- Single-file. Self-diagnostic. Multi-fallback. UI lengkap.
+-- Alur: lu parry manual N kali → script belajar → autoparry ON.
 -- ============================================================
 
+-- ============================================================
+-- BOOT — deteksi capability executor
+-- ============================================================
+local CAP = {
+    hookmetamethod    = type(hookmetamethod) == "function",
+    getrawmetatable   = type(getrawmetatable) == "function",
+    getnamecallmethod = type(getnamecallmethod) == "function",
+    newcclosure       = type(newcclosure) == "function",
+    identifyexecutor  = type(identifyexecutor) == "function",
+    setreadonly       = type(setreadonly) == "function",
+}
+
+local EXEC_NAME, EXEC_VER = "unknown", ""
+if CAP.identifyexecutor then
+    local ok, n, v = pcall(identifyexecutor)
+    if ok then EXEC_NAME, EXEC_VER = tostring(n), tostring(v or "") end
+end
+
+local function dbg(...)
+    print("[AP-FINAL]", ...)
+end
+
+dbg("=== BOOT ===")
+dbg("executor:", EXEC_NAME, EXEC_VER)
+dbg("capabilities:", "hook=", CAP.hookmetamethod,
+    "rawmt=", CAP.getrawmetatable,
+    "ncc=", CAP.newcclosure)
+
+-- ============================================================
+-- SERVICES
+-- ============================================================
 local RunService = game:GetService("RunService")
 local Players    = game:GetService("Players")
 local RS         = game:GetService("ReplicatedStorage")
 local WS         = game:GetService("Workspace")
 local UIS        = game:GetService("UserInputService")
 local CoreGui    = game:GetService("CoreGui")
-local Tween      = game:GetService("TweenService")
 
-local LP   = Players.LocalPlayer
+local LP = Players.LocalPlayer
 local Char = LP.Character or LP.CharacterAdded:Wait()
-local HRP  = Char:WaitForChild("HumanoidRootPart")
+local HRP  = Char:WaitForChild("HumanoidRootPart", 5)
 
 Char.CharacterAdded:Connect(function(c)
     Char = c
-    HRP  = c:WaitForChild("HumanoidRootPart")
+    HRP  = c:WaitForChild("HumanoidRootPart", 5)
 end)
 
+dbg("localplayer:", LP.Name, "| char:", Char and Char.Name)
+
 -- ============================================================
--- DEBUG
+-- SAFE UI PARENT
 -- ============================================================
-local DEBUG = true
-local function dbg(...)
-    if DEBUG then print("[TEACH]", ...) end
+local uiParent
+pcall(function() uiParent = CoreGui end)
+if not uiParent then
+    uiParent = LP:WaitForChild("PlayerGui")
 end
-dbg("v3 start | hookmetamethod:", type(hookmetamethod) == "function",
-    "| getrawmetatable:", type(getrawmetatable) == "function")
+dbg("ui parent:", uiParent:GetFullName())
 
 -- ============================================================
 -- CONFIG
@@ -43,93 +74,139 @@ local CFG = {
     maxDist     = 60,
     minSpeed    = 40,
     leadFactor  = 1.0,
-    hookOK      = false,
-    clickMode   = false,
+    debug       = true,
 }
 
 local Learn = { samples = {}, done = false, active = false }
-local Stats = { currentTTI = math.huge, parries = 0 }
+local Stats = { currentTTI = math.huge, parries = 0, lastFire = 0 }
 
 -- ============================================================
--- REMOTE DISCOVERY
+-- REMOTE DISCOVERY (with verbose logging)
 -- ============================================================
 local parryRemote = nil
+local remoteList = {}
 
 local function scanRemotes()
     parryRemote = nil
+    remoteList = {}
     for _, v in ipairs(RS:GetDescendants()) do
         if v:IsA("RemoteEvent") then
-            local n = v.Name:lower()
-            if n:find("parry") or n:find("block") or n:find("deflect") then
-                parryRemote = v
-                dbg("parry remote:", v:GetFullName())
-                return
-            end
+            table.insert(remoteList, v)
         end
     end
-    for _, v in ipairs(RS:GetDescendants()) do
-        if v:IsA("RemoteEvent") then
-            local n = v.Name:lower()
-            if n == "remote" or n == "remoteevent" then
-                parryRemote = v
-                dbg("fallback remote:", v:GetFullName())
-                return
-            end
+    dbg("remotes found:", #remoteList)
+
+    -- priority 1: nama mengandung parry/block/deflect
+    for _, v in ipairs(remoteList) do
+        local n = v.Name:lower()
+        if n:find("parry") or n:find("block") or n:find("deflect") then
+            parryRemote = v
+            dbg("parry remote matched:", v:GetFullName())
+            return
         end
     end
+    -- priority 2: nama generik
+    for _, v in ipairs(remoteList) do
+        local n = v.Name:lower()
+        if n == "remote" or n == "remoteevent" or n == "main" or n == "mainremote" then
+            parryRemote = v
+            dbg("fallback remote:", v:GetFullName())
+            return
+        end
+    end
+    dbg("no parry remote — click mode akan dipakai")
 end
 scanRemotes()
 
 -- ============================================================
--- HOOK
+-- HOOK INSTALL (guarded)
 -- ============================================================
-local function installParryHook()
-    if not parryRemote then return false end
-    if type(hookmetamethod) ~= "function" or type(getrawmetatable) ~= "function" then
-        return false
+local hookInstalled = false
+
+local function recordManualSample(source)
+    if not Learn.active or CFG.enabled then return end
+    local tti = Stats.currentTTI
+    if not tti or tti == math.huge or tti <= 0 then return end
+    table.insert(Learn.samples, tti)
+    if CFG.debug then
+        dbg(string.format("sample #%d [%s] tti=%.3f", #Learn.samples, source, tti))
     end
+    if #Learn.samples >= CFG.teachTarget then
+        Learn.done   = true
+        Learn.active = false
+        CFG.enabled  = true
+        local sum = 0
+        for _, v in ipairs(Learn.samples) do sum = sum + v end
+        CFG.parryWindow = sum / #Learn.samples
+        dbg(string.format("LEARNED. window=%.3f from %d samples",
+            CFG.parryWindow, #Learn.samples))
+    end
+end
+
+if parryRemote and CAP.getrawmetatable and CAP.newcclosure then
     local ok, err = pcall(function()
         local mt = getrawmetatable(parryRemote)
         if not mt then error("no metatable") end
-        if mt.__teach_hooked then return end
         local oldIdx = mt.__index
         mt.__index = newcclosure(function(t, k)
             if k == "FireServer" then
                 return newcclosure(function(_, ...)
-                    if Learn.active and not CFG.enabled then
-                        local tti = Stats.currentTTI
-                        if tti and tti < math.huge and tti > 0 then
-                            table.insert(Learn.samples, tti)
-                            if #Learn.samples >= CFG.teachTarget then
-                                Learn.done   = true
-                                Learn.active = false
-                                CFG.enabled  = true
-                                local sum = 0
-                                for _, v in ipairs(Learn.samples) do sum = sum + v end
-                                CFG.parryWindow = sum / #Learn.samples
-                            end
-                        end
-                    end
+                    recordManualSample("hook")
                     return oldIdx(t, k)(t, ...)
                 end)
             end
             return oldIdx(t, k)
         end)
-        mt.__teach_hooked = true
     end)
-    return ok
+    if ok then
+        hookInstalled = true
+        dbg("hook installed on:", parryRemote:GetFullName())
+    else
+        dbg("hook install failed:", tostring(err))
+    end
 end
 
-CFG.hookOK = installParryHook()
-CFG.clickMode = not CFG.hookOK
-dbg("hook mode:", CFG.hookOK and "HOOK" or "CLICK")
+-- ============================================================
+-- CLICK FALLBACK (kalau hook gagal)
+-- ============================================================
+local clickMode = not hookInstalled
+if clickMode then
+    dbg("CLICK MODE ACTIVE — klik kiri akan direkam saat belajar")
+    UIS.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if not Learn.active or CFG.enabled then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+           or input.UserInputType == Enum.UserInputType.Touch then
+            recordManualSample("click")
+        end
+    end)
+end
 
 -- ============================================================
--- BALL TRACKING
+-- BALL TRACKING (multi-path discovery)
 -- ============================================================
+local ballContainer = nil
+local function refreshBallContainer()
+    ballContainer = WS:FindFirstChild("Balls")
+        or WS:FindFirstChild("Ball")
+        or WS:FindFirstChild("BallsFolder")
+    if not ballContainer then
+        for _, v in ipairs(WS:GetChildren()) do
+            if v.Name:lower():find("ball") then
+                ballContainer = v
+                break
+            end
+        end
+    end
+end
+refreshBallContainer()
+dbg("ball container:", ballContainer and ballContainer:GetFullName() or "N/A")
+
 local function getBalls()
-    local c = WS:FindFirstChild("Balls") or WS:FindFirstChild("Ball")
-    return c and c:GetChildren() or {}
+    if not ballContainer or not ballContainer.Parent then
+        refreshBallContainer()
+    end
+    return ballContainer and ballContainer:GetChildren() or {}
 end
 
 local function timeToImpact(ballPos, ballVel, myPos)
@@ -146,7 +223,7 @@ end
 RunService.RenderStepped:Connect(function()
     if not HRP or not HRP.Parent then return end
     local myPos = HRP.Position
-    local best  = math.huge
+    local best = math.huge
     for _, ball in ipairs(getBalls()) do
         if ball:IsA("BasePart") then
             local t = timeToImpact(ball.Position, ball.AssemblyLinearVelocity, myPos)
@@ -157,63 +234,37 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ============================================================
--- CLICK MODE FALLBACK
+-- FIRE PARRY
 -- ============================================================
-if CFG.clickMode then
-    UIS.InputBegan:Connect(function(input, gp)
-        if gp then return end
-        if not Learn.active or CFG.enabled then return end
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-           or input.UserInputType == Enum.UserInputType.Touch then
-            local tti = Stats.currentTTI
-            if tti and tti < math.huge and tti > 0 then
-                table.insert(Learn.samples, tti)
-                if #Learn.samples >= CFG.teachTarget then
-                    Learn.done   = true
-                    Learn.active = false
-                    CFG.enabled  = true
-                    local sum = 0
-                    for _, v in ipairs(Learn.samples) do sum = sum + v end
-                    CFG.parryWindow = sum / #Learn.samples
-                end
-            end
-        end
-    end)
-end
-
--- ============================================================
--- AUTOPARRY TRIGGER
--- ============================================================
-local lastParry = 0
-
 local function fireParry()
-    if CFG.clickMode then
-        local VIM = game:GetService("VirtualInputManager")
-        pcall(function()
+    if clickMode then
+        local ok = pcall(function()
+            local VIM = game:GetService("VirtualInputManager")
             VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
             VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
         end)
+        if ok then Stats.parries = Stats.parries + 1 end
     else
         if not parryRemote then scanRemotes() end
         if parryRemote then
-            pcall(function() parryRemote:FireServer() end)
+            local ok = pcall(function() parryRemote:FireServer() end)
+            if ok then Stats.parries = Stats.parries + 1 end
         end
     end
-    Stats.parries = Stats.parries + 1
+    Stats.lastFire = tick()
 end
 
 RunService.RenderStepped:Connect(function()
     if not CFG.enabled then return end
     local now = tick()
-    if now - lastParry < CFG.cooldown then return end
+    if now - Stats.lastFire < CFG.cooldown then return end
     if Stats.currentTTI <= CFG.parryWindow then
         fireParry()
-        lastParry = now
     end
 end)
 
 -- ============================================================
--- UI
+-- UI BUILD
 -- ============================================================
 local function make(class, props, children)
     local obj = Instance.new(class)
@@ -222,15 +273,6 @@ local function make(class, props, children)
     return obj
 end
 
-local gui = make("ScreenGui", {
-    Name = "TeachAutoParryV3",
-    ResetOnSpawn = false,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-}, {})
-local ok = pcall(function() gui.Parent = CoreGui end)
-if not ok then gui.Parent = LP:WaitForChild("PlayerGui") end
-
--- PALETTE
 local COL = {
     bg      = Color3.fromRGB(14, 14, 18),
     panel   = Color3.fromRGB(22, 22, 28),
@@ -244,9 +286,18 @@ local COL = {
     code    = Color3.fromRGB(200, 200, 210),
 }
 
+local gui = make("ScreenGui", {
+    Name = "BladeBallAutoParry",
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    IgnoreGuiInset = true,
+}, {})
+gui.Parent = uiParent
+
 local main = make("Frame", {
-    Size = UDim2.new(0, 340, 0, 460),
-    Position = UDim2.new(0.05, 0, 0.25, 0),
+    Name = "Main",
+    Size = UDim2.new(0, 340, 0, 470),
+    Position = UDim2.new(0.05, 0, 0.2, 0),
     BackgroundColor3 = COL.bg,
     BorderSizePixel = 0,
     Active = true,
@@ -256,7 +307,7 @@ main.Parent = gui
 make("UICorner", {CornerRadius = UDim.new(0, 12)}, {}).Parent = main
 make("UIStroke", {Color = COL.stroke, Thickness = 1}, {}).Parent = main
 
--- ============ HEADER ============
+-- HEADER
 local header = make("Frame", {
     Size = UDim2.new(1, 0, 0, 44),
     BackgroundColor3 = COL.panel,
@@ -264,7 +315,6 @@ local header = make("Frame", {
 }, {})
 header.Parent = main
 make("UICorner", {CornerRadius = UDim.new(0, 12)}, {}).Parent = header
--- cover bottom corner radius overlap
 make("Frame", {
     Size = UDim2.new(1, 0, 0, 12),
     Position = UDim2.new(0, 0, 1, -12),
@@ -272,7 +322,6 @@ make("Frame", {
     BorderSizePixel = 0,
 }, {}).Parent = header
 
--- accent bar
 make("Frame", {
     Size = UDim2.new(0, 4, 1, -16),
     Position = UDim2.new(0, 10, 0, 8),
@@ -281,31 +330,29 @@ make("Frame", {
 }, {}).Parent = header
 
 make("TextLabel", {
-    Size = UDim2.new(1, -110, 1, 0),
+    Size = UDim2.new(1, -140, 1, 0),
     Position = UDim2.new(0, 22, 0, 0),
     BackgroundTransparency = 1,
-    Text = "TEACH AUTO-PARRY",
+    Text = "AUTO-PARRY SUITE",
     TextColor3 = COL.text,
     Font = Enum.Font.GothamBold,
-    TextSize = 14,
+    TextSize = 13,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, {}).Parent = header
 
--- mode badge
 local modeBadge = make("TextLabel", {
-    Size = UDim2.new(0, 60, 0, 20),
-    Position = UDim2.new(1, -94, 0, 12),
-    BackgroundColor3 = CFG.clickMode and COL.red or COL.green,
-    Text = CFG.clickMode and "CLICK" or "HOOK",
+    Size = UDim2.new(0, 64, 0, 20),
+    Position = UDim2.new(1, -96, 0, 12),
+    BackgroundColor3 = clickMode and COL.red or COL.green,
+    Text = clickMode and "CLICK" or "HOOK",
     TextColor3 = Color3.fromRGB(255, 255, 255),
     Font = Enum.Font.GothamBold,
-    TextSize = 10,
+    TextSize = 9,
     BorderSizePixel = 0,
 }, {})
 modeBadge.Parent = header
 make("UICorner", {CornerRadius = UDim.new(0, 4)}, {}).Parent = modeBadge
 
--- close btn
 local closeBtn = make("TextButton", {
     Size = UDim2.new(0, 24, 0, 24),
     Position = UDim2.new(1, -30, 0, 10),
@@ -321,7 +368,7 @@ closeBtn.Parent = header
 make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = closeBtn
 closeBtn.MouseButton1Click:Connect(function() gui.Enabled = false end)
 
--- ============ CONTENT ============
+-- CONTENT
 local content = make("Frame", {
     Size = UDim2.new(1, -20, 1, -60),
     Position = UDim2.new(0, 10, 0, 54),
@@ -333,7 +380,7 @@ make("UIListLayout", {
     SortOrder = Enum.SortOrder.LayoutOrder,
 }, {}).Parent = content
 
--- ============ STATUS PANEL ============
+-- STATUS
 local statusPanel = make("Frame", {
     Size = UDim2.new(1, 0, 0, 56),
     BackgroundColor3 = COL.panel,
@@ -376,7 +423,7 @@ local statusSub = make("TextLabel", {
 }, {})
 statusSub.Parent = statusPanel
 
--- ============ TTI METER ============
+-- TTI METER
 local ttiPanel = make("Frame", {
     Size = UDim2.new(1, 0, 0, 44),
     BackgroundColor3 = COL.panel,
@@ -390,7 +437,7 @@ make("TextLabel", {
     Size = UDim2.new(0, 60, 0, 12),
     Position = UDim2.new(0, 14, 0, 6),
     BackgroundTransparency = 1,
-    Text = "TTI",
+    Text = "TIME-TO-IMPACT",
     TextColor3 = COL.dim,
     Font = Enum.Font.GothamBold,
     TextSize = 9,
@@ -398,8 +445,8 @@ make("TextLabel", {
 }, {}).Parent = ttiPanel
 
 local ttiValue = make("TextLabel", {
-    Size = UDim2.new(1, -80, 0, 12),
-    Position = UDim2.new(1, -80, 0, 6),
+    Size = UDim2.new(0, 80, 0, 12),
+    Position = UDim2.new(1, -94, 0, 6),
     BackgroundTransparency = 1,
     Text = "--",
     TextColor3 = COL.code,
@@ -426,7 +473,7 @@ local ttiFill = make("Frame", {
 ttiFill.Parent = ttiTrack
 make("UICorner", {CornerRadius = UDim.new(0, 3)}, {}).Parent = ttiFill
 
--- ============ TEACH TARGET ============
+-- TEACH TARGET
 local teachPanel = make("Frame", {
     Size = UDim2.new(1, 0, 0, 56),
     BackgroundColor3 = COL.panel,
@@ -460,25 +507,33 @@ local countLabel = make("TextLabel", {
 countLabel.Parent = teachPanel
 make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = countLabel
 
-local function mkStepBtn(label, posX)
-    local b = make("TextButton", {
-        Size = UDim2.new(0, 28, 0, 28),
-        Position = UDim2.new(0, posX, 0, 22),
-        BackgroundColor3 = COL.panel2,
-        Text = label,
-        TextColor3 = COL.text,
-        Font = Enum.Font.GothamBold,
-        TextSize = 14,
-        BorderSizePixel = 0,
-        AutoButtonColor = false,
-    }, {})
-    b.Parent = teachPanel
-    make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = b
-    return b
-end
+local minusBtn = make("TextButton", {
+    Size = UDim2.new(0, 28, 0, 28),
+    Position = UDim2.new(0, 82, 0, 22),
+    BackgroundColor3 = COL.panel2,
+    Text = "-",
+    TextColor3 = COL.text,
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+}, {})
+minusBtn.Parent = teachPanel
+make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = minusBtn
 
-local minusBtn = mkStepBtn("-", 82)
-local plusBtn  = mkStepBtn("+", 118)
+local plusBtn = make("TextButton", {
+    Size = UDim2.new(0, 28, 0, 28),
+    Position = UDim2.new(0, 118, 0, 22),
+    BackgroundColor3 = COL.panel2,
+    Text = "+",
+    TextColor3 = COL.text,
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+}, {})
+plusBtn.Parent = teachPanel
+make("UICorner", {CornerRadius = UDim.new(0, 6)}, {}).Parent = plusBtn
 
 minusBtn.MouseButton1Click:Connect(function()
     if CFG.enabled or Learn.active then return end
@@ -491,7 +546,7 @@ plusBtn.MouseButton1Click:Connect(function()
     countLabel.Text = tostring(CFG.teachTarget)
 end)
 
--- ============ START BUTTON ============
+-- START BUTTON
 local startBtn = make("TextButton", {
     Size = UDim2.new(1, 0, 0, 40),
     BackgroundColor3 = COL.green,
@@ -506,7 +561,7 @@ local startBtn = make("TextButton", {
 startBtn.Parent = content
 make("UICorner", {CornerRadius = UDim.new(0, 8)}, {}).Parent = startBtn
 
--- ============ INFO / LEARNED ============
+-- INFO PANEL
 local infoPanel = make("Frame", {
     Size = UDim2.new(1, 0, 0, 96),
     BackgroundColor3 = COL.panel,
@@ -517,8 +572,8 @@ infoPanel.Parent = content
 make("UICorner", {CornerRadius = UDim.new(0, 8)}, {}).Parent = infoPanel
 
 local function mkInfoRow(label, y)
-    local k = make("TextLabel", {
-        Size = UDim2.new(0, 80, 0, 16),
+    make("TextLabel", {
+        Size = UDim2.new(0, 90, 0, 16),
         Position = UDim2.new(0, 14, 0, y),
         BackgroundTransparency = 1,
         Text = label,
@@ -526,11 +581,10 @@ local function mkInfoRow(label, y)
         Font = Enum.Font.Gotham,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
-    }, {})
-    k.Parent = infoPanel
+    }, {}).Parent = infoPanel
     local v = make("TextLabel", {
-        Size = UDim2.new(1, -110, 0, 16),
-        Position = UDim2.new(0, 100, 0, y),
+        Size = UDim2.new(1, -120, 0, 16),
+        Position = UDim2.new(0, 110, 0, y),
         BackgroundTransparency = 1,
         Text = "-",
         TextColor3 = COL.code,
@@ -547,9 +601,9 @@ local windowVal   = mkInfoRow("Window",   32)
 local parriesVal  = mkInfoRow("Parries",  54)
 local remoteVal   = mkInfoRow("Remote",   76)
 
--- ============ LOG ============
+-- LOG
 local logPanel = make("Frame", {
-    Size = UDim2.new(1, 0, 0, 40),
+    Size = UDim2.new(1, 0, 0, 36),
     BackgroundColor3 = COL.panel,
     BorderSizePixel = 0,
     LayoutOrder = 6,
@@ -561,7 +615,7 @@ local logLabel = make("TextLabel", {
     Size = UDim2.new(1, -20, 1, 0),
     Position = UDim2.new(0, 14, 0, 0),
     BackgroundTransparency = 1,
-    Text = "ready",
+    Text = "ready | " .. EXEC_NAME,
     TextColor3 = COL.dim,
     Font = Enum.Font.Code,
     TextSize = 10,
@@ -569,9 +623,7 @@ local logLabel = make("TextLabel", {
 }, {})
 logLabel.Parent = logPanel
 
--- ============================================================
--- START BUTTON LOGIC
--- ============================================================
+-- START LOGIC
 startBtn.MouseButton1Click:Connect(function()
     if Learn.active then
         Learn.active = false
@@ -580,6 +632,7 @@ startBtn.MouseButton1Click:Connect(function()
         startBtn.Text = "MULAI BELAJAR"
         startBtn.BackgroundColor3 = COL.green
         logLabel.Text = "cancelled"
+        dbg("teach cancelled by user")
         return
     end
     if CFG.enabled then
@@ -589,6 +642,7 @@ startBtn.MouseButton1Click:Connect(function()
         startBtn.Text = "MULAI BELAJAR"
         startBtn.BackgroundColor3 = COL.green
         logLabel.Text = "autoparry off"
+        dbg("autoparry disabled by user")
         return
     end
     Learn.samples = {}
@@ -597,41 +651,37 @@ startBtn.MouseButton1Click:Connect(function()
     CFG.enabled   = false
     startBtn.Text = "BATAL BELAJAR"
     startBtn.BackgroundColor3 = COL.red
-    logLabel.Text = string.format("recording | %d target | %s",
-        CFG.teachTarget, CFG.clickMode and "click" or "hook")
+    logLabel.Text = string.format("recording | target %d | mode %s",
+        CFG.teachTarget, clickMode and "click" or "hook")
+    dbg("teach started | target:", CFG.teachTarget, "| mode:",
+        clickMode and "click" or "hook")
 end)
 
--- ============================================================
 -- UI UPDATER
--- ============================================================
 task.spawn(function()
     while gui.Parent do
-        -- status
         if Learn.active then
             statusDot.BackgroundColor3 = COL.accent
             statusTitle.Text = "RECORDING"
-            statusSub.Text = string.format("Parry manual sekarang. %d/%d",
+            statusSub.Text = string.format("Parry manual sekarang. %d / %d",
                 #Learn.samples, CFG.teachTarget)
         elseif CFG.enabled then
             statusDot.BackgroundColor3 = COL.green
             statusTitle.Text = "AUTO-PARRY ON"
-            statusSub.Text = "Timing lu udah ke-record, aktif."
+            statusSub.Text = "Timing udah ke-record, autoparry aktif."
         else
             statusDot.BackgroundColor3 = COL.dim
             statusTitle.Text = "IDLE"
             statusSub.Text = "Pencet MULAI BELAJAR buat rekam parry manual."
         end
 
-        -- tti meter
         local tti = Stats.currentTTI
-        local maxTTI = 0.5
         if tti == math.huge then
             ttiValue.Text = "--"
             ttiFill.Size = UDim2.new(0, 0, 1, 0)
-            ttiFill.BackgroundColor3 = COL.panel2
         else
             ttiValue.Text = string.format("%.3fs", tti)
-            local ratio = math.clamp(tti / maxTTI, 0, 1)
+            local ratio = math.clamp(tti / 0.5, 0, 1)
             ttiFill.Size = UDim2.new(ratio, 0, 1, 0)
             if CFG.enabled and tti <= CFG.parryWindow then
                 ttiFill.BackgroundColor3 = COL.green
@@ -640,7 +690,6 @@ task.spawn(function()
             end
         end
 
-        -- info rows
         progressVal.Text = string.format("%d / %d", #Learn.samples, CFG.teachTarget)
         windowVal.Text   = CFG.enabled and string.format("%.3fs", CFG.parryWindow) or "-"
         parriesVal.Text  = tostring(Stats.parries)
@@ -650,12 +699,16 @@ task.spawn(function()
     end
 end)
 
--- right-click header minimize
+-- MINIMIZE
 header.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton2 then
         content.Visible = not content.Visible
-        main.Size = content.Visible and UDim2.new(0, 340, 0, 460) or UDim2.new(0, 340, 0, 44)
+        main.Size = content.Visible and UDim2.new(0, 340, 0, 470) or UDim2.new(0, 340, 0, 44)
     end
 end)
 
-dbg("v3 loaded | mode:", CFG.clickMode and "CLICK" or "HOOK")
+dbg("=== LOADED ===")
+dbg("mode:", clickMode and "CLICK" or "HOOK")
+dbg("remote:", parryRemote and parryRemote:GetFullName() or "N/A")
+dbg("ball container:", ballContainer and ballContainer:GetFullName() or "N/A")
+dbg("ui parent:", uiParent:GetFullName())
