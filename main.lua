@@ -176,13 +176,6 @@ local System = {
         __timehole_active    = false,
         __slashesoffury_active = false,
         __slashesoffury_count  = 0,
-        __humanizer_enabled  = false,
-        __humanizer_min_accuracy = 1,
-        __humanizer_max_accuracy = 50,
-        __humanizer_last_update  = 0,
-        __humanizer_next_change  = 0.8,
-        __auto_spam_cps      = 200,
-        __auto_spam_last_fire = 0,
     },
     __config = {
         __curve_names = {"Camera", "Random", "Accelerated", "Backwards", "Slow", "High", "Left", "Right"},
@@ -199,48 +192,6 @@ local function update_divisor()
     System.__properties.__divisor_multiplier =
         0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
 end
-
-local function update_randomized_accuracy()
-    if not System.__properties.__humanizer_enabled then return end
-    local props = System.__properties
-    local now = os.clock()
-    if now < props.__humanizer_last_update + props.__humanizer_next_change then return end
-    props.__humanizer_last_update = now
-    local ping_str = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
-    local ping = tonumber(ping_str:match("%d+")) or 0
-    local min_h = math.clamp(props.__humanizer_min_accuracy, 1, 50)
-    local max_h = math.clamp(props.__humanizer_max_accuracy, 1, 50)
-    if min_h > max_h then min_h, max_h = max_h, min_h end
-    local current = math.clamp(props.__accuracy, min_h, max_h)
-    local span    = math.max(1, max_h - min_h)
-    local ping_factor = ping >= 90 and 0.75 or (ping <= 50 and 1.25 or 1)
-    local roll = math.random(1, 100)
-    local new_acc
-    if ping >= 90 then
-        new_acc = math.clamp(current + math.random(-1, 1), min_h, max_h)
-    elseif roll <= 45 then
-        new_acc = math.clamp(current + math.random(-2, 2), min_h, max_h)
-    elseif roll <= 80 then
-        local drift = math.random(2, math.max(3, math.floor(span * 0.2)))
-        local dir = math.random() < 0.5 and -drift or drift
-        new_acc = math.clamp(current + dir, min_h, max_h)
-    else
-        new_acc = math.random(min_h, max_h)
-    end
-    if new_acc then
-        props.__accuracy = new_acc
-        props.__humanizer_next_change = math.random(0.7, 1.4) / ping_factor
-        update_divisor()
-    end
-end
-
-task.spawn(function()
-    while task.wait(0.1) do
-        if System.__properties.__humanizer_enabled then
-            pcall(update_randomized_accuracy)
-        end
-    end
-end)
 
 -- ============================================================
 -- 4. BALL / PLAYER / CURVE / PARRY / DETECTION
@@ -605,7 +556,7 @@ function System.autoparry.stop()
 end
 
 -- ============================================================
--- 7. AUTO SPAM — VERSI GIST
+-- 7. AUTO SPAM — DIGANTI VERSI GIST
 -- ============================================================
 System.auto_spam = {}
 
@@ -624,8 +575,7 @@ function System.auto_spam:get_ball_properties()
     if not ball then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
     local ball_velocity = ball.AssemblyLinearVelocity or Vector3.new()
-    local ball_origin = ball
-    local ball_direction_vector = LocalPlayer.Character.PrimaryPart.Position - ball_origin.Position
+    local ball_direction_vector = LocalPlayer.Character.PrimaryPart.Position - ball.Position
     local ball_distance = ball_direction_vector.Magnitude
     local ball_direction = Vector3.new()
     local ball_dot = 0
@@ -760,14 +710,7 @@ function System.auto_spam.start()
         if ball_target == LocalPlayer.Name and target_dist > 30 and ball_dist > 30 then return end
 
         if ball_dist <= spam_acc then
-            -- CPS THROTTLE (200–2000)
-            local cps = math.clamp(System.__properties.__auto_spam_cps or 200, 200, 2000)
-            local interval = 1 / cps
-            local now = tick()
-            if now - System.__properties.__auto_spam_last_fire >= interval then
-                System.__properties.__auto_spam_last_fire = now
-                System.parry.execute()
-            end
+            System.parry.execute()
         end
     end)
 end
@@ -781,7 +724,7 @@ function System.auto_spam.stop()
 end
 
 -- ============================================================
--- 8. PRO MOBILE UI (SAMA PERSIS + TAMBAHAN 3 BLOK)
+-- 8. PRO MOBILE UI
 -- ============================================================
 local UI = {}
 
@@ -858,8 +801,8 @@ end)
 -- Main panel
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
-panel.Size = UDim2.new(0, 260, 0, 480)
-panel.Position = UDim2.new(0.5, -130, 0.5, -240)
+panel.Size = UDim2.new(0, 260, 0, 340)
+panel.Position = UDim2.new(0.5, -130, 0.5, -170)
 panel.BackgroundColor3 = COL.bg
 panel.BorderSizePixel = 0
 panel.Visible = false
@@ -926,14 +869,11 @@ divider.BackgroundTransparency = 0.5
 divider.BorderSizePixel = 0
 divider.Parent = panel
 
--- Body (scroll)
-local body = Instance.new("ScrollingFrame")
-body.Position = UDim2.new(0, 14, 0, 56)
-body.Size = UDim2.new(1, -28, 1, -110)
+-- Body
+local body = Instance.new("Frame")
+body.Position = UDim2.new(0, 16, 0, 56)
+body.Size = UDim2.new(1, -32, 1, -110)
 body.BackgroundTransparency = 1
-body.ScrollBarThickness = 0
-body.CanvasSize = UDim2.new(0, 0, 0, 0)
-body.AutomaticCanvasSize = Enum.AutomaticSize.Y
 body.Parent = panel
 
 local bodyLayout = Instance.new("UIListLayout")
@@ -1035,81 +975,6 @@ local asToggle = makeToggleRow("Auto Spam", "spam parry when ball is close", 2, 
     end
 end)
 
--- ============================================================
--- AUTO SPAM CPS (200–2000) — TAMBAHAN BARU
--- ============================================================
-local cpsLabel = Instance.new("TextLabel")
-cpsLabel.BackgroundTransparency = 1
-cpsLabel.Size = UDim2.new(1, 0, 0, 16)
-cpsLabel.Text = "AUTO SPAM CPS  (200 – 2000)"
-cpsLabel.TextColor3 = COL.textFaint
-cpsLabel.FontFace = FONT.bold
-cpsLabel.TextSize = 10
-cpsLabel.TextXAlignment = Enum.TextXAlignment.Left
-cpsLabel.LayoutOrder = 3
-cpsLabel.Parent = body
-
-local cpsRow = Instance.new("Frame")
-cpsRow.Size = UDim2.new(1, 0, 0, 50)
-cpsRow.BackgroundColor3 = COL.bgSoft
-cpsRow.BackgroundTransparency = 0.05
-cpsRow.BorderSizePixel = 0
-cpsRow.LayoutOrder = 4
-cpsRow.Parent = body
-corner(cpsRow, UDim.new(0, 12))
-stroke(cpsRow, COL.stroke, 1)
-
-local cpsMinus = Instance.new("TextButton")
-cpsMinus.Size = UDim2.new(0, 44, 0, 38)
-cpsMinus.Position = UDim2.new(0, 6, 0.5, -19)
-cpsMinus.BackgroundColor3 = COL.bgDeep
-cpsMinus.Text = "−"
-cpsMinus.TextColor3 = COL.text
-cpsMinus.FontFace = FONT.bold
-cpsMinus.TextSize = 20
-cpsMinus.AutoButtonColor = false
-cpsMinus.BorderSizePixel = 0
-cpsMinus.Parent = cpsRow
-corner(cpsMinus, UDim.new(0, 9))
-
-local cpsPlus = Instance.new("TextButton")
-cpsPlus.Size = UDim2.new(0, 44, 0, 38)
-cpsPlus.Position = UDim2.new(1, -50, 0.5, -19)
-cpsPlus.BackgroundColor3 = COL.bgDeep
-cpsPlus.Text = "+"
-cpsPlus.TextColor3 = COL.text
-cpsPlus.FontFace = FONT.bold
-cpsPlus.TextSize = 20
-cpsPlus.AutoButtonColor = false
-cpsPlus.BorderSizePixel = 0
-cpsPlus.Parent = cpsRow
-corner(cpsPlus, UDim.new(0, 9))
-
-local cpsValue = Instance.new("TextLabel")
-cpsValue.BackgroundTransparency = 1
-cpsValue.Position = UDim2.new(0, 54, 0, 0)
-cpsValue.Size = UDim2.new(1, -108, 1, 0)
-cpsValue.Text = tostring(System.__properties.__auto_spam_cps)
-cpsValue.TextColor3 = COL.text
-cpsValue.FontFace = FONT.bold
-cpsValue.TextSize = 18
-cpsValue.Parent = cpsRow
-
-local CPS_MIN, CPS_MAX = 200, 2000
-local function setCPS(v)
-    v = math.clamp(math.floor(v), CPS_MIN, CPS_MAX)
-    System.__properties.__auto_spam_cps = v
-    cpsValue.Text = tostring(v)
-end
-setCPS(System.__properties.__auto_spam_cps)
-
-cpsMinus.MouseButton1Click:Connect(function()
-    setCPS(System.__properties.__auto_spam_cps - 50)
-end)
-cpsPlus.MouseButton1Click:Connect(function()
-    setCPS(System.__properties.__auto_spam_cps + 50)
-end)
-
 -- Curve selector label
 local curveLabel = Instance.new("TextLabel")
 curveLabel.BackgroundTransparency = 1
@@ -1119,14 +984,14 @@ curveLabel.TextColor3 = COL.textFaint
 curveLabel.FontFace = FONT.bold
 curveLabel.TextSize = 10
 curveLabel.TextXAlignment = Enum.TextXAlignment.Left
-curveLabel.LayoutOrder = 5
+curveLabel.LayoutOrder = 3
 curveLabel.Parent = body
 
 -- Curve buttons (2 rows of 4)
 local curveGrid = Instance.new("Frame")
 curveGrid.Size = UDim2.new(1, 0, 0, 76)
 curveGrid.BackgroundTransparency = 1
-curveGrid.LayoutOrder = 6
+curveGrid.LayoutOrder = 4
 curveGrid.Parent = body
 
 local curveLayout = Instance.new("UIGridLayout")
@@ -1171,186 +1036,6 @@ for i, name in ipairs(System.__config.__curve_names) do
     curveButtons[i] = b
 end
 
--- ============================================================
--- PARRY ACCURACY — TAMBAHAN BARU
--- ============================================================
-local accLabel = Instance.new("TextLabel")
-accLabel.BackgroundTransparency = 1
-accLabel.Size = UDim2.new(1, 0, 0, 16)
-accLabel.Text = "PARRY ACCURACY"
-accLabel.TextColor3 = COL.textFaint
-accLabel.FontFace = FONT.bold
-accLabel.TextSize = 10
-accLabel.TextXAlignment = Enum.TextXAlignment.Left
-accLabel.LayoutOrder = 7
-accLabel.Parent = body
-
-local accRow = Instance.new("Frame")
-accRow.Size = UDim2.new(1, 0, 0, 50)
-accRow.BackgroundColor3 = COL.bgSoft
-accRow.BackgroundTransparency = 0.05
-accRow.BorderSizePixel = 0
-accRow.LayoutOrder = 8
-accRow.Parent = body
-corner(accRow, UDim.new(0, 12))
-stroke(accRow, COL.stroke, 1)
-
-local accMinus = Instance.new("TextButton")
-accMinus.Size = UDim2.new(0, 44, 0, 38)
-accMinus.Position = UDim2.new(0, 6, 0.5, -19)
-accMinus.BackgroundColor3 = COL.bgDeep
-accMinus.Text = "−"
-accMinus.TextColor3 = COL.text
-accMinus.FontFace = FONT.bold
-accMinus.TextSize = 20
-accMinus.AutoButtonColor = false
-accMinus.BorderSizePixel = 0
-accMinus.Parent = accRow
-corner(accMinus, UDim.new(0, 9))
-
-local accPlus = Instance.new("TextButton")
-accPlus.Size = UDim2.new(0, 44, 0, 38)
-accPlus.Position = UDim2.new(1, -50, 0.5, -19)
-accPlus.BackgroundColor3 = COL.bgDeep
-accPlus.Text = "+"
-accPlus.TextColor3 = COL.text
-accPlus.FontFace = FONT.bold
-accPlus.TextSize = 20
-accPlus.AutoButtonColor = false
-accPlus.BorderSizePixel = 0
-accPlus.Parent = accRow
-corner(accPlus, UDim.new(0, 9))
-
-local accValue = Instance.new("TextLabel")
-accValue.BackgroundTransparency = 1
-accValue.Position = UDim2.new(0, 54, 0, 0)
-accValue.Size = UDim2.new(1, -108, 1, 0)
-accValue.Text = tostring(System.__properties.__accuracy)
-accValue.TextColor3 = COL.text
-accValue.FontFace = FONT.bold
-accValue.TextSize = 18
-accValue.Parent = accRow
-
-local function setAcc(v)
-    v = math.clamp(math.floor(v), 1, 50)
-    System.__properties.__accuracy = v
-    accValue.Text = tostring(v)
-    if not System.__properties.__humanizer_enabled then
-        update_divisor()
-    end
-end
-setAcc(System.__properties.__accuracy)
-accMinus.MouseButton1Click:Connect(function() setAcc(System.__properties.__accuracy - 1) end)
-accPlus.MouseButton1Click:Connect(function() setAcc(System.__properties.__accuracy + 1) end)
-
--- ============================================================
--- HUMANIZER — TAMBAHAN BARU
--- ============================================================
-local humLabel = Instance.new("TextLabel")
-humLabel.BackgroundTransparency = 1
-humLabel.Size = UDim2.new(1, 0, 0, 16)
-humLabel.Text = "HUMANIZER"
-humLabel.TextColor3 = COL.textFaint
-humLabel.FontFace = FONT.bold
-humLabel.TextSize = 10
-humLabel.TextXAlignment = Enum.TextXAlignment.Left
-humLabel.LayoutOrder = 9
-humLabel.Parent = body
-
-local humToggle = makeToggleRow("Random Accuracy", "vary parry timing ±", 10, function(v)
-    System.__properties.__humanizer_enabled = v
-    if v then update_randomized_accuracy() end
-end)
-
-local humRangeRow = Instance.new("Frame")
-humRangeRow.Size = UDim2.new(1, 0, 0, 56)
-humRangeRow.BackgroundColor3 = COL.bgSoft
-humRangeRow.BackgroundTransparency = 0.05
-humRangeRow.BorderSizePixel = 0
-humRangeRow.LayoutOrder = 11
-humRangeRow.Parent = body
-corner(humRangeRow, UDim.new(0, 12))
-stroke(humRangeRow, COL.stroke, 1)
-
-local minLbl = Instance.new("TextLabel")
-minLbl.BackgroundTransparency = 1
-minLbl.Position = UDim2.new(0, 12, 0, 6)
-minLbl.Size = UDim2.new(0.5, -18, 0, 14)
-minLbl.Text = "MIN"
-minLbl.TextColor3 = COL.textFaint
-minLbl.FontFace = FONT.bold
-minLbl.TextSize = 9
-minLbl.TextXAlignment = Enum.TextXAlignment.Left
-minLbl.Parent = humRangeRow
-
-local maxLbl = Instance.new("TextLabel")
-maxLbl.BackgroundTransparency = 1
-maxLbl.Position = UDim2.new(0.5, 6, 0, 6)
-maxLbl.Size = UDim2.new(0.5, -18, 0, 14)
-maxLbl.Text = "MAX"
-maxLbl.TextColor3 = COL.textFaint
-maxLbl.FontFace = FONT.bold
-maxLbl.TextSize = 9
-maxLbl.TextXAlignment = Enum.TextXAlignment.Left
-maxLbl.Parent = humRangeRow
-
-local function stepperRow(parent, xPos, initVal, minV, maxV, onChanged)
-    local minus = Instance.new("TextButton")
-    minus.Size = UDim2.new(0, 32, 0, 26)
-    minus.Position = UDim2.new(xPos, 0, 0, 22)
-    minus.BackgroundColor3 = COL.bgDeep
-    minus.Text = "−"
-    minus.TextColor3 = COL.text
-    minus.FontFace = FONT.bold
-    minus.TextSize = 16
-    minus.AutoButtonColor = false
-    minus.BorderSizePixel = 0
-    minus.Parent = parent
-    corner(minus, UDim.new(0, 7))
-
-    local val = Instance.new("TextLabel")
-    val.BackgroundTransparency = 1
-    val.Position = UDim2.new(xPos, 34, 0, 22)
-    val.Size = UDim2.new(0, 40, 0, 26)
-    val.Text = tostring(initVal)
-    val.TextColor3 = COL.text
-    val.FontFace = FONT.bold
-    val.TextSize = 14
-    val.Parent = parent
-
-    local plus = Instance.new("TextButton")
-    plus.Size = UDim2.new(0, 32, 0, 26)
-    plus.Position = UDim2.new(xPos, 76, 0, 22)
-    plus.BackgroundColor3 = COL.bgDeep
-    plus.Text = "+"
-    plus.TextColor3 = COL.text
-    plus.FontFace = FONT.bold
-    plus.TextSize = 16
-    plus.AutoButtonColor = false
-    plus.BorderSizePixel = 0
-    plus.Parent = parent
-    corner(plus, UDim.new(0, 7))
-
-    local current = initVal
-    local function set(v)
-        v = math.clamp(math.floor(v), minV, maxV)
-        current = v
-        val.Text = tostring(v)
-        if onChanged then onChanged(v) end
-    end
-    minus.MouseButton1Click:Connect(function() set(current - 1) end)
-    plus.MouseButton1Click:Connect(function() set(current + 1) end)
-    return { set = set, get = function() return current end }
-end
-
-stepperRow(humRangeRow, 12, System.__properties.__humanizer_min_accuracy, 1, 50, function(v)
-    System.__properties.__humanizer_min_accuracy = v
-end)
-
-stepperRow(humRangeRow, 130, System.__properties.__humanizer_max_accuracy, 1, 50, function(v)
-    System.__properties.__humanizer_max_accuracy = v
-end)
-
 -- Status bar
 local statusBar = Instance.new("Frame")
 statusBar.Size = UDim2.new(1, -32, 0, 34)
@@ -1393,7 +1078,105 @@ task.spawn(function()
             statusDot.BackgroundColor3 = COL.green
             local parts = {}
             if ap then table.insert(parts, "AP") end
-            if as then table.insert(parts, "AS @" .. System.__properties.__auto_spam_cps) end
+            if as then table.insert(parts, "AS") end
             statusText.Text = ready_txt .. "  •  " .. table.concat(parts, " + ") .. " active"
         else
-            sta
+            statusDot.BackgroundColor3 = COL.red
+            statusText.Text = ready_txt .. "  •  idle"
+        end
+    end
+end)
+
+refreshCurve()
+
+-- Drag panel via header
+do
+    local dragging, dragStart, startPos
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = panel.Position
+        end
+    end)
+    header.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseMovement then
+            local d = input.Position - dragStart
+            panel.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + d.X,
+                startPos.Y.Scale, startPos.Y.Offset + d.Y
+            )
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+end
+
+-- Drag FAB
+do
+    local dragging, dragStart, startPos, moved
+    fab.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            moved    = false
+            dragStart = input.Position
+            startPos  = fab.Position
+        end
+    end)
+    fab.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseMovement then
+            local d = input.Position - dragStart
+            if math.abs(d.X) > 6 or math.abs(d.Y) > 6 then moved = true end
+            if moved then
+                fab.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + d.X,
+                    startPos.Y.Scale, startPos.Y.Offset + d.Y
+                )
+            end
+        end
+    end)
+    fab.InputEnded:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.Touch
+        and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+        dragging = false
+        if moved then return end
+        panel.Visible = not panel.Visible
+        if panel.Visible then
+            panel.Size = UDim2.new(0, 0, 0, 340)
+            tween(panel, 0.3, {Size = UDim2.new(0, 260, 0, 340)}):Play()
+        end
+    end)
+end
+
+closeBtn.MouseButton1Click:Connect(function()
+    tween(panel, 0.2, {Size = UDim2.new(0, 0, 0, 340)}):Play()
+    task.delay(0.2, function() panel.Visible = false end)
+end)
+
+-- ============================================================
+-- 9. AUTO START
+-- ============================================================
+System.__properties.__autoparry_enabled = true
+System.__properties.__auto_spam_enabled = true
+System.autoparry.start()
+System.auto_spam.start()
+update_divisor()
+
+apToggle.set(true)
+asToggle.set(true)
+
+task.delay(2, function()
+    panel.Visible = true
+    panel.Size = UDim2.new(0, 0, 0, 340)
+    tween(panel, 0.35, {Size = UDim2.new(0, 260, 0, 340)}):Play()
+end)
