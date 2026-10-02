@@ -159,7 +159,7 @@ local System = {
         __auto_spam_enabled   = false,
         __manual_spam_enabled = false,
         __curve_mode          = 1,
-        __accuracy            = 1,
+        __accuracy            = 100,
         __divisor_multiplier  = 1.1,
         __parried             = false,
         __training_parried    = false,
@@ -170,7 +170,7 @@ local System = {
         __distance_multiplier = 1,
         __humanized_enabled   = false,
         __humanized_min       = 1,
-        __humanized_max       = 50,
+        __humanized_max       = 100,
         __humanized_last      = 0,
         __humanized_next      = 0.8,
         __tornado_time        = tick(),
@@ -209,8 +209,8 @@ task.spawn(function()
                 System.__properties.__humanized_last = now
                 local ping_str = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
                 local ping = tonumber(ping_str:match("%d+")) or 0
-                local min_h = math.clamp(System.__properties.__humanized_min, 1, 50)
-                local max_h = math.clamp(System.__properties.__humanized_max, 1, 50)
+                local min_h = math.clamp(System.__properties.__humanized_min, 1, 100)
+                local max_h = math.clamp(System.__properties.__humanized_max, 1, 100)
                 if min_h > max_h then min_h, max_h = max_h, min_h end
                 local current = math.clamp(System.__properties.__accuracy, min_h, max_h)
                 local span = math.max(1, max_h - min_h)
@@ -700,7 +700,6 @@ function System.auto_spam.start()
 
         if not ball_target then return end
 
-        -- ★ Distance Multiplier
         local dist_mult = System.__properties.__distance_multiplier or 1
         spam_accuracy = spam_accuracy * dist_mult
 
@@ -735,12 +734,7 @@ function System.manual_spam.loop(delta)
     if not LocalPlayer.Character or LocalPlayer.Character.Parent ~= Alive then return end
     if getgenv().spamui then return end
     System.__properties.__spam_accumulator = (System.__properties.__spam_accumulator or 0) + delta
-    local interval
-    if getgenv().ManualSpamCPSEnabled then
-        interval = 1 / math.max(1, System.__properties.__spam_rate or 100)
-    else
-        interval = 1 / math.max(1, System.__properties.__spam_rate or 100)
-    end
+    local interval = 1 / math.max(1, System.__properties.__spam_rate or 100)
     if (System.__properties.__spam_accumulator or 0) < interval then return end
     System.__properties.__spam_accumulator = 0
     System.parry.execute()
@@ -984,7 +978,7 @@ end
 System.hotkeys.start()
 
 -- ============================================================
--- 8. AZURE UI (BLABLA HUB) — Shimmer + Purple Theme
+-- 8. AZURE UI (BLABLA HUB)
 -- ============================================================
 local Config = setmetatable({
     save = function(self, file_name, config)
@@ -1025,7 +1019,6 @@ function Azure.new()
     ScreenGui.DisplayOrder = 1000
     ScreenGui.Parent = CoreGui
 
-    -- ★ Container بنفسجي
     local Container = Instance.new("Frame")
     Container.Name = "Container"
     Container.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1040,7 +1033,6 @@ function Azure.new()
     Container.Parent = ScreenGui
     Instance.new("UICorner", Container).CornerRadius = UDim.new(0, 12)
 
-    -- ★ تدرج بنفسجي/أبيض
     local bgGradient = Instance.new("UIGradient", Container)
     bgGradient.Color = ColorSequence.new{
         ColorSequenceKeypoint.new(0.00, Color3.fromRGB(42, 25, 82)),
@@ -1057,7 +1049,6 @@ function Azure.new()
     containerStroke.Transparency = 0.2
     containerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    -- ★ Shimmer
     local Shimmer = Instance.new("Frame", Container)
     Shimmer.Name = "Shimmer"
     Shimmer.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1955,7 +1946,7 @@ local SpamTab   = AzureWindow:create_tab("Spam")
 local DetTab    = AzureWindow:create_tab("Detection")
 local VisualTab = AzureWindow:create_tab("Visual")
 
--- MAIN — Auto Parry + Accuracy + Humanizer
+-- MAIN — Auto Parry + Accuracy + Randomize
 local autoparry_module = MainTab:create_module({
     title = "Auto Parry",
     description = "Auto Parry Settings",
@@ -1982,9 +1973,9 @@ autoparry_module:create_dropdown({
 autoparry_module:create_slider({
     title = "Parry Accuracy",
     flag = "ParryAccuracy",
-    maximum_value = 50,
+    maximum_value = 100,
     minimum_value = 1,
-    value = 1,
+    value = 100,
     round_number = true,
     callback = function(value)
         if not System.__properties.__humanized_enabled then
@@ -1994,23 +1985,20 @@ autoparry_module:create_slider({
     end,
 })
 
--- Humanizer module
-local humanizer_module = MainTab:create_module({
-    title = "Humanizer",
-    description = "Random parry accuracy range",
-    flag = "HumanizerModule",
-    section = "left",
-    callback = function(state)
-        System.__properties.__humanized_enabled = state
+autoparry_module:create_checkbox({
+    title = "Randomize Accuracy",
+    flag = "ParryRandomizeAccuracy",
+    callback = function(value)
+        System.__properties.__humanized_enabled = value
     end,
 })
 
-humanizer_module:create_range_slider({
+autoparry_module:create_range_slider({
     title = "Accuracy Range",
     flag = "HumanizerAccuracyRange",
-    maximum_value = 50,
+    maximum_value = 100,
     minimum_value = 1,
-    value = { min = 1, max = 50 },
+    value = { min = 1, max = 100 },
     round_number = true,
     callback = function(min_value, max_value)
         System.__properties.__humanized_min = min_value
