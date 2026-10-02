@@ -1409,4 +1409,52 @@ end
 do
     local dragging, dragStart, startPos
     header.InputBegan:Connect(function(input)
-        if input.UserInputType == Enu
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = panel.Position
+        end
+    end)
+    header.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseMovement then
+            local d = input.Position - dragStart
+            panel.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + d.X,
+                startPos.Y.Scale, startPos.Y.Offset + d.Y
+            )
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+end
+
+task.delay(2, function()
+    if not panel.Visible then openPanel() end
+end)
+
+apToggle.set(true)
+asToggle.set(true)
+
+return true
+end)
+
+if not UI_OK then
+    warn("[UI] failed to build UI:", tostring(UI_ERR))
+end
+
+-- ============================================================
+-- 9. AUTO START
+-- ============================================================
+System.__properties.__autoparry_enabled = true
+System.__properties.__auto_spam_enabled = true
+System.autoparry.start()
+System.auto_spam.start()
+System.auto_sof.start()
+update_divisor()
