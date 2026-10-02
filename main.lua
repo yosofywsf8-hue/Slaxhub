@@ -1,4 +1,5 @@
--- Blade Ball Mobile — Auto Parry + Auto Spam + Auto SoF
+-- Blade Ball Mobile — Auto Parry + Auto Spam
+-- SoF pauses autoparry (like infinity / deathslash / timehole)
 -- Runtime: Roblox mobile (touch)
 -- Executor: cloneref, getupvalues, getrawmetatable, setreadonly
 
@@ -192,97 +193,6 @@ local System = {
 local function update_divisor()
     System.__properties.__divisor_multiplier =
         0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
-end
-
--- ============================================================
--- 3.5 AUTO SLASHES OF FURY — 36 clicks / 7 seconds
--- ============================================================
-System.auto_sof = {
-    __enabled      = true,
-    __active       = false,
-    __connection   = nil,
-    __total_clicks = 36,
-    __duration     = 7,
-    __started_at   = 0,
-    __clicked      = 0,
-}
-
-local function _sendSofSlash()
-    local fired = false
-
-    -- 1) remote AbilityButtonPress
-    pcall(function()
-        local RS2 = game:GetService("ReplicatedStorage")
-        if RS2:FindFirstChild("Remotes") then
-            local ab = RS2.Remotes:FindFirstChild("AbilityButtonPress")
-            if ab and ab:IsA("RemoteEvent") then
-                ab:FireServer()
-                fired = true
-            end
-        end
-    end)
-
-    -- 2) fallback VirtualInputManager click
-    if not fired then
-        pcall(function()
-            local vim = game:GetService("VirtualInputManager")
-            vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-            task.wait(0.008)
-            vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-        end)
-    end
-end
-
-function System.auto_sof.start()
-    if System.auto_sof.__connection then
-        System.auto_sof.__connection:Disconnect()
-        System.auto_sof.__connection = nil
-    end
-
-    System.auto_sof.__connection = RunService.Heartbeat:Connect(function()
-        if not System.auto_sof.__enabled then return end
-        if not System.auto_sof.__active then return end
-
-        local total    = System.auto_sof.__total_clicks
-        local duration = System.auto_sof.__duration
-        local elapsed  = tick() - System.auto_sof.__started_at
-
-        if System.auto_sof.__clicked >= total then return end
-        if elapsed >= duration then return end
-
-        local next_index  = System.auto_sof.__clicked + 1
-        local target_time = (next_index / total) * duration
-
-        if elapsed >= target_time then
-            _sendSofSlash()
-            System.auto_sof.__clicked += 1
-        end
-    end)
-end
-
-function System.auto_sof.stop()
-    System.auto_sof.__enabled = false
-    System.auto_sof.__active  = false
-    if System.auto_sof.__connection then
-        System.auto_sof.__connection:Disconnect()
-        System.auto_sof.__connection = nil
-    end
-end
-
-function System.auto_sof.set_enabled(state)
-    System.auto_sof.__enabled = state
-    if state then
-        if not System.auto_sof.__connection then
-            System.auto_sof.start()
-        end
-    else
-        System.auto_sof.stop()
-    end
-end
-
-function System.auto_sof.reset()
-    System.auto_sof.__started_at = tick()
-    System.auto_sof.__clicked    = 0
 end
 
 -- ============================================================
@@ -522,37 +432,14 @@ netFolder["RE/SlashesOfFuryActivate"].OnClientEvent:Connect(function(...)
     if p == LocalPlayer or p == LocalPlayer.Name or (p and p.Name == LocalPlayer.Name) then
         System.__properties.__slashesoffury_active = true
         System.__properties.__slashesoffury_count  = 0
-
-        -- AUTO SoF: reset window dan aktifkan
-        if System.auto_sof then
-            System.auto_sof.reset()
-            System.auto_sof.__active = true
-        end
-
-        -- Safety auto-clear
-        task.delay(8, function()
-            if System.__properties.__slashesoffury_active then
-                System.__properties.__slashesoffury_active = false
-                System.__properties.__slashesoffury_count  = 0
-                if System.auto_sof then
-                    System.auto_sof.__active = false
-                end
-            end
-        end)
     end
 end)
 netFolder["RE/SlashesOfFuryEnd"].OnClientEvent:Connect(function()
     System.__properties.__slashesoffury_active = false
     System.__properties.__slashesoffury_count  = 0
-    if System.auto_sof then
-        System.auto_sof.__active = false
-    end
 end)
 netFolder["RE/SlashesOfFuryParry"].OnClientEvent:Connect(function()
     System.__properties.__slashesoffury_count += 1
-end)
-netFolder["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(function()
-    -- no-op
 end)
 
 -- ============================================================
@@ -568,6 +455,7 @@ function System.autoparry.start()
         if not System.__properties.__autoparry_enabled then return end
         if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
 
+        -- ★ SoF pause (persis kayak infinity/deathslash/timehole di bawah)
         if System.__config.__detections.__slashesoffury
            and System.__properties.__slashesoffury_active then
             return
@@ -588,12 +476,6 @@ function System.autoparry.start()
 
         for _, ball in pairs(balls) do
             if not ball then continue end
-
-            if System.__config.__detections.__slashesoffury
-               and System.__properties.__slashesoffury_active then
-                continue
-            end
-
             local zoomies = ball:FindFirstChild("zoomies")
             if not zoomies then continue end
 
@@ -629,9 +511,12 @@ function System.autoparry.start()
             end
             if ball:FindFirstChild("ComboCounter") then continue end
             if LocalPlayer.Character.PrimaryPart:FindFirstChild("SingularityCape") then continue end
+
+            -- ★ 4 detections sama persis, semua skip parry
             if System.__config.__detections.__infinity and System.__properties.__infinity_active then continue end
             if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then continue end
             if System.__config.__detections.__timehole and System.__properties.__timehole_active then continue end
+            if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then continue end
 
             if ball_target == LocalPlayer.Name and distance <= parry_acc then
                 System.parry.execute()
@@ -798,6 +683,7 @@ function System.auto_spam.start()
         if not System.__properties.__auto_spam_enabled then return end
         if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
 
+        -- ★ Auto Spam juga pause waktu SoF
         if System.__properties.__slashesoffury_active then return end
 
         local ball = System.ball.get()
@@ -856,7 +742,7 @@ function System.auto_spam.stop()
 end
 
 -- ============================================================
--- 8. PRO MOBILE UI (Tabbed: Main + Detection)
+-- 8. PRO MOBILE UI (single section, no tabs)
 -- ============================================================
 local UI_OK, UI_ERR = pcall(function()
 
@@ -942,8 +828,8 @@ end)
 -- PANEL
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
-panel.Size = UDim2.new(0, 280, 0, 420)
-panel.Position = UDim2.new(0.5, -140, 0.5, -210)
+panel.Size = UDim2.new(0, 280, 0, 480)
+panel.Position = UDim2.new(0.5, -140, 0.5, -240)
 panel.BackgroundColor3 = COL.bg
 panel.BorderSizePixel = 0
 panel.Visible = false
@@ -984,7 +870,7 @@ local subtitle = Instance.new("TextLabel")
 subtitle.BackgroundTransparency = 1
 subtitle.Position = UDim2.new(0, 16, 0, 22)
 subtitle.Size = UDim2.new(1, -60, 0, 14)
-subtitle.Text = "mobile  •  autoparry + autospam + autosoF"
+subtitle.Text = "mobile  •  autoparry + autospam"
 subtitle.TextColor3 = COL.textFaint
 subtitle.FontFace = FONT.reg
 subtitle.TextSize = 10
@@ -1006,117 +892,33 @@ closeBtn.ZIndex = 53
 closeBtn.Parent = header
 corner(closeBtn, UDim.new(0, 8))
 
--- Tab bar
-local tabBar = Instance.new("Frame")
-tabBar.Size = UDim2.new(1, -32, 0, 30)
-tabBar.Position = UDim2.new(0, 16, 0, 48)
-tabBar.BackgroundColor3 = COL.bgDeep
-tabBar.BorderSizePixel = 0
-tabBar.ZIndex = 51
-tabBar.Parent = panel
-corner(tabBar, UDim.new(0, 8))
-stroke(tabBar, COL.stroke, 1)
+-- Divider
+local divider = Instance.new("Frame")
+divider.Size = UDim2.new(1, -32, 0, 1)
+divider.Position = UDim2.new(0, 16, 0, 44)
+divider.BackgroundColor3 = COL.stroke
+divider.BackgroundTransparency = 0.5
+divider.BorderSizePixel = 0
+divider.ZIndex = 51
+divider.Parent = panel
 
-local tabLayout = Instance.new("UIListLayout")
-tabLayout.FillDirection = Enum.FillDirection.Horizontal
-tabLayout.Padding = UDim.new(0, 6)
-tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-tabLayout.Parent = tabBar
-
-local tabPad = Instance.new("UIPadding")
-tabPad.PaddingLeft = UDim.new(0, 6)
-tabPad.Parent = tabBar
-
-local mainTabBtn = Instance.new("TextButton")
-mainTabBtn.Size = UDim2.new(0.5, -9, 0, 22)
-mainTabBtn.BackgroundColor3 = COL.accent
-mainTabBtn.Text = "Main"
-mainTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-mainTabBtn.FontFace = FONT.bold
-mainTabBtn.TextSize = 11
-mainTabBtn.AutoButtonColor = false
-mainTabBtn.BorderSizePixel = 0
-mainTabBtn.LayoutOrder = 1
-mainTabBtn.ZIndex = 52
-mainTabBtn.Parent = tabBar
-corner(mainTabBtn, UDim.new(0, 6))
-
-local detectTabBtn = Instance.new("TextButton")
-detectTabBtn.Size = UDim2.new(0.5, -9, 0, 22)
-detectTabBtn.BackgroundColor3 = COL.bgSoft
-detectTabBtn.Text = "Detection"
-detectTabBtn.TextColor3 = COL.textDim
-detectTabBtn.FontFace = FONT.bold
-detectTabBtn.TextSize = 11
-detectTabBtn.AutoButtonColor = false
-detectTabBtn.BorderSizePixel = 0
-detectTabBtn.LayoutOrder = 2
-detectTabBtn.ZIndex = 52
-detectTabBtn.Parent = tabBar
-corner(detectTabBtn, UDim.new(0, 6))
-
-local bodyHolder = Instance.new("Frame")
-bodyHolder.Position = UDim2.new(0, 14, 0, 86)
-bodyHolder.Size = UDim2.new(1, -28, 1, -140)
-bodyHolder.BackgroundTransparency = 1
-bodyHolder.ZIndex = 52
-bodyHolder.Parent = panel
-
+-- Body (scroll)
 local body = Instance.new("ScrollingFrame")
-body.Position = UDim2.new(0, 0, 0, 0)
-body.Size = UDim2.new(1, 0, 1, 0)
+body.Position = UDim2.new(0, 14, 0, 56)
+body.Size = UDim2.new(1, -28, 1, -110)
 body.BackgroundTransparency = 1
 body.ScrollBarThickness = 0
 body.CanvasSize = UDim2.new(0, 0, 0, 0)
 body.AutomaticCanvasSize = Enum.AutomaticSize.Y
-body.ZIndex = 53
-body.Visible = true
-body.Parent = bodyHolder
+body.ZIndex = 52
+body.Parent = panel
 
 local bodyLayout = Instance.new("UIListLayout")
 bodyLayout.Padding = UDim.new(0, 10)
 bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
 bodyLayout.Parent = body
 
-local detBody = Instance.new("ScrollingFrame")
-detBody.Position = UDim2.new(0, 0, 0, 0)
-detBody.Size = UDim2.new(1, 0, 1, 0)
-detBody.BackgroundTransparency = 1
-detBody.ScrollBarThickness = 0
-detBody.CanvasSize = UDim2.new(0, 0, 0, 0)
-detBody.AutomaticCanvasSize = Enum.AutomaticSize.Y
-detBody.ZIndex = 53
-detBody.Visible = false
-detBody.Parent = bodyHolder
-
-local detLayout = Instance.new("UIListLayout")
-detLayout.Padding = UDim.new(0, 10)
-detLayout.SortOrder = Enum.SortOrder.LayoutOrder
-detLayout.Parent = detBody
-
-local function switchTab(which)
-    if which == "main" then
-        body.Visible = true
-        detBody.Visible = false
-        mainTabBtn.BackgroundColor3 = COL.accent
-        mainTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        detectTabBtn.BackgroundColor3 = COL.bgSoft
-        detectTabBtn.TextColor3 = COL.textDim
-    else
-        body.Visible = false
-        detBody.Visible = true
-        mainTabBtn.BackgroundColor3 = COL.bgSoft
-        mainTabBtn.TextColor3 = COL.textDim
-        detectTabBtn.BackgroundColor3 = COL.accent
-        detectTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    end
-end
-
-mainTabBtn.MouseButton1Click:Connect(function() switchTab("main") end)
-detectTabBtn.MouseButton1Click:Connect(function() switchTab("detect") end)
-
-local function makeToggleRow(parent, titleText, subtitleText, order, onChange)
+local function makeToggleRow(titleText, subtitleText, order, onChange)
     local row = Instance.new("TextButton")
     row.Size = UDim2.new(1, 0, 0, 56)
     row.BackgroundColor3 = COL.bgSoft
@@ -1125,8 +927,8 @@ local function makeToggleRow(parent, titleText, subtitleText, order, onChange)
     row.Text = ""
     row.AutoButtonColor = false
     row.LayoutOrder = order
-    row.ZIndex = 54
-    row.Parent = parent
+    row.ZIndex = 53
+    row.Parent = body
     corner(row, UDim.new(0, 12))
     stroke(row, COL.stroke, 1)
 
@@ -1139,7 +941,7 @@ local function makeToggleRow(parent, titleText, subtitleText, order, onChange)
     ttl.FontFace = FONT.bold
     ttl.TextSize = 13
     ttl.TextXAlignment = Enum.TextXAlignment.Left
-    ttl.ZIndex = 55
+    ttl.ZIndex = 54
     ttl.Parent = row
 
     local sub = Instance.new("TextLabel")
@@ -1151,7 +953,7 @@ local function makeToggleRow(parent, titleText, subtitleText, order, onChange)
     sub.FontFace = FONT.reg
     sub.TextSize = 10
     sub.TextXAlignment = Enum.TextXAlignment.Left
-    sub.ZIndex = 55
+    sub.ZIndex = 54
     sub.Parent = row
 
     local track = Instance.new("Frame")
@@ -1159,7 +961,7 @@ local function makeToggleRow(parent, titleText, subtitleText, order, onChange)
     track.Position = UDim2.new(1, -52, 0.5, -11)
     track.BackgroundColor3 = Color3.fromRGB(40, 42, 50)
     track.BorderSizePixel = 0
-    track.ZIndex = 55
+    track.ZIndex = 54
     track.Parent = row
     corner(track, UDim.new(1, 0))
 
@@ -1168,7 +970,7 @@ local function makeToggleRow(parent, titleText, subtitleText, order, onChange)
     thumb.Position = UDim2.new(0, 2, 0.5, -9)
     thumb.BackgroundColor3 = COL.textDim
     thumb.BorderSizePixel = 0
-    thumb.ZIndex = 56
+    thumb.ZIndex = 55
     thumb.Parent = track
     corner(thumb, UDim.new(1, 0))
 
@@ -1197,17 +999,17 @@ local function makeToggleRow(parent, titleText, subtitleText, order, onChange)
     }
 end
 
--- Main tab
-local apToggle = makeToggleRow(body, "Auto Parry", "parry when ball targets you", 1, function(v)
+local apToggle = makeToggleRow("Auto Parry", "parry when ball targets you", 1, function(v)
     System.__properties.__autoparry_enabled = v
     if v then System.autoparry.start() else System.autoparry.stop() end
 end)
 
-local asToggle = makeToggleRow(body, "Auto Spam", "spam parry when ball is close", 2, function(v)
+local asToggle = makeToggleRow("Auto Spam", "spam parry when ball is close", 2, function(v)
     System.__properties.__auto_spam_enabled = v
     if v then System.auto_spam.start() else System.auto_spam.stop() end
 end)
 
+-- Curve label
 local curveLabel = Instance.new("TextLabel")
 curveLabel.BackgroundTransparency = 1
 curveLabel.Size = UDim2.new(1, 0, 0, 16)
@@ -1217,14 +1019,15 @@ curveLabel.FontFace = FONT.bold
 curveLabel.TextSize = 10
 curveLabel.TextXAlignment = Enum.TextXAlignment.Left
 curveLabel.LayoutOrder = 3
-curveLabel.ZIndex = 54
+curveLabel.ZIndex = 53
 curveLabel.Parent = body
 
+-- Curve grid
 local curveGrid = Instance.new("Frame")
 curveGrid.Size = UDim2.new(1, 0, 0, 76)
 curveGrid.BackgroundTransparency = 1
 curveGrid.LayoutOrder = 4
-curveGrid.ZIndex = 54
+curveGrid.ZIndex = 53
 curveGrid.Parent = body
 
 local curveLayout = Instance.new("UIGridLayout")
@@ -1257,7 +1060,7 @@ for i, name in ipairs(System.__config.__curve_names) do
     b.AutoButtonColor = false
     b.BorderSizePixel = 0
     b.LayoutOrder = i
-    b.ZIndex = 55
+    b.ZIndex = 54
     b.Parent = curveGrid
     corner(b, UDim.new(0, 8))
     stroke(b, COL.stroke, 1)
@@ -1271,25 +1074,34 @@ for i, name in ipairs(System.__config.__curve_names) do
 end
 refreshCurve()
 
--- Detection tab
-makeToggleRow(detBody, "Infinity Ball", "skip parry while active", 1, function(v)
+-- Detection label
+local detectLabel = Instance.new("TextLabel")
+detectLabel.BackgroundTransparency = 1
+detectLabel.Size = UDim2.new(1, 0, 0, 16)
+detectLabel.Text = "DETECTIONS"
+detectLabel.TextColor3 = COL.textFaint
+detectLabel.FontFace = FONT.bold
+detectLabel.TextSize = 10
+detectLabel.TextXAlignment = Enum.TextXAlignment.Left
+detectLabel.LayoutOrder = 5
+detectLabel.ZIndex = 53
+detectLabel.Parent = body
+
+-- 4 detection toggles (semua default ON — bikin autoparry auto-pause)
+makeToggleRow("Infinity Ball", "pause parry while active", 6, function(v)
     System.__config.__detections.__infinity = v
 end).set(true)
 
-makeToggleRow(detBody, "Death Slash", "skip parry while active", 2, function(v)
+makeToggleRow("Death Slash", "pause parry while active", 7, function(v)
     System.__config.__detections.__deathslash = v
 end).set(true)
 
-makeToggleRow(detBody, "Time Hole", "skip parry while active", 3, function(v)
+makeToggleRow("Time Hole", "pause parry while active", 8, function(v)
     System.__config.__detections.__timehole = v
 end).set(true)
 
-makeToggleRow(detBody, "Slashes Of Fury", "pause autoparry while active", 4, function(v)
+makeToggleRow("Slashes Of Fury", "pause parry while active", 9, function(v)
     System.__config.__detections.__slashesoffury = v
-end).set(true)
-
-makeToggleRow(detBody, "Auto Slashes of Fury", "36 clicks over 7 seconds", 5, function(v)
-    System.auto_sof.set_enabled(v)
 end).set(true)
 
 -- Status bar
@@ -1331,11 +1143,10 @@ task.spawn(function()
         local ap = System.__properties.__autoparry_enabled
         local as = System.__properties.__auto_spam_enabled
         local sof = System.__properties.__slashesoffury_active
-        local sof_count = System.auto_sof and System.auto_sof.__clicked or 0
         local ready_txt = patch_ready and "PATCH OK" or "PATCH..."
         if sof then
             statusDot.BackgroundColor3 = COL.amber
-            statusText.Text = "SoF  •  clicks " .. sof_count .. "/36"
+            statusText.Text = "SoF ACTIVE  •  parry paused"
         elseif ap or as then
             statusDot.BackgroundColor3 = COL.green
             local parts = {}
@@ -1355,13 +1166,13 @@ local function openPanel()
     if opening then return end
     opening = true
     panel.Visible = true
-    panel.Size = UDim2.new(0, 0, 0, 420)
-    tween(panel, 0.3, {Size = UDim2.new(0, 280, 0, 420)}):Play()
+    panel.Size = UDim2.new(0, 0, 0, 480)
+    tween(panel, 0.3, {Size = UDim2.new(0, 280, 0, 480)}):Play()
     task.delay(0.35, function() opening = false end)
 end
 
 local function closePanel()
-    tween(panel, 0.2, {Size = UDim2.new(0, 0, 0, 420)}):Play()
+    tween(panel, 0.2, {Size = UDim2.new(0, 0, 0, 480)}):Play()
     task.delay(0.2, function() panel.Visible = false end)
 end
 
@@ -1456,5 +1267,4 @@ System.__properties.__autoparry_enabled = true
 System.__properties.__auto_spam_enabled = true
 System.autoparry.start()
 System.auto_spam.start()
-System.auto_sof.start()
 update_divisor()
