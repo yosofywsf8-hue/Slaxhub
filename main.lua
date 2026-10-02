@@ -171,6 +171,8 @@ local System = {
         __training_parried    = false,
         __parries             = 0,
         __spam_threshold      = 1.5,
+        __spam_accumulator    = 0,
+        __spam_rate           = 100,
         __tornado_time        = tick(),
         __connections         = {},
         __infinity_active     = false,
@@ -666,55 +668,64 @@ function System.auto_spam.stop()
 end
 
 -- ============================================================
--- 7.5 MANUAL SPAM
+-- 7.5 MANUAL SPAM — logika persis gist
 -- ============================================================
-System.manual_spam = {
-    __enabled = false,
-    __rate    = 20,
-    __conn    = nil,
-    __accum   = 0,
-}
+System.manual_spam = {}
+
+function System.manual_spam.loop(delta)
+    if not System.__properties.__manual_spam_enabled then return end
+    if not LocalPlayer.Character or LocalPlayer.Character.Parent ~= Alive then return end
+    if getgenv().spamui then return end
+
+    System.__properties.__spam_accumulator =
+        (System.__properties.__spam_accumulator or 0) + delta
+
+    local interval
+    if getgenv().ManualSpamCPSEnabled then
+        interval = 1 / math.max(1, System.__properties.__spam_rate or 100)
+    else
+        interval = 1 / math.max(1, System.__properties.__spam_rate or 100)
+    end
+    if (System.__properties.__spam_accumulator or 0) < interval then
+        return
+    end
+
+    System.__properties.__spam_accumulator = 0
+    System.parry.execute()
+end
 
 function System.manual_spam.start()
-    if System.manual_spam.__conn then
-        System.manual_spam.__conn:Disconnect()
-        System.manual_spam.__conn = nil
+    if System.__properties.__connections.__manual_spam then
+        System.__properties.__connections.__manual_spam:Disconnect()
     end
-    System.manual_spam.__accum = 0
-    System.manual_spam.__conn = RunService.Heartbeat:Connect(function(delta)
-        if not System.__properties.__manual_spam_enabled then return end
-        if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
-        local rate = math.clamp(System.manual_spam.__rate or 20, 1, 200)
-        local interval = 1 / rate
-        System.manual_spam.__accum += delta
-        if System.manual_spam.__accum < interval then return end
-        System.manual_spam.__accum = 0
-        System.parry.execute()
-    end)
+    System.__properties.__manual_spam_enabled = true
+    System.__properties.__connections.__manual_spam =
+        RunService.Heartbeat:Connect(System.manual_spam.loop)
 end
 
 function System.manual_spam.stop()
-    if System.manual_spam.__conn then
-        System.manual_spam.__conn:Disconnect()
-        System.manual_spam.__conn = nil
-    end
     System.__properties.__manual_spam_enabled = false
+    if System.__properties.__connections.__manual_spam then
+        System.__properties.__connections.__manual_spam:Disconnect()
+        System.__properties.__connections.__manual_spam = nil
+    end
 end
 
 -- ============================================================
--- 7.55 MANUAL SPAM FLOATING BUTTON
+-- 7.55 MANUAL SPAM FLOATING BUTTON (new design)
 -- ============================================================
 System.manual_button = {
     __gui    = nil,
     __btn    = nil,
     __dot    = nil,
-    __text   = nil,
+    __label  = nil,
     __active = false,
 }
 
 function System.manual_button.create()
     if System.manual_button.__gui then return end
     local parentGui = LocalPlayer:WaitForChild("PlayerGui")
+
     local gui = Instance.new("ScreenGui")
     gui.Name = "BB_ManualSpamBtn"
     gui.ResetOnSpawn = false
@@ -725,8 +736,8 @@ function System.manual_button.create()
 
     local btn = Instance.new("TextButton")
     btn.Name = "Btn"
-    btn.Size = UDim2.new(0, 130, 0, 48)
-    btn.Position = UDim2.new(0, 20, 0.72, 0)
+    btn.Size = UDim2.new(0, 70, 0, 70)
+    btn.Position = UDim2.new(0, 20, 0.5, 100)
     btn.BackgroundColor3 = Color3.fromRGB(16, 17, 22)
     btn.BorderSizePixel = 0
     btn.Text = ""
@@ -734,38 +745,43 @@ function System.manual_button.create()
     btn.Active = true
     btn.ZIndex = 100
     btn.Parent = gui
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = btn
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1, 0); c.Parent = btn
     local s = Instance.new("UIStroke")
     s.Color = Color3.fromRGB(78, 84, 100)
-    s.Thickness = 1
+    s.Thickness = 1.5
     s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     s.Parent = btn
 
+    local lbl = Instance.new("TextLabel")
+    lbl.BackgroundTransparency = 1
+    lbl.Position = UDim2.new(0, 0, 0.5, -8)
+    lbl.Size = UDim2.new(1, 0, 0, 20)
+    lbl.Text = "SPAM"
+    lbl.TextColor3 = Color3.fromRGB(238, 240, 246)
+    lbl.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    lbl.TextSize = 14
+    lbl.TextXAlignment = Enum.TextXAlignment.Center
+    lbl.ZIndex = 101
+    lbl.Parent = btn
+
     local dot = Instance.new("Frame")
-    dot.Size = UDim2.new(0, 14, 0, 14)
-    dot.Position = UDim2.new(0, 12, 0.5, -7)
+    dot.Size = UDim2.new(0, 16, 0, 16)
+    dot.Position = UDim2.new(1, -6, 0, -6)
+    dot.AnchorPoint = Vector2.new(0.5, 0.5)
     dot.BackgroundColor3 = Color3.fromRGB(230, 90, 100)
     dot.BorderSizePixel = 0
-    dot.ZIndex = 101
+    dot.ZIndex = 102
     dot.Parent = btn
     local dc = Instance.new("UICorner"); dc.CornerRadius = UDim.new(1, 0); dc.Parent = dot
+    local ds = Instance.new("UIStroke")
+    ds.Color = Color3.fromRGB(16, 17, 22)
+    ds.Thickness = 2
+    ds.Parent = dot
 
-    local txt = Instance.new("TextLabel")
-    txt.BackgroundTransparency = 1
-    txt.Position = UDim2.new(0, 34, 0, 0)
-    txt.Size = UDim2.new(1, -40, 1, 0)
-    txt.Text = "Manual Spam"
-    txt.TextColor3 = Color3.fromRGB(238, 240, 246)
-    txt.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
-    txt.TextSize = 13
-    txt.TextXAlignment = Enum.TextXAlignment.Left
-    txt.ZIndex = 101
-    txt.Parent = btn
-
-    System.manual_button.__gui  = gui
-    System.manual_button.__btn  = btn
-    System.manual_button.__dot  = dot
-    System.manual_button.__text = txt
+    System.manual_button.__gui   = gui
+    System.manual_button.__btn   = btn
+    System.manual_button.__dot   = dot
+    System.manual_button.__label = lbl
 
     btn.MouseButton1Click:Connect(function()
         local new = not System.manual_button.__active
@@ -787,7 +803,7 @@ function System.manual_button.create()
         if input.UserInputType == Enum.UserInputType.Touch
         or input.UserInputType == Enum.UserInputType.MouseMovement then
             local d = input.Position - dragStart
-            if math.abs(d.X) > 10 or math.abs(d.Y) > 10 then
+            if math.abs(d.X) > 8 or math.abs(d.Y) > 8 then
                 moved = true
                 btn.Position = UDim2.new(
                     startPos.X.Scale, startPos.X.Offset + d.X,
@@ -813,16 +829,24 @@ function System.manual_button.set(state)
         if System.manual_button.__dot then
             System.manual_button.__dot.BackgroundColor3 = Color3.fromRGB(88, 210, 140)
         end
-        if System.manual_button.__text then
-            System.manual_button.__text.Text = "Manual Spam ON"
+        if System.manual_button.__label then
+            System.manual_button.__label.Text = "SPAM"
+            System.manual_button.__label.TextColor3 = Color3.fromRGB(88, 210, 140)
+        end
+        if System.manual_button.__btn then
+            System.manual_button.__btn.BackgroundColor3 = Color3.fromRGB(26, 40, 32)
         end
     else
         System.manual_spam.stop()
         if System.manual_button.__dot then
             System.manual_button.__dot.BackgroundColor3 = Color3.fromRGB(230, 90, 100)
         end
-        if System.manual_button.__text then
-            System.manual_button.__text.Text = "Manual Spam OFF"
+        if System.manual_button.__label then
+            System.manual_button.__label.Text = "SPAM"
+            System.manual_button.__label.TextColor3 = Color3.fromRGB(238, 240, 246)
+        end
+        if System.manual_button.__btn then
+            System.manual_button.__btn.BackgroundColor3 = Color3.fromRGB(16, 17, 22)
         end
     end
 end
@@ -1176,11 +1200,11 @@ local WindUI_OK, WindUI_ERR = pcall(function()
     })
 
     MainTab:Slider({
-        Title = "Manual Spam Rate",
+        Title = "Manual Spam Rate (CPS)",
         Desc = "clicks per second",
-        Value = { Min = 1, Max = 200, Default = 20 },
+        Value = { Min = 1, Max = 200, Default = 100 },
         Callback = function(v)
-            System.manual_spam.__rate = v
+            System.__properties.__spam_rate = v
         end,
     })
 
