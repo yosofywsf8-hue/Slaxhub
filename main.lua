@@ -1,4 +1,4 @@
--- Blade Ball Mobile — Auto Parry + Auto Spam (Pro Mobile UI)
+-- Blade Ball Mobile — Auto Parry + Auto Spam (Fluent UI)
 -- Runtime: Roblox mobile (touch)
 -- Executor: cloneref, getupvalues, getrawmetatable, setreadonly
 
@@ -20,26 +20,18 @@ task.spawn(function()
         local RS = game:GetService("ReplicatedStorage")
         local Controllers = RS:WaitForChild("Controllers", 15)
         if not Controllers then return end
-
         local SC
         for _, child in ipairs(Controllers:GetChildren()) do
-            if child.Name:sub(1, 16) == "SwordsController" then
-                SC = child
-                break
-            end
+            if child.Name:sub(1, 16) == "SwordsController" then SC = child; break end
         end
         if not SC then warn("[PARRY] SwordsController not found"); return end
-
         local PRY = SC:WaitForChild("PRY", 15)
         if not PRY then warn("[PARRY] PRY module not found"); return end
-
         local Parry_Function = require(PRY)
         local getupvals = debug.getupvalues or getupvalues
         if not getupvals then warn("[PARRY] executor missing getupvalues"); return end
-
         local ups = getupvals(Parry_Function)
         if not ups or #ups < 8 then warn("[PARRY] unexpected upvalue count"); return end
-
         _PARRY_PATCH.keyTable    = ups[3]
         _PARRY_PATCH.transformFn = ups[4]
         _PARRY_PATCH.parryHash   = ups[8]
@@ -70,7 +62,6 @@ local function _hook(remote)
     if not meta or _original[meta] then return end
     _original[meta] = true
     setreadonly(meta, false)
-
     local _old = meta.__index
     meta.__index = function(self, key)
         if (key == "FireServer"   and self:IsA("RemoteEvent"))
@@ -103,13 +94,11 @@ function _PARRY_PATCH.fire(curveCFrame, screenPositions, mouseLocation)
     local keyIndex   = kt[1]
     local currentKey = kt[2] and kt[2][keyIndex]
     if not currentKey then return false end
-
     local tok, transformed = pcall(_PARRY_PATCH.transformFn, currentKey, "TIME")
     if not tok or not transformed then
         tok, transformed = pcall(_PARRY_PATCH.transformFn, currentKey)
         if not tok or not transformed then return false end
     end
-
     local serverTime = workspace:GetServerTimeNow() * 100
     local timeStr    = tostring(math.floor(serverTime))
     local tc = {}
@@ -120,17 +109,10 @@ function _PARRY_PATCH.fire(curveCFrame, screenPositions, mouseLocation)
         tc[i] = string.char(bit32.bxor(tb, kb))
     end
     local token = table.concat(tc)
-
     return pcall(function()
         _PARRY_PATCH.parryRemote:FireServer(
-            _PARRY_PATCH.parryHash,
-            currentKey,
-            token,
-            0.5,
-            curveCFrame,
-            screenPositions,
-            mouseLocation,
-            false
+            _PARRY_PATCH.parryHash, currentKey, token, 0.5,
+            curveCFrame, screenPositions, mouseLocation, false
         )
     end)
 end
@@ -146,12 +128,8 @@ local CoreGui          = cloneref(game:GetService("CoreGui"))
 local TweenService     = cloneref(game:GetService("TweenService"))
 
 local LocalPlayer = Players.LocalPlayer
-if not LocalPlayer then
-    LocalPlayer = Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-end
-if not LocalPlayer.Character then
-    LocalPlayer.CharacterAdded:Wait()
-end
+if not LocalPlayer then LocalPlayer = Players:GetPropertyChangedSignal("LocalPlayer"):Wait() end
+if not LocalPlayer.Character then LocalPlayer.CharacterAdded:Wait() end
 
 local Alive   = workspace:FindFirstChild("Alive")   or workspace:WaitForChild("Alive")
 local Runtime = workspace:FindFirstChild("Runtime") or workspace:WaitForChild("Runtime")
@@ -249,7 +227,6 @@ function System.player.get_closest_to_cursor()
     local vp = camera.ViewportSize
     local ray     = camera:ScreenPointToRay(vp.X / 2, vp.Y / 2)
     local pointer = CFrame.lookAt(ray.Origin, ray.Origin + ray.Direction)
-
     local closest, min_dot = nil, -math.huge
     for _, player in pairs(Alive:GetChildren()) do
         if player ~= LocalPlayer.Character and player:FindFirstChild("HumanoidRootPart") then
@@ -266,7 +243,6 @@ function System.curve.get_cframe()
     local camera = workspace.CurrentCamera
     local root   = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not root then return camera.CFrame end
-
     local targetPart
     local closest = System.player.get_closest_to_cursor()
     if closest and closest:FindFirstChild("HumanoidRootPart") then
@@ -274,7 +250,6 @@ function System.curve.get_cframe()
     end
     local target_pos = targetPart and targetPart.Position
         or (root.Position + camera.CFrame.LookVector * 100)
-
     local fns = {
         function() return camera.CFrame end,
         function()
@@ -316,7 +291,6 @@ System.parry = {}
 function System.parry.execute()
     if System.__properties.__parries > 10000 or not LocalPlayer.Character then return end
     if not _PARRY_PATCH or not _PARRY_PATCH.ready then return end
-
     local camera = workspace.CurrentCamera
     local vp     = camera.ViewportSize
     local screenPositions = {}
@@ -330,12 +304,9 @@ function System.parry.execute()
             end
         end
     end
-
     local curveCF = System.curve.get_cframe() or camera.CFrame
     local mouseLocation = {vp.X / 2, vp.Y / 2}
-
     _PARRY_PATCH.fire(curveCF, screenPositions, mouseLocation)
-
     System.__properties.__parries += 1
     task.delay(0.5, function()
         if System.__properties.__parries > 0 then
@@ -360,37 +331,29 @@ function System.detection.is_curved()
     local ball = System.ball.get()
     if not ball then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-
     local zoomies = ball:FindFirstChild("zoomies")
     if not zoomies then return false end
-
     local velocity = zoomies.VectorVelocity or Vector3.new()
     local speed    = velocity.Magnitude
     if speed == 0 then return false end
-
     local ball_dir = velocity.Unit
     local dv       = LocalPlayer.Character.PrimaryPart.Position - ball.Position
     if dv.Magnitude == 0 then return false end
     local direction = dv.Unit
-
     local dot = direction:Dot(ball_dir)
     local speed_thr = math.min(speed / 100, 40)
-
     local dir_diff = ball_dir - velocity
     local dir_sim  = 0
     if dir_diff.Magnitude > 0 then dir_sim = direction:Dot(dir_diff.Unit) end
     local dot_diff = dot - dir_sim
-
     local distance = dv.Magnitude
     local ping     = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
     local dot_thr  = 0.5 - (ping / 1000)
     local reach    = distance / speed - (ping / 1000)
     local bdt      = 15 - math.min(distance / 1000, 15) + speed_thr
-
     local clamped = math.clamp(dot, -1, 1)
     local radians = math.rad(math.asin(clamped))
     bp.__lerp_radians = linear_predict(bp.__lerp_radians, radians, 0.8)
-
     if speed > 0 and reach > ping / 10 then
         bdt = math.max(bdt - 15, 15)
     end
@@ -406,11 +369,9 @@ end
 -- 5. DETECTION HOOKS
 -- ============================================================
 local RS = replicated_storage
-
 RS.Remotes.DeathBall.OnClientEvent:Connect(function(_, d)
     System.__properties.__deathslash_active = d or false
 end)
-
 RS.Remotes.InfinityBall.OnClientEvent:Connect(function(_, b)
     System.__properties.__infinity_active = b or false
 end)
@@ -425,7 +386,6 @@ end)
 netFolder["RE/TimeHoleDeactivate"].OnClientEvent:Connect(function()
     System.__properties.__timehole_active = false
 end)
-
 netFolder["RE/SlashesOfFuryActivate"].OnClientEvent:Connect(function(...)
     local p = ({...})[1]
     if p == LocalPlayer or p == LocalPlayer.Name or (p and p.Name == LocalPlayer.Name) then
@@ -445,7 +405,6 @@ end)
 -- 6. AUTOPARRY
 -- ============================================================
 System.autoparry = {}
-
 function System.autoparry.start()
     if System.__properties.__connections.__autoparry then
         System.__properties.__connections.__autoparry:Disconnect()
@@ -453,30 +412,22 @@ function System.autoparry.start()
     System.__properties.__connections.__autoparry = RunService.PreSimulation:Connect(function()
         if not System.__properties.__autoparry_enabled then return end
         if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
-
         local balls    = System.ball.get_all()
         local one_ball = System.ball.get()
         local training_ball = nil
-
         if workspace:FindFirstChild("TrainingBalls") then
             for _, inst in pairs(workspace.TrainingBalls:GetChildren()) do
-                if inst:GetAttribute("realBall") then
-                    training_ball = inst
-                    break
-                end
+                if inst:GetAttribute("realBall") then training_ball = inst; break end
             end
         end
-
         for _, ball in pairs(balls) do
             if not ball then continue end
             local zoomies = ball:FindFirstChild("zoomies")
             if not zoomies then continue end
-
             ball:GetAttributeChangedSignal("target"):Once(function()
                 System.__properties.__parried = false
             end)
             if System.__properties.__parried then continue end
-
             local ball_target = ball:GetAttribute("target")
             local velocity    = zoomies.VectorVelocity
             local distance    = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Magnitude
@@ -486,40 +437,31 @@ function System.autoparry.start()
             local capped      = math.min(math.max(speed - 9.5, 0), 650)
             local speed_div   = (2.4 + capped * 0.002) * System.__properties.__divisor_multiplier
             local parry_acc   = ping_thr + math.max(speed / speed_div, 9.5)
-
             local curved = System.detection.is_curved()
-
             if ball:FindFirstChild("AeroDynamicSlashVFX") then
                 ball.AeroDynamicSlashVFX:Destroy()
                 System.__properties.__tornado_time = tick()
             end
             if Runtime:FindFirstChild("Tornado") then
                 local tt = Runtime.Tornado:GetAttribute("TornadoTime") or 1
-                if (tick() - System.__properties.__tornado_time) < tt + 0.314159 then
-                    continue
-                end
+                if (tick() - System.__properties.__tornado_time) < tt + 0.314159 then continue end
             end
-            if one_ball and one_ball:GetAttribute("target") == LocalPlayer.Name and curved then
-                continue
-            end
+            if one_ball and one_ball:GetAttribute("target") == LocalPlayer.Name and curved then continue end
             if ball:FindFirstChild("ComboCounter") then continue end
             if LocalPlayer.Character.PrimaryPart:FindFirstChild("SingularityCape") then continue end
             if System.__config.__detections.__infinity and System.__properties.__infinity_active then continue end
             if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then continue end
             if System.__config.__detections.__timehole and System.__properties.__timehole_active then continue end
             if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then continue end
-
             if ball_target == LocalPlayer.Name and distance <= parry_acc then
                 System.parry.execute()
                 System.__properties.__parried = true
             end
-
             local last = tick()
             repeat RunService.Stepped:Wait() until
                 (tick() - last) >= 1 or not System.__properties.__parried
             System.__properties.__parried = false
         end
-
         if training_ball then
             local zoomies = training_ball:FindFirstChild("zoomies")
             if zoomies and not System.__properties.__training_parried then
@@ -535,7 +477,6 @@ function System.autoparry.start()
                 local capped = math.min(math.max(s - 9.5, 0), 650)
                 local sd = (2.4 + capped * 0.002) * System.__properties.__divisor_multiplier
                 local acc = pt + math.max(s / sd, 9.5)
-
                 if bt == LocalPlayer.Name and d <= acc then
                     System.parry.execute()
                     System.__properties.__training_parried = true
@@ -557,7 +498,7 @@ function System.autoparry.stop()
 end
 
 -- ============================================================
--- 7. AUTO SPAM — NASKAH GIST ASLI
+-- 7. AUTO SPAM
 -- ============================================================
 System.auto_spam = {}
 
@@ -576,8 +517,7 @@ function System.auto_spam:get_ball_properties()
     if not ball then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
     local ball_velocity = ball.AssemblyLinearVelocity or Vector3.new()
-    local ball_origin = ball
-    local ball_direction_vector = LocalPlayer.Character.PrimaryPart.Position - ball_origin.Position
+    local ball_direction_vector = LocalPlayer.Character.PrimaryPart.Position - ball.Position
     local ball_distance = ball_direction_vector.Magnitude
     local ball_direction = Vector3.new()
     local ball_dot = 0
@@ -595,24 +535,19 @@ function System.auto_spam.spam_service(self)
     local entity = System.player.get_closest()
     if not ball or not entity or not entity.PrimaryPart then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-
     local D = 5
     local velocity = ball.AssemblyLinearVelocity or Vector3.new()
     local n = velocity.Magnitude
     if n == 0 then return D end
-
     local to_ball = (LocalPlayer.Character.PrimaryPart.Position - ball.Position)
     if to_ball.Magnitude == 0 then return D end
-
     local r = to_ball.Unit
     local t = 0
     if n > 0 and velocity.Magnitude > 0 then
         t = r:Dot(velocity.Unit)
     end
-
     local target_pos = entity.PrimaryPart.Position
     local X = LocalPlayer:DistanceFromCharacter(target_pos)
-
     local E = 1
     local Fmove = Vector3.new()
     local success, humanoid = pcall(function()
@@ -621,7 +556,6 @@ function System.auto_spam.spam_service(self)
     if success and humanoid and humanoid.MoveDirection then
         Fmove = humanoid.MoveDirection
     end
-
     local N = (target_pos - LocalPlayer.Character.PrimaryPart.Position)
     if N.Magnitude > 0 then N = N.Unit else N = Vector3.new() end
     local lmove = Vector3.new()
@@ -629,37 +563,21 @@ function System.auto_spam.spam_service(self)
         local ehum = entity:FindFirstChildOfClass("Humanoid")
         if ehum and ehum.MoveDirection then lmove = ehum.MoveDirection end
     end
-
     _G.Last_Close_Contact = _G.Last_Close_Contact or 0
     _G.In_Close_Contact = _G.In_Close_Contact or false
     local now = tick()
-    if X <= 3 then
-        _G.In_Close_Contact = true
-    end
+    if X <= 3 then _G.In_Close_Contact = true end
     if _G.In_Close_Contact and X > 3.3 then
         _G.In_Close_Contact = false
         _G.Last_Close_Contact = now
     end
     local u = (not _G.In_Close_Contact) and (now - (_G.Last_Close_Contact or 0) >= 1.5)
-    if u and (Fmove.Magnitude > 0.2 and Fmove:Dot(N) < -0.4) then
-        E = 10
-    end
-    if u and (lmove.Magnitude > 0.2 and lmove:Dot(-N) < -0.4) then
-        E = 10
-    end
-
+    if u and (Fmove.Magnitude > 0.2 and Fmove:Dot(N) < -0.4) then E = 10 end
+    if u and (lmove.Magnitude > 0.2 and lmove:Dot(-N) < -0.4) then E = 10 end
     local B = (self.Ping or 50) * 0.7 + math.min(n / (E * 1.2), 80)
-
-    if (self.Entity_Properties and self.Entity_Properties.Distance or math.huge) > B then
-        return D
-    end
-    if (self.Ball_Properties and self.Ball_Properties.Distance or math.huge) > B then
-        return D
-    end
-    if X > B then
-        return D
-    end
-
+    if (self.Entity_Properties and self.Entity_Properties.Distance or math.huge) > B then return D end
+    if (self.Ball_Properties and self.Ball_Properties.Distance or math.huge) > B then return D end
+    if X > B then return D end
     local U = math.clamp(-t, 0, 1)
     local q = math.clamp(U * (n / 40), 0, 4)
     D = B - q
@@ -673,49 +591,37 @@ function System.auto_spam.start()
     System.__properties.__connections.__auto_spam = RunService.PreSimulation:Connect(function()
         if not System.__properties.__auto_spam_enabled then return end
         if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
-
         local ball = System.ball.get()
         if not ball then return end
         if System.__properties.__slashesoffury_active then return end
-
         local zoomies = ball:FindFirstChild("zoomies")
         if not zoomies then return end
         if zoomies.VectorVelocity.Magnitude == 0 then return end
-
         System.player.get_closest()
         if not Closest_Entity or not Closest_Entity.PrimaryPart then return end
-
         local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
         local ping_threshold = math.clamp(ping / 10, 1, 16)
-
         local ball_target = ball:GetAttribute("target")
         local ball_properties = System.auto_spam:get_ball_properties()
         local entity_properties = System.auto_spam:get_entity_properties()
         if not ball_properties or not entity_properties then return end
-
         local spam_accuracy = System.auto_spam.spam_service({
             Ball_Properties = ball_properties,
             Entity_Properties = entity_properties,
             Ping = ping_threshold,
         })
-
         local target_position = Closest_Entity.PrimaryPart.Position
         local target_distance = LocalPlayer:DistanceFromCharacter(target_position)
         if zoomies.VectorVelocity.Magnitude == 0 then return end
-
         local direction = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Unit
         local ball_direction = zoomies.VectorVelocity.Unit
         local dot = direction:Dot(ball_direction)
         local distance = LocalPlayer:DistanceFromCharacter(ball.Position)
-
         if not ball_target then return end
         if target_distance > spam_accuracy or distance > spam_accuracy then return end
-
         local pulsed = LocalPlayer.Character:GetAttribute("Pulsed")
         if pulsed then return end
-
         if ball_target == LocalPlayer.Name and target_distance > 30 and distance > 30 then return end
-
         if distance <= spam_accuracy and System.__properties.__parries > System.__properties.__spam_threshold then
             System.parry.execute()
         end
@@ -731,25 +637,27 @@ function System.auto_spam.stop()
 end
 
 -- ============================================================
--- 8. PRO MOBILE UI (FIXED — PlayerGui + pcall)
+-- 8. FLUENT UI
 -- ============================================================
 local UI_OK, UI_ERR = pcall(function()
 
 local COL = {
-    bg      = Color3.fromRGB(14, 15, 20),
-    bgSoft  = Color3.fromRGB(24, 26, 34),
-    bgDeep  = Color3.fromRGB(10, 11, 15),
-    stroke  = Color3.fromRGB(52, 56, 70),
-    strokeLit = Color3.fromRGB(78, 84, 100),
-    text    = Color3.fromRGB(238, 240, 246),
-    textDim = Color3.fromRGB(152, 158, 172),
-    textFaint = Color3.fromRGB(96, 102, 118),
-    green   = Color3.fromRGB(88, 210, 140),
-    greenDim= Color3.fromRGB(50, 140, 90),
-    red     = Color3.fromRGB(230, 90, 100),
-    redDim  = Color3.fromRGB(150, 55, 65),
-    accent  = Color3.fromRGB(98, 160, 226),
-    amber   = Color3.fromRGB(230, 180, 90),
+    bg        = Color3.fromRGB(32, 32, 32),
+    bgSoft    = Color3.fromRGB(44, 44, 46),
+    bgDeep    = Color3.fromRGB(24, 24, 26),
+    bgHover   = Color3.fromRGB(52, 52, 56),
+    stroke    = Color3.fromRGB(60, 60, 64),
+    strokeLit = Color3.fromRGB(80, 80, 84),
+    text      = Color3.fromRGB(243, 243, 243),
+    textDim   = Color3.fromRGB(170, 170, 170),
+    textFaint = Color3.fromRGB(130, 130, 130),
+    accent    = Color3.fromRGB(96, 205, 255),
+    accentDim = Color3.fromRGB(60, 140, 180),
+    green     = Color3.fromRGB(108, 203, 95),
+    greenDim  = Color3.fromRGB(60, 130, 55),
+    red       = Color3.fromRGB(255, 99, 99),
+    redDim    = Color3.fromRGB(160, 60, 60),
+    amber     = Color3.fromRGB(255, 185, 0),
 }
 
 local FONT = {
@@ -758,94 +666,132 @@ local FONT = {
     bold = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.SemiBold, Enum.FontStyle.Normal),
 }
 
-local function corner(o, r) local c = Instance.new("UICorner"); c.CornerRadius = r or UDim.new(0,10); c.Parent = o; return c end
-local function stroke(o, c, t) local s = Instance.new("UIStroke"); s.Color = c or COL.stroke; s.Thickness = t or 1; s.Parent = o; return s end
+local function corner(o, r) local c = Instance.new("UICorner"); c.CornerRadius = r or UDim.new(0,8); c.Parent = o; return c end
+local function stroke(o, c, t, tr)
+    local s = Instance.new("UIStroke")
+    s.Color = c or COL.stroke
+    s.Thickness = t or 1
+    s.Transparency = tr or 0
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = o
+    return s
+end
 local function tween(o, d, p, s, dir)
     return TweenService:Create(o, TweenInfo.new(d, s or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out), p)
 end
 
 local parentGui = LocalPlayer:WaitForChild("PlayerGui")
-local oldPG = parentGui:FindFirstChild("BB_Mobile_Autoparry")
-if oldPG then oldPG:Destroy() end
-local oldCG = CoreGui:FindFirstChild("BB_Mobile_Autoparry")
-if oldCG then oldCG:Destroy() end
+for _, name in ipairs({"BB_Fluent", "BB_Mobile_Menu", "BB_Mobile_Autoparry"}) do
+    local old = parentGui:FindFirstChild(name)
+    if old then old:Destroy() end
+    local oldC = CoreGui:FindFirstChild(name)
+    if oldC then oldC:Destroy() end
+end
 
 local root = Instance.new("ScreenGui")
-root.Name = "BB_Mobile_Autoparry"
+root.Name = "BB_Fluent"
 root.ResetOnSpawn = false
 root.IgnoreGuiInset = true
 root.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 root.DisplayOrder = 1000000
 root.Parent = parentGui
 
--- FAB
+-- ============================================================
+-- FAB — أيقونة صغيرة أفقية (Fluent style)
+-- ============================================================
 local fab = Instance.new("TextButton")
 fab.Name = "FAB"
-fab.Size = UDim2.new(0, 60, 0, 60)
-fab.Position = UDim2.new(0, 20, 0.5, -30)
+fab.Size = UDim2.new(0, 44, 0, 44)
+fab.Position = UDim2.new(0, 16, 0.5, -22)
 fab.BackgroundColor3 = COL.bg
+fab.BackgroundTransparency = 0.05
 fab.BorderSizePixel = 0
 fab.Text = ""
 fab.AutoButtonColor = false
 fab.Active = true
 fab.ZIndex = 100
 fab.Parent = root
-corner(fab, UDim.new(1, 0))
-stroke(fab, COL.strokeLit, 1)
+corner(fab, UDim.new(0, 10))
+stroke(fab, COL.strokeLit, 1, 0.3)
 
+local fabIcon = Instance.new("TextLabel")
+fabIcon.BackgroundTransparency = 1
+fabIcon.Size = UDim2.new(1, 0, 1, 0)
+fabIcon.Text = "⚔"
+fabIcon.TextColor3 = COL.accent
+fabIcon.FontFace = FONT.bold
+fabIcon.TextSize = 22
+fabIcon.ZIndex = 101
+fabIcon.Parent = fab
+
+-- Hover animation
+fab.MouseEnter:Connect(function()
+    tween(fab, 0.15, {BackgroundTransparency = 0, BackgroundColor3 = COL.bgHover}):Play()
+end)
+fab.MouseLeave:Connect(function()
+    tween(fab, 0.15, {BackgroundTransparency = 0.05, BackgroundColor3 = COL.bg}):Play()
+end)
+
+-- Status indicator (نقطة صغيرة تحت الزر)
 local fabDot = Instance.new("Frame")
-fabDot.Size = UDim2.new(0, 20, 0, 20)
-fabDot.Position = UDim2.new(0.5, -10, 0.5, -10)
-fabDot.BackgroundColor3 = COL.green
+fabDot.Size = UDim2.new(0, 8, 0, 8)
+fabDot.Position = UDim2.new(1, -12, 1, -12)
+fabDot.BackgroundColor3 = COL.red
 fabDot.BorderSizePixel = 0
-fabDot.ZIndex = 101
+fabDot.ZIndex = 102
 fabDot.Parent = fab
 corner(fabDot, UDim.new(1, 0))
+stroke(fabDot, COL.bgDeep, 2, 0)
 
 RunService.Heartbeat:Connect(function()
     if not fabDot or not fabDot.Parent then return end
     if System.__properties.__autoparry_enabled or System.__properties.__auto_spam_enabled then
-        local t = (math.sin(tick() * 4) + 1) * 0.5
-        fabDot.BackgroundColor3 = COL.green:Lerp(COL.greenDim, t)
+        fabDot.BackgroundColor3 = COL.green
     else
         fabDot.BackgroundColor3 = COL.red
     end
 end)
 
--- PANEL
+-- ============================================================
+-- PANEL — Fluent Card
+-- ============================================================
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
-panel.Size = UDim2.new(0, 280, 0, 380)
-panel.Position = UDim2.new(0.5, -140, 0.5, -190)
+panel.Size = UDim2.new(0, 300, 0, 400)
+panel.Position = UDim2.new(0.5, -150, 0.5, -200)
 panel.BackgroundColor3 = COL.bg
+panel.BackgroundTransparency = 0.05
 panel.BorderSizePixel = 0
 panel.Visible = false
 panel.Active = true
 panel.ZIndex = 50
 panel.Parent = root
-corner(panel, UDim.new(0, 16))
-stroke(panel, COL.strokeLit, 1)
-
-local grad = Instance.new("UIGradient")
-grad.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 22, 30)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 11, 15)),
-}
-grad.Rotation = 90
-grad.Parent = panel
+corner(panel, UDim.new(0, 12))
+stroke(panel, COL.strokeLit, 1, 0.3)
 
 -- Header
 local header = Instance.new("Frame")
-header.Size = UDim2.new(1, 0, 0, 44)
+header.Size = UDim2.new(1, 0, 0, 52)
 header.BackgroundTransparency = 1
 header.ZIndex = 51
 header.Parent = panel
 
+local headerIcon = Instance.new("TextLabel")
+headerIcon.BackgroundTransparency = 1
+headerIcon.Position = UDim2.new(0, 18, 0, 10)
+headerIcon.Size = UDim2.new(0, 24, 0, 24)
+headerIcon.Text = "⚔"
+headerIcon.TextColor3 = COL.accent
+headerIcon.FontFace = FONT.bold
+headerIcon.TextSize = 20
+headerIcon.ZIndex = 52
+headerIcon.Parent = header
+
 local title = Instance.new("TextLabel")
 title.BackgroundTransparency = 1
-title.Position = UDim2.new(0, 16, 0, 0)
-title.Size = UDim2.new(1, -60, 1, 0)
-title.Text = "BLADE BALL"
+title.Position = UDim2.new(0, 48, 0, 8)
+title.Size = UDim2.new(1, -100, 0, 20)
+title.Text = "Auto Parry"
 title.TextColor3 = COL.text
 title.FontFace = FONT.bold
 title.TextSize = 15
@@ -855,10 +801,10 @@ title.Parent = header
 
 local subtitle = Instance.new("TextLabel")
 subtitle.BackgroundTransparency = 1
-subtitle.Position = UDim2.new(0, 16, 0, 22)
-subtitle.Size = UDim2.new(1, -60, 0, 14)
-subtitle.Text = "mobile  •  autoparry + autospam"
-subtitle.TextColor3 = COL.textFaint
+subtitle.Position = UDim2.new(0, 48, 0, 26)
+subtitle.Size = UDim2.new(1, -100, 0, 14)
+subtitle.Text = "Blade Ball  •  Mobile"
+subtitle.TextColor3 = COL.textDim
 subtitle.FontFace = FONT.reg
 subtitle.TextSize = 10
 subtitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -866,34 +812,43 @@ subtitle.ZIndex = 52
 subtitle.Parent = header
 
 local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 32, 0, 32)
-closeBtn.Position = UDim2.new(1, -42, 0, 6)
-closeBtn.BackgroundColor3 = COL.bgSoft
-closeBtn.Text = "X"
-closeBtn.TextColor3 = COL.text
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -42, 0, 11)
+closeBtn.BackgroundColor3 = COL.bgDeep
+closeBtn.BackgroundTransparency = 0.2
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = COL.textDim
 closeBtn.FontFace = FONT.bold
-closeBtn.TextSize = 16
+closeBtn.TextSize = 14
 closeBtn.AutoButtonColor = false
 closeBtn.BorderSizePixel = 0
 closeBtn.ZIndex = 53
 closeBtn.Parent = header
-corner(closeBtn, UDim.new(0, 8))
+corner(closeBtn, UDim.new(0, 6))
+closeBtn.MouseEnter:Connect(function()
+    tween(closeBtn, 0.15, {BackgroundColor3 = COL.redDim, TextColor3 = Color3.fromRGB(255,255,255)}):Play()
+end)
+closeBtn.MouseLeave:Connect(function()
+    tween(closeBtn, 0.15, {BackgroundColor3 = COL.bgDeep, BackgroundTransparency = 0.2, TextColor3 = COL.textDim}):Play()
+end)
 
+-- Divider
 local divider = Instance.new("Frame")
 divider.Size = UDim2.new(1, -32, 0, 1)
-divider.Position = UDim2.new(0, 16, 0, 44)
+divider.Position = UDim2.new(0, 16, 0, 52)
 divider.BackgroundColor3 = COL.stroke
 divider.BackgroundTransparency = 0.5
 divider.BorderSizePixel = 0
 divider.ZIndex = 51
 divider.Parent = panel
 
--- Body (scroll)
+-- Body
 local body = Instance.new("ScrollingFrame")
-body.Position = UDim2.new(0, 14, 0, 56)
-body.Size = UDim2.new(1, -28, 1, -110)
+body.Position = UDim2.new(0, 16, 0, 64)
+body.Size = UDim2.new(1, -32, 1, -120)
 body.BackgroundTransparency = 1
-body.ScrollBarThickness = 0
+body.ScrollBarThickness = 2
+body.ScrollBarImageColor3 = COL.strokeLit
 body.CanvasSize = UDim2.new(0, 0, 0, 0)
 body.AutomaticCanvasSize = Enum.AutomaticSize.Y
 body.ZIndex = 52
@@ -904,23 +859,24 @@ bodyLayout.Padding = UDim.new(0, 10)
 bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
 bodyLayout.Parent = body
 
+-- Toggle row (Fluent switch)
 local function makeToggleRow(titleText, subtitleText, order, onChange)
     local row = Instance.new("TextButton")
-    row.Size = UDim2.new(1, 0, 0, 56)
+    row.Size = UDim2.new(1, 0, 0, 60)
     row.BackgroundColor3 = COL.bgSoft
-    row.BackgroundTransparency = 0.05
+    row.BackgroundTransparency = 0.4
     row.BorderSizePixel = 0
     row.Text = ""
     row.AutoButtonColor = false
     row.LayoutOrder = order
     row.ZIndex = 53
     row.Parent = body
-    corner(row, UDim.new(0, 12))
-    stroke(row, COL.stroke, 1)
+    corner(row, UDim.new(0, 8))
+    stroke(row, COL.stroke, 1, 0.6)
 
     local ttl = Instance.new("TextLabel")
     ttl.BackgroundTransparency = 1
-    ttl.Position = UDim2.new(0, 14, 0, 8)
+    ttl.Position = UDim2.new(0, 14, 0, 12)
     ttl.Size = UDim2.new(1, -80, 0, 18)
     ttl.Text = titleText
     ttl.TextColor3 = COL.text
@@ -932,28 +888,31 @@ local function makeToggleRow(titleText, subtitleText, order, onChange)
 
     local sub = Instance.new("TextLabel")
     sub.BackgroundTransparency = 1
-    sub.Position = UDim2.new(0, 14, 0, 28)
+    sub.Position = UDim2.new(0, 14, 0, 32)
     sub.Size = UDim2.new(1, -80, 0, 16)
     sub.Text = subtitleText or ""
-    sub.TextColor3 = COL.textFaint
+    sub.TextColor3 = COL.textDim
     sub.FontFace = FONT.reg
     sub.TextSize = 10
     sub.TextXAlignment = Enum.TextXAlignment.Left
     sub.ZIndex = 54
     sub.Parent = row
 
+    -- Fluent switch track
     local track = Instance.new("Frame")
-    track.Size = UDim2.new(0, 40, 0, 22)
-    track.Position = UDim2.new(1, -52, 0.5, -11)
-    track.BackgroundColor3 = Color3.fromRGB(40, 42, 50)
+    track.Size = UDim2.new(0, 44, 0, 24)
+    track.Position = UDim2.new(1, -56, 0.5, -12)
+    track.BackgroundColor3 = COL.bgDeep
     track.BorderSizePixel = 0
     track.ZIndex = 54
     track.Parent = row
     corner(track, UDim.new(1, 0))
+    stroke(track, COL.strokeLit, 1, 0.3)
 
+    -- Switch thumb (Fluent: elongated pill)
     local thumb = Instance.new("Frame")
     thumb.Size = UDim2.new(0, 18, 0, 18)
-    thumb.Position = UDim2.new(0, 2, 0.5, -9)
+    thumb.Position = UDim2.new(0, 3, 0.5, -9)
     thumb.BackgroundColor3 = COL.textDim
     thumb.BorderSizePixel = 0
     thumb.ZIndex = 55
@@ -964,11 +923,17 @@ local function makeToggleRow(titleText, subtitleText, order, onChange)
 
     local function refresh()
         if active then
-            tween(track, 0.25, {BackgroundColor3 = COL.greenDim}):Play()
-            tween(thumb, 0.25, {Position = UDim2.new(0, 20, 0.5, -9), BackgroundColor3 = COL.green}):Play()
+            tween(track, 0.25, {BackgroundColor3 = COL.accent}):Play()
+            tween(thumb, 0.25, {
+                Position = UDim2.new(1, -21, 0.5, -9),
+                BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            }):Play()
         else
-            tween(track, 0.25, {BackgroundColor3 = Color3.fromRGB(40, 42, 50)}):Play()
-            tween(thumb, 0.25, {Position = UDim2.new(0, 2, 0.5, -9), BackgroundColor3 = COL.textDim}):Play()
+            tween(track, 0.25, {BackgroundColor3 = COL.bgDeep}):Play()
+            tween(thumb, 0.25, {
+                Position = UDim2.new(0, 3, 0.5, -9),
+                BackgroundColor3 = COL.textDim
+            }):Play()
         end
     end
 
@@ -978,6 +943,14 @@ local function makeToggleRow(titleText, subtitleText, order, onChange)
         if onChange then onChange(active) end
     end)
 
+    -- Hover
+    row.MouseEnter:Connect(function()
+        tween(row, 0.15, {BackgroundTransparency = 0.2}):Play()
+    end)
+    row.MouseLeave:Connect(function()
+        tween(row, 0.15, {BackgroundTransparency = 0.4}):Play()
+    end)
+
     return {
         frame = row,
         set = function(v) active = v; refresh() end,
@@ -985,12 +958,12 @@ local function makeToggleRow(titleText, subtitleText, order, onChange)
     }
 end
 
-local apToggle = makeToggleRow("Auto Parry", "parry when ball targets you", 1, function(v)
+local apToggle = makeToggleRow("Auto Parry", "auto parry when targeted", 1, function(v)
     System.__properties.__autoparry_enabled = v
     if v then System.autoparry.start() else System.autoparry.stop() end
 end)
 
-local asToggle = makeToggleRow("Auto Spam", "spam parry when ball is close", 2, function(v)
+local asToggle = makeToggleRow("Auto Spam", "spam parry when close", 2, function(v)
     System.__properties.__auto_spam_enabled = v
     if v then System.auto_spam.start() else System.auto_spam.stop() end
 end)
@@ -998,7 +971,7 @@ end)
 -- Curve label
 local curveLabel = Instance.new("TextLabel")
 curveLabel.BackgroundTransparency = 1
-curveLabel.Size = UDim2.new(1, 0, 0, 16)
+curveLabel.Size = UDim2.new(1, 0, 0, 20)
 curveLabel.Text = "CURVE MODE"
 curveLabel.TextColor3 = COL.textFaint
 curveLabel.FontFace = FONT.bold
@@ -1008,15 +981,16 @@ curveLabel.LayoutOrder = 3
 curveLabel.ZIndex = 53
 curveLabel.Parent = body
 
+-- Curve grid
 local curveGrid = Instance.new("Frame")
-curveGrid.Size = UDim2.new(1, 0, 0, 76)
+curveGrid.Size = UDim2.new(1, 0, 0, 84)
 curveGrid.BackgroundTransparency = 1
 curveGrid.LayoutOrder = 4
 curveGrid.ZIndex = 53
 curveGrid.Parent = body
 
 local curveLayout = Instance.new("UIGridLayout")
-curveLayout.CellSize = UDim2.new(0.25, -6, 0, 32)
+curveLayout.CellSize = UDim2.new(0.25, -6, 0, 36)
 curveLayout.CellPadding = UDim.new(0, 8, 0, 8)
 curveLayout.SortOrder = Enum.SortOrder.LayoutOrder
 curveLayout.Parent = curveGrid
@@ -1025,10 +999,10 @@ local curveButtons = {}
 local function refreshCurve()
     for i, btn in ipairs(curveButtons) do
         if i == System.__properties.__curve_mode then
-            tween(btn, 0.15, {BackgroundColor3 = COL.accent}):Play()
+            tween(btn, 0.15, {BackgroundColor3 = COL.accent, BackgroundTransparency = 0.1}):Play()
             btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         else
-            tween(btn, 0.15, {BackgroundColor3 = COL.bgSoft}):Play()
+            tween(btn, 0.15, {BackgroundColor3 = COL.bgSoft, BackgroundTransparency = 0.4}):Play()
             btn.TextColor3 = COL.textDim
         end
     end
@@ -1038,6 +1012,7 @@ for i, name in ipairs(System.__config.__curve_names) do
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(1, 0, 1, 0)
     b.BackgroundColor3 = COL.bgSoft
+    b.BackgroundTransparency = 0.4
     b.Text = name
     b.TextColor3 = COL.textDim
     b.FontFace = FONT.bold
@@ -1047,8 +1022,19 @@ for i, name in ipairs(System.__config.__curve_names) do
     b.LayoutOrder = i
     b.ZIndex = 54
     b.Parent = curveGrid
-    corner(b, UDim.new(0, 8))
-    stroke(b, COL.stroke, 1)
+    corner(b, UDim.new(0, 6))
+    stroke(b, COL.stroke, 1, 0.6)
+
+    b.MouseEnter:Connect(function()
+        if i ~= System.__properties.__curve_mode then
+            tween(b, 0.15, {BackgroundColor3 = COL.bgHover, BackgroundTransparency = 0.2}):Play()
+        end
+    end)
+    b.MouseLeave:Connect(function()
+        if i ~= System.__properties.__curve_mode then
+            tween(b, 0.15, {BackgroundColor3 = COL.bgSoft, BackgroundTransparency = 0.4}):Play()
+        end
+    end)
 
     b.MouseButton1Click:Connect(function()
         System.__properties.__curve_mode = i
@@ -1059,20 +1045,21 @@ for i, name in ipairs(System.__config.__curve_names) do
 end
 refreshCurve()
 
--- Status bar
+-- Status bar (Fluent info bar)
 local statusBar = Instance.new("Frame")
-statusBar.Size = UDim2.new(1, -32, 0, 34)
-statusBar.Position = UDim2.new(0, 16, 1, -46)
+statusBar.Size = UDim2.new(1, -32, 0, 36)
+statusBar.Position = UDim2.new(0, 16, 1, -50)
 statusBar.BackgroundColor3 = COL.bgDeep
+statusBar.BackgroundTransparency = 0.3
 statusBar.BorderSizePixel = 0
 statusBar.ZIndex = 53
 statusBar.Parent = panel
-corner(statusBar, UDim.new(0, 10))
-stroke(statusBar, COL.stroke, 1)
+corner(statusBar, UDim.new(0, 8))
+stroke(statusBar, COL.stroke, 1, 0.5)
 
 local statusDot = Instance.new("Frame")
 statusDot.Size = UDim2.new(0, 8, 0, 8)
-statusDot.Position = UDim2.new(0, 12, 0.5, -4)
+statusDot.Position = UDim2.new(0, 14, 0.5, -4)
 statusDot.BackgroundColor3 = COL.red
 statusDot.BorderSizePixel = 0
 statusDot.ZIndex = 54
@@ -1081,8 +1068,8 @@ corner(statusDot, UDim.new(1, 0))
 
 local statusText = Instance.new("TextLabel")
 statusText.BackgroundTransparency = 1
-statusText.Position = UDim2.new(0, 26, 0, 0)
-statusText.Size = UDim2.new(1, -36, 1, 0)
+statusText.Position = UDim2.new(0, 28, 0, 0)
+statusText.Size = UDim2.new(1, -38, 1, 0)
 statusText.Text = "Waiting for patch..."
 statusText.TextColor3 = COL.textDim
 statusText.FontFace = FONT.med
@@ -1111,19 +1098,21 @@ task.spawn(function()
     end
 end)
 
--- FAB OPEN/CLOSE
+-- ============================================================
+-- OPEN/CLOSE + DRAG
+-- ============================================================
 local opening = false
 local function openPanel()
     if opening then return end
     opening = true
     panel.Visible = true
-    panel.Size = UDim2.new(0, 0, 0, 380)
-    tween(panel, 0.3, {Size = UDim2.new(0, 280, 0, 380)}):Play()
+    panel.Size = UDim2.new(0, 0, 0, 400)
+    tween(panel, 0.3, {Size = UDim2.new(0, 300, 0, 400)}):Play()
     task.delay(0.35, function() opening = false end)
 end
 
 local function closePanel()
-    tween(panel, 0.2, {Size = UDim2.new(0, 0, 0, 380)}):Play()
+    tween(panel, 0.2, {Size = UDim2.new(0, 0, 0, 400)}):Play()
     task.delay(0.2, function() panel.Visible = false end)
 end
 
@@ -1133,7 +1122,7 @@ end)
 
 closeBtn.MouseButton1Click:Connect(closePanel)
 
--- Drag FAB (منفصل)
+-- Drag FAB
 do
     local dragging, dragStart, startPos, moved
     fab.InputBegan:Connect(function(input)
@@ -1167,7 +1156,7 @@ do
     end)
 end
 
--- Drag panel من header
+-- Drag panel
 do
     local dragging, dragStart, startPos
     header.InputBegan:Connect(function(input)
@@ -1208,7 +1197,7 @@ return true
 end)
 
 if not UI_OK then
-    warn("[UI] failed to build UI:", tostring(UI_ERR))
+    warn("[UI] failed:", tostring(UI_ERR))
     pcall(function()
         local msg = Instance.new("Message")
         msg.Text = "[BB] UI failed. Check console."
