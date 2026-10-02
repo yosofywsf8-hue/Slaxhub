@@ -1,4 +1,4 @@
--- Blade Ball — Auto Parry + Auto Spam (Smart) + Manual Spam + No Render + FPS Boost
+-- Blade Ball — Auto Parry + Auto Spam + Manual Spam + No Render + FPS Boost + SoF
 -- Runtime: Roblox mobile / PC
 -- Executor: cloneref, getupvalues, getrawmetatable, setreadonly, loadstring
 
@@ -173,9 +173,6 @@ local System = {
         __spam_threshold      = 1.5,
         __spam_accumulator    = 0,
         __spam_rate           = 1000,
-        __auto_spam_last      = 0,
-        __auto_spam_distance_multiplier = 1,
-        __auto_spam_cooldown  = 0.3,
         __tornado_time        = tick(),
         __connections         = {},
         __infinity_active     = false,
@@ -201,6 +198,10 @@ local function update_divisor()
     System.__properties.__divisor_multiplier =
         0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
 end
+
+-- SoF constants (dari gist)
+local maxParryCount = 36
+local parryDelay    = 0.05
 
 -- ============================================================
 -- 4. BALL / PLAYER / CURVE / PARRY / DETECTION
@@ -396,7 +397,7 @@ function System.detection.is_curved()
 end
 
 -- ============================================================
--- 5. DETECTION HOOKS
+-- 5. DETECTION HOOKS — NASKAH GIST ASLI
 -- ============================================================
 local RS = replicated_storage
 
@@ -409,33 +410,53 @@ RS.Remotes.InfinityBall.OnClientEvent:Connect(function(_, b)
 end)
 
 local netFolder = RS.Packages._Index["sleitnick_net@0.1.0"].net
+
 netFolder["RE/TimeHoleActivate"].OnClientEvent:Connect(function(...)
-    local p = ({...})[1]
-    if p == LocalPlayer or p == LocalPlayer.Name or (p and p.Name == LocalPlayer.Name) then
+    local args = {...}
+    local player = args[1]
+    if player == LocalPlayer or player == LocalPlayer.Name or (player and player.Name == LocalPlayer.Name) then
         System.__properties.__timehole_active = true
     end
 end)
+
 netFolder["RE/TimeHoleDeactivate"].OnClientEvent:Connect(function()
     System.__properties.__timehole_active = false
 end)
 
 netFolder["RE/SlashesOfFuryActivate"].OnClientEvent:Connect(function(...)
-    local p = ({...})[1]
-    if p == LocalPlayer or p == LocalPlayer.Name or (p and p.Name == LocalPlayer.Name) then
+    local args = {...}
+    local player = args[1]
+    if player == LocalPlayer or player == LocalPlayer.Name or (player and player.Name == LocalPlayer.Name) then
         System.__properties.__slashesoffury_active = true
-        System.__properties.__slashesoffury_count  = 0
+        System.__properties.__slashesoffury_count = 0
     end
 end)
+
 netFolder["RE/SlashesOfFuryEnd"].OnClientEvent:Connect(function()
     System.__properties.__slashesoffury_active = false
-    System.__properties.__slashesoffury_count  = 0
+    System.__properties.__slashesoffury_count = 0
 end)
+
 netFolder["RE/SlashesOfFuryParry"].OnClientEvent:Connect(function()
-    System.__properties.__slashesoffury_count += 1
+    System.__properties.__slashesoffury_count = System.__properties.__slashesoffury_count + 1
+end)
+
+netFolder["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(function()
+    spawn(function()
+        while System.__properties.__slashesoffury_active and
+              System.__properties.__slashesoffury_count < maxParryCount do
+            if System.__config.__detections.__slashesoffury then
+                System.parry.execute()
+                task.wait(parryDelay)
+            else
+                break
+            end
+        end
+    end)
 end)
 
 -- ============================================================
--- 6. AUTOPARRY
+-- 6. AUTOPARRY — NASKAH GIST ASLI
 -- ============================================================
 System.autoparry = {}
 
@@ -444,91 +465,93 @@ function System.autoparry.start()
         System.__properties.__connections.__autoparry:Disconnect()
     end
     System.__properties.__connections.__autoparry = RunService.PreSimulation:Connect(function()
-        if not System.__properties.__autoparry_enabled then return end
-        if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
-        if System.__config.__detections.__slashesoffury
-           and System.__properties.__slashesoffury_active then
+        if not System.__properties.__autoparry_enabled or not LocalPlayer.Character or
+           not LocalPlayer.Character.PrimaryPart then
             return
         end
-        local balls    = System.ball.get_all()
+        local balls = System.ball.get_all()
         local one_ball = System.ball.get()
         local training_ball = nil
         if workspace:FindFirstChild("TrainingBalls") then
-            for _, inst in pairs(workspace.TrainingBalls:GetChildren()) do
-                if inst:GetAttribute("realBall") then
-                    training_ball = inst
+            for _, Instance in pairs(workspace.TrainingBalls:GetChildren()) do
+                if Instance:GetAttribute("realBall") then
+                    training_ball = Instance
                     break
                 end
             end
         end
         for _, ball in pairs(balls) do
             if not ball then continue end
-            local zoomies = ball:FindFirstChild("zoomies")
+            local zoomies = ball:FindFirstChild('zoomies')
             if not zoomies then continue end
-            ball:GetAttributeChangedSignal("target"):Once(function()
+            ball:GetAttributeChangedSignal('target'):Once(function()
                 System.__properties.__parried = false
             end)
             if System.__properties.__parried then continue end
-            local ball_target = ball:GetAttribute("target")
-            local velocity    = zoomies.VectorVelocity
-            local distance    = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Magnitude
-            local ping        = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 10
-            local ping_thr    = math.clamp(ping / 10, 5, 17)
-            local speed       = velocity.Magnitude
-            local capped      = math.min(math.max(speed - 9.5, 0), 650)
-            local speed_div   = (2.4 + capped * 0.002) * System.__properties.__divisor_multiplier
-            local parry_acc   = ping_thr + math.max(speed / speed_div, 9.5)
+            local ball_target = ball:GetAttribute('target')
+            local velocity = zoomies.VectorVelocity
+            local distance = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Magnitude
+            local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 10
+            local ping_threshold = math.clamp(ping / 10, 5, 17)
+            local speed = velocity.Magnitude
+            local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
+            local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
+            local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
             local curved = System.detection.is_curved()
-            if ball:FindFirstChild("AeroDynamicSlashVFX") then
+            if ball:FindFirstChild('AeroDynamicSlashVFX') then
                 ball.AeroDynamicSlashVFX:Destroy()
                 System.__properties.__tornado_time = tick()
             end
-            if Runtime:FindFirstChild("Tornado") then
-                local tt = Runtime.Tornado:GetAttribute("TornadoTime") or 1
-                if (tick() - System.__properties.__tornado_time) < tt + 0.314159 then
+            if Runtime:FindFirstChild('Tornado') then
+                if (tick() - System.__properties.__tornado_time) <
+                   (Runtime.Tornado:GetAttribute('TornadoTime') or 1) + 0.314159 then
                     continue
                 end
             end
-            if one_ball and one_ball:GetAttribute("target") == LocalPlayer.Name and curved then
+            if one_ball and one_ball:GetAttribute('target') == LocalPlayer.Name and curved then
                 continue
             end
-            if ball:FindFirstChild("ComboCounter") then continue end
-            if LocalPlayer.Character.PrimaryPart:FindFirstChild("SingularityCape") then continue end
+            if ball:FindFirstChild('ComboCounter') then continue end
+            if LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then continue end
             if System.__config.__detections.__infinity and System.__properties.__infinity_active then continue end
             if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then continue end
             if System.__config.__detections.__timehole and System.__properties.__timehole_active then continue end
             if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then continue end
-            if ball_target == LocalPlayer.Name and distance <= parry_acc then
+            if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
                 System.parry.execute()
                 System.__properties.__parried = true
             end
-            local last = tick()
-            repeat RunService.Stepped:Wait() until
-                (tick() - last) >= 1 or not System.__properties.__parried
+            local last_parrys = tick()
+            repeat
+                RunService.Stepped:Wait()
+            until (tick() - last_parrys) >= 1 or not System.__properties.__parried
             System.__properties.__parried = false
         end
         if training_ball then
-            local zoomies = training_ball:FindFirstChild("zoomies")
-            if zoomies and not System.__properties.__training_parried then
-                training_ball:GetAttributeChangedSignal("target"):Once(function()
+            local zoomies = training_ball:FindFirstChild('zoomies')
+            if zoomies then
+                training_ball:GetAttributeChangedSignal('target'):Once(function()
                     System.__properties.__training_parried = false
                 end)
-                local bt = training_ball:GetAttribute("target")
-                local v  = zoomies.VectorVelocity
-                local d  = LocalPlayer:DistanceFromCharacter(training_ball.Position)
-                local s  = v.Magnitude
-                local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 10
-                local pt = math.clamp(ping / 10, 5, 17)
-                local capped = math.min(math.max(s - 9.5, 0), 650)
-                local sd = (2.4 + capped * 0.002) * System.__properties.__divisor_multiplier
-                local acc = pt + math.max(s / sd, 9.5)
-                if bt == LocalPlayer.Name and d <= acc then
-                    System.parry.execute()
-                    System.__properties.__training_parried = true
-                    local last = tick()
-                    repeat RunService.Stepped:Wait() until
-                        (tick() - last) >= 1 or not System.__properties.__training_parried
-                    System.__properties.__training_parried = false
+                if not System.__properties.__training_parried then
+                    local ball_target = training_ball:GetAttribute('target')
+                    local velocity = zoomies.VectorVelocity
+                    local distance = LocalPlayer:DistanceFromCharacter(training_ball.Position)
+                    local speed = velocity.Magnitude
+                    local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 10
+                    local ping_threshold = math.clamp(ping / 10, 5, 17)
+                    local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
+                    local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
+                    local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+                    if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
+                        System.parry.execute()
+                        System.__properties.__training_parried = true
+                        local last_parrys = tick()
+                        repeat
+                            RunService.Stepped:Wait()
+                        until (tick() - last_parrys) >= 1 or not System.__properties.__training_parried
+                        System.__properties.__training_parried = false
+                    end
                 end
             end
         end
@@ -543,7 +566,7 @@ function System.autoparry.stop()
 end
 
 -- ============================================================
--- 7. AUTO SPAM (SMART — with distance multiplier)
+-- 7. AUTO SPAM — NASKAH GIST ASLI
 -- ============================================================
 System.auto_spam = {}
 
@@ -622,36 +645,10 @@ function System.auto_spam.spam_service(self)
     return B - q
 end
 
-function System.auto_spam:get_distance_limit()
-    local ball = System.ball.get()
-    local entity = System.player.get_closest()
-    if not ball or not entity or not entity.PrimaryPart then return 0 end
-    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return 0 end
-
-    local bp = System.auto_spam:get_ball_properties()
-    local ep = System.auto_spam:get_entity_properties()
-    if not bp or not ep then return 0 end
-
-    local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-    local ping_thr = math.clamp(ping / 10, 1, 16)
-
-    local spam_acc = System.auto_spam.spam_service({
-        Ball_Properties   = bp,
-        Entity_Properties = ep,
-        Ping              = ping_thr,
-    }) or 0
-
-    local mult = System.__properties.__auto_spam_distance_multiplier or 1
-    return spam_acc * mult
-end
-
 function System.auto_spam.start()
     if System.__properties.__connections.__auto_spam then
         System.__properties.__connections.__auto_spam:Disconnect()
     end
-
-    System.__properties.__auto_spam_last = 0
-
     System.__properties.__connections.__auto_spam = RunService.PreSimulation:Connect(function()
         if not System.__properties.__auto_spam_enabled then return end
         if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
@@ -664,31 +661,38 @@ function System.auto_spam.start()
         if not zoomies then return end
         if zoomies.VectorVelocity.Magnitude == 0 then return end
 
-        -- ★ الكرة لازم تستهدفني
-        local ball_target = ball:GetAttribute("target")
-        if ball_target ~= LocalPlayer.Name then return end
-
         System.player.get_closest()
         if not Closest_Entity or not Closest_Entity.PrimaryPart then return end
 
-        -- ★ احسب الحد الأقصى للمسافة (spam_accuracy × multiplier)
-        local distance_limit = System.auto_spam:get_distance_limit()
-        if distance_limit <= 0 then return end
+        local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+        local ping_thr = math.clamp(ping / 10, 1, 16)
 
-        local ball_dist = LocalPlayer:DistanceFromCharacter(ball.Position)
-        if ball_dist > distance_limit then return end
+        local bp = System.auto_spam:get_ball_properties()
+        local ep = System.auto_spam:get_entity_properties()
+        if not bp or not ep then return end
 
-        -- ★ Pulsed check
+        local spam_acc = System.auto_spam.spam_service({
+            Ball_Properties   = bp,
+            Entity_Properties = ep,
+            Ping              = ping_thr,
+        })
+
+        local target_pos  = Closest_Entity.PrimaryPart.Position
+        local target_dist = LocalPlayer:DistanceFromCharacter(target_pos)
+        local ball_dist   = LocalPlayer:DistanceFromCharacter(ball.Position)
+
+        local ball_target = ball:GetAttribute("target")
+        if not ball_target then return end
+
         local pulsed = LocalPlayer.Character:GetAttribute("Pulsed")
         if pulsed then return end
 
-        -- ★ cooldown داخلي (0.3s)
-        local now = tick()
-        local cooldown = System.__properties.__auto_spam_cooldown or 0.3
-        if now - (System.__properties.__auto_spam_last or 0) < cooldown then return end
-        System.__properties.__auto_spam_last = now
+        if target_dist > spam_acc or ball_dist > spam_acc then return end
+        if ball_target == LocalPlayer.Name and target_dist > 30 and ball_dist > 30 then return end
 
-        System.parry.execute()
+        if ball_dist <= spam_acc then
+            System.parry.execute()
+        end
     end)
 end
 
@@ -745,7 +749,7 @@ function System.manual_spam.stop()
 end
 
 -- ============================================================
--- 7.55 MANUAL SPAM FLOATING BUTTON (new design)
+-- 7.55 MANUAL SPAM FLOATING BUTTON
 -- ============================================================
 System.manual_button = {
     __gui    = nil,
@@ -1214,30 +1218,12 @@ local WindUI_OK, WindUI_ERR = pcall(function()
     })
 
     MainTab:Toggle({
-        Title = "Auto Spam (Smart)  [C]",
-        Desc = "only when ball targets you & close",
+        Title = "Auto Spam  [C]",
+        Desc = "spam parry when ball is close",
         Value = true,
         Callback = function(v)
             System.__properties.__auto_spam_enabled = v
             if v then System.auto_spam.start() else System.auto_spam.stop() end
-        end,
-    })
-
-    MainTab:Slider({
-        Title = "Auto Spam Distance Multiplier",
-        Desc = "0.3 = close / 1 = normal",
-        Value = { Min = 0.1, Max = 3.0, Default = 1 },
-        Callback = function(v)
-            System.__properties.__auto_spam_distance_multiplier = v
-        end,
-    })
-
-    MainTab:Slider({
-        Title = "Auto Spam Cooldown (s)",
-        Desc = "delay between parries",
-        Value = { Min = 0.1, Max = 1.0, Default = 0.3 },
-        Callback = function(v)
-            System.__properties.__auto_spam_cooldown = v
         end,
     })
 
@@ -1299,7 +1285,7 @@ local WindUI_OK, WindUI_ERR = pcall(function()
 
     DetectTab:Toggle({
         Title = "Slashes Of Fury",
-        Desc = "pause parry while active",
+        Desc = "parry loop while active (gist)",
         Value = true,
         Callback = function(v) System.__config.__detections.__slashesoffury = v end,
     })
