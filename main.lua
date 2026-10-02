@@ -1,4 +1,4 @@
--- Blade Ball — Auto Parry + Auto Spam + Manual Spam + No Render + FPS Boost
+-- Blade Ball — Auto Parry + Auto Spam (Smart) + Manual Spam + No Render + FPS Boost
 -- Runtime: Roblox mobile / PC
 -- Executor: cloneref, getupvalues, getrawmetatable, setreadonly, loadstring
 
@@ -172,7 +172,10 @@ local System = {
         __parries             = 0,
         __spam_threshold      = 1.5,
         __spam_accumulator    = 0,
-        __spam_rate           = 100,
+        __spam_rate           = 1000,
+        __auto_spam_last      = 0,
+        __auto_spam_distance_multiplier = 1,
+        __auto_spam_cooldown  = 0.3,
         __tornado_time        = tick(),
         __connections         = {},
         __infinity_active     = false,
@@ -540,7 +543,7 @@ function System.autoparry.stop()
 end
 
 -- ============================================================
--- 7. AUTO SPAM
+-- 7. AUTO SPAM (SMART — with distance multiplier)
 -- ============================================================
 System.auto_spam = {}
 
@@ -619,43 +622,73 @@ function System.auto_spam.spam_service(self)
     return B - q
 end
 
+function System.auto_spam:get_distance_limit()
+    local ball = System.ball.get()
+    local entity = System.player.get_closest()
+    if not ball or not entity or not entity.PrimaryPart then return 0 end
+    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return 0 end
+
+    local bp = System.auto_spam:get_ball_properties()
+    local ep = System.auto_spam:get_entity_properties()
+    if not bp or not ep then return 0 end
+
+    local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    local ping_thr = math.clamp(ping / 10, 1, 16)
+
+    local spam_acc = System.auto_spam.spam_service({
+        Ball_Properties   = bp,
+        Entity_Properties = ep,
+        Ping              = ping_thr,
+    }) or 0
+
+    local mult = System.__properties.__auto_spam_distance_multiplier or 1
+    return spam_acc * mult
+end
+
 function System.auto_spam.start()
     if System.__properties.__connections.__auto_spam then
         System.__properties.__connections.__auto_spam:Disconnect()
     end
+
+    System.__properties.__auto_spam_last = 0
+
     System.__properties.__connections.__auto_spam = RunService.PreSimulation:Connect(function()
         if not System.__properties.__auto_spam_enabled then return end
         if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
         if System.__properties.__slashesoffury_active then return end
+
         local ball = System.ball.get()
         if not ball then return end
+
         local zoomies = ball:FindFirstChild("zoomies")
         if not zoomies then return end
         if zoomies.VectorVelocity.Magnitude == 0 then return end
+
+        -- ★ الكرة لازم تستهدفني
+        local ball_target = ball:GetAttribute("target")
+        if ball_target ~= LocalPlayer.Name then return end
+
         System.player.get_closest()
         if not Closest_Entity or not Closest_Entity.PrimaryPart then return end
-        local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-        local ping_thr = math.clamp(ping / 10, 1, 16)
-        local bp = System.auto_spam:get_ball_properties()
-        local ep = System.auto_spam:get_entity_properties()
-        if not bp or not ep then return end
-        local spam_acc = System.auto_spam.spam_service({
-            Ball_Properties   = bp,
-            Entity_Properties = ep,
-            Ping              = ping_thr,
-        })
-        local target_pos  = Closest_Entity.PrimaryPart.Position
-        local target_dist = LocalPlayer:DistanceFromCharacter(target_pos)
-        local ball_dist   = LocalPlayer:DistanceFromCharacter(ball.Position)
-        local ball_target = ball:GetAttribute("target")
-        if not ball_target then return end
+
+        -- ★ احسب الحد الأقصى للمسافة (spam_accuracy × multiplier)
+        local distance_limit = System.auto_spam:get_distance_limit()
+        if distance_limit <= 0 then return end
+
+        local ball_dist = LocalPlayer:DistanceFromCharacter(ball.Position)
+        if ball_dist > distance_limit then return end
+
+        -- ★ Pulsed check
         local pulsed = LocalPlayer.Character:GetAttribute("Pulsed")
         if pulsed then return end
-        if target_dist > spam_acc or ball_dist > spam_acc then return end
-        if ball_target == LocalPlayer.Name and target_dist > 30 and ball_dist > 30 then return end
-        if ball_dist <= spam_acc then
-            System.parry.execute()
-        end
+
+        -- ★ cooldown داخلي (0.3s)
+        local now = tick()
+        local cooldown = System.__properties.__auto_spam_cooldown or 0.3
+        if now - (System.__properties.__auto_spam_last or 0) < cooldown then return end
+        System.__properties.__auto_spam_last = now
+
+        System.parry.execute()
     end)
 end
 
@@ -1181,12 +1214,30 @@ local WindUI_OK, WindUI_ERR = pcall(function()
     })
 
     MainTab:Toggle({
-        Title = "Auto Spam  [C]",
-        Desc = "spam parry when ball is close",
+        Title = "Auto Spam (Smart)  [C]",
+        Desc = "only when ball targets you & close",
         Value = true,
         Callback = function(v)
             System.__properties.__auto_spam_enabled = v
             if v then System.auto_spam.start() else System.auto_spam.stop() end
+        end,
+    })
+
+    MainTab:Slider({
+        Title = "Auto Spam Distance Multiplier",
+        Desc = "0.3 = close / 1 = normal",
+        Value = { Min = 0.1, Max = 3.0, Default = 1 },
+        Callback = function(v)
+            System.__properties.__auto_spam_distance_multiplier = v
+        end,
+    })
+
+    MainTab:Slider({
+        Title = "Auto Spam Cooldown (s)",
+        Desc = "delay between parries",
+        Value = { Min = 0.1, Max = 1.0, Default = 0.3 },
+        Callback = function(v)
+            System.__properties.__auto_spam_cooldown = v
         end,
     })
 
