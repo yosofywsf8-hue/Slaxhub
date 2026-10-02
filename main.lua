@@ -167,7 +167,6 @@ local System = {
         __spam_threshold      = 1.5,
         __spam_accumulator    = 0,
         __spam_rate           = 1000,
-        __auto_spam_range     = 12,
         __tornado_time        = tick(),
         __connections         = {},
         __infinity_active     = false,
@@ -505,7 +504,7 @@ function System.autoparry.stop()
 end
 
 -- ============================================================
--- 7. AUTO SPAM
+-- 7. AUTO SPAM — NASKAH GIST ASLI (100% copy paste)
 -- ============================================================
 System.auto_spam = {}
 
@@ -513,26 +512,29 @@ function System.auto_spam:get_entity_properties()
     System.player.get_closest()
     if not Closest_Entity or not Closest_Entity.PrimaryPart then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-    local ev = Closest_Entity.PrimaryPart.Velocity
-    local ed = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Unit
-    local ds = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Magnitude
-    return { Velocity = ev, Direction = ed, Distance = ds }
+    local entity_velocity = Closest_Entity.PrimaryPart.Velocity
+    local entity_direction = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Unit
+    local entity_distance = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Magnitude
+    return { Velocity = entity_velocity, Direction = entity_direction, Distance = entity_distance }
 end
 
 function System.auto_spam:get_ball_properties()
     local ball = System.ball.get()
     if not ball then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-    local bv = ball.AssemblyLinearVelocity or Vector3.new()
-    local dv = LocalPlayer.Character.PrimaryPart.Position - ball.Position
-    local ds = dv.Magnitude
-    local bd = Vector3.new()
-    local dot = 0
-    if ds > 0 then
-        bd = dv.Unit
-        if bv.Magnitude > 0 then dot = bd:Dot(bv.Unit) end
+    local ball_velocity = ball.AssemblyLinearVelocity or Vector3.new()
+    local ball_origin = ball
+    local ball_direction_vector = LocalPlayer.Character.PrimaryPart.Position - ball_origin.Position
+    local ball_distance = ball_direction_vector.Magnitude
+    local ball_direction = Vector3.new()
+    local ball_dot = 0
+    if ball_distance > 0 then
+        ball_direction = ball_direction_vector.Unit
+        if ball_velocity.Magnitude > 0 then
+            ball_dot = ball_direction:Dot(ball_velocity.Unit)
+        end
     end
-    return { Velocity = bv, Direction = bd, Distance = ds, Dot = dot }
+    return { Velocity = ball_velocity, Direction = ball_direction, Distance = ball_distance, Dot = ball_dot }
 end
 
 function System.auto_spam.spam_service(self)
@@ -540,23 +542,33 @@ function System.auto_spam.spam_service(self)
     local entity = System.player.get_closest()
     if not ball or not entity or not entity.PrimaryPart then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
+
     local D = 5
     local velocity = ball.AssemblyLinearVelocity or Vector3.new()
     local n = velocity.Magnitude
     if n == 0 then return D end
-    local to_ball = LocalPlayer.Character.PrimaryPart.Position - ball.Position
+
+    local to_ball = (LocalPlayer.Character.PrimaryPart.Position - ball.Position)
     if to_ball.Magnitude == 0 then return D end
+
     local r = to_ball.Unit
     local t = 0
-    if velocity.Magnitude > 0 then t = r:Dot(velocity.Unit) end
+    if n > 0 and velocity.Magnitude > 0 then
+        t = r:Dot(velocity.Unit)
+    end
+
     local target_pos = entity.PrimaryPart.Position
     local X = LocalPlayer:DistanceFromCharacter(target_pos)
+
     local E = 1
     local Fmove = Vector3.new()
-    local ok, hum = pcall(function()
+    local success, humanoid = pcall(function()
         return LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     end)
-    if ok and hum and hum.MoveDirection then Fmove = hum.MoveDirection end
+    if success and humanoid and humanoid.MoveDirection then
+        Fmove = humanoid.MoveDirection
+    end
+
     local N = (target_pos - LocalPlayer.Character.PrimaryPart.Position)
     if N.Magnitude > 0 then N = N.Unit else N = Vector3.new() end
     local lmove = Vector3.new()
@@ -564,21 +576,41 @@ function System.auto_spam.spam_service(self)
         local ehum = entity:FindFirstChildOfClass("Humanoid")
         if ehum and ehum.MoveDirection then lmove = ehum.MoveDirection end
     end
+
     _G.Last_Close_Contact = _G.Last_Close_Contact or 0
     _G.In_Close_Contact = _G.In_Close_Contact or false
     local now = tick()
-    if X <= 3 then _G.In_Close_Contact = true end
-    if _G.In_Close_Contact and X > 3.3 then _G.In_Close_Contact = false; _G.Last_Close_Contact = now end
+    if X <= 3 then
+        _G.In_Close_Contact = true
+    end
+    if _G.In_Close_Contact and X > 3.3 then
+        _G.In_Close_Contact = false
+        _G.Last_Close_Contact = now
+    end
     local u = (not _G.In_Close_Contact) and (now - (_G.Last_Close_Contact or 0) >= 1.5)
-    if u and (Fmove.Magnitude > 0.2 and Fmove:Dot(N) < -0.4) then E = 10 end
-    if u and (lmove.Magnitude > 0.2 and lmove:Dot(-N) < -0.4) then E = 10 end
+    if u and (Fmove.Magnitude > 0.2 and Fmove:Dot(N) < -0.4) then
+        E = 10
+    end
+    if u and (lmove.Magnitude > 0.2 and lmove:Dot(-N) < -0.4) then
+        E = 10
+    end
+
     local B = (self.Ping or 50) * 0.7 + math.min(n / (E * 1.2), 80)
-    if (self.Entity_Properties and self.Entity_Properties.Distance or math.huge) > B then return D end
-    if (self.Ball_Properties and self.Ball_Properties.Distance or math.huge) > B then return D end
-    if X > B then return D end
+
+    if (self.Entity_Properties and self.Entity_Properties.Distance or math.huge) > B then
+        return D
+    end
+    if (self.Ball_Properties and self.Ball_Properties.Distance or math.huge) > B then
+        return D
+    end
+    if X > B then
+        return D
+    end
+
     local U = math.clamp(-t, 0, 1)
     local q = math.clamp(U * (n / 40), 0, 4)
-    return B - q
+    D = B - q
+    return D
 end
 
 function System.auto_spam.start()
@@ -588,34 +620,52 @@ function System.auto_spam.start()
     System.__properties.__connections.__auto_spam = RunService.PreSimulation:Connect(function()
         if not System.__properties.__auto_spam_enabled then return end
         if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
-        if System.__properties.__slashesoffury_active then return end
+
         local ball = System.ball.get()
         if not ball then return end
+        if System.__properties.__slashesoffury_active then return end
+
         local zoomies = ball:FindFirstChild("zoomies")
         if not zoomies then return end
         if zoomies.VectorVelocity.Magnitude == 0 then return end
+
         System.player.get_closest()
         if not Closest_Entity or not Closest_Entity.PrimaryPart then return end
+
         local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-        local ping_thr = math.clamp(ping / 10, 1, 16)
-        local bp = System.auto_spam:get_ball_properties()
-        local ep = System.auto_spam:get_entity_properties()
-        if not bp or not ep then return end
-        local spam_acc = System.auto_spam.spam_service({
-            Ball_Properties = bp, Entity_Properties = ep, Ping = ping_thr,
-        })
-        local target_pos  = Closest_Entity.PrimaryPart.Position
-        local target_dist = LocalPlayer:DistanceFromCharacter(target_pos)
-        local ball_dist   = LocalPlayer:DistanceFromCharacter(ball.Position)
+        local ping_threshold = math.clamp(ping / 10, 1, 16)
+
         local ball_target = ball:GetAttribute("target")
+        local ball_properties = System.auto_spam:get_ball_properties()
+        local entity_properties = System.auto_spam:get_entity_properties()
+        if not ball_properties or not entity_properties then return end
+
+        local spam_accuracy = System.auto_spam.spam_service({
+            Ball_Properties = ball_properties,
+            Entity_Properties = entity_properties,
+            Ping = ping_threshold,
+        })
+
+        local target_position = Closest_Entity.PrimaryPart.Position
+        local target_distance = LocalPlayer:DistanceFromCharacter(target_position)
+        if zoomies.VectorVelocity.Magnitude == 0 then return end
+
+        local direction = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Unit
+        local ball_direction = zoomies.VectorVelocity.Unit
+        local dot = direction:Dot(ball_direction)
+        local distance = LocalPlayer:DistanceFromCharacter(ball.Position)
+
         if not ball_target then return end
+        if target_distance > spam_accuracy or distance > spam_accuracy then return end
+
         local pulsed = LocalPlayer.Character:GetAttribute("Pulsed")
         if pulsed then return end
-        local is_targeted = (ball_target == LocalPlayer.Name)
-        local near_enemy  = target_dist <= (System.__properties.__auto_spam_range or 12)
-        if not (is_targeted or near_enemy) then return end
-        if ball_dist > spam_acc then return end
-        System.parry.execute()
+
+        if ball_target == LocalPlayer.Name and target_distance > 30 and distance > 30 then return end
+
+        if distance <= spam_accuracy and System.__properties.__parries > System.__properties.__spam_threshold then
+            System.parry.execute()
+        end
     end)
 end
 
@@ -886,7 +936,7 @@ end
 System.hotkeys.start()
 
 -- ============================================================
--- 8. AZURE UI (BLABLA HUB) — Fixed & Ubuntu Font
+-- 8. AZURE UI (BLABLA HUB) — ZIndex Fixed
 -- ============================================================
 local Config = setmetatable({
     save = function(self, file_name, config)
@@ -903,20 +953,6 @@ local Config = setmetatable({
             result = HttpService:JSONDecode(readfile("BLABLA/"..file_name..".json"))
         end)
         return result or { _flags = {}, _keybinds = {}, _library = {} }
-    end,
-}, {})
-
-local Connections = setmetatable({
-    disconnect = function(self, c)
-        if not self[c] then return end
-        self[c]:Disconnect()
-        self[c] = nil
-    end,
-    disconnect_all = function(self)
-        for _, v in self do
-            if typeof(v) == 'function' then continue end
-            pcall(function() v:Disconnect() end)
-        end
     end,
 }, {})
 
@@ -950,6 +986,7 @@ function Azure.new()
     Container.BorderSizePixel = 0
     Container.ClipsDescendants = true
     Container.Active = true
+    Container.ZIndex = 2
     Container.Parent = ScreenGui
     Instance.new("UICorner", Container).CornerRadius = UDim.new(0, 12)
     local containerStroke = Instance.new("UIStroke", Container)
@@ -974,6 +1011,7 @@ function Azure.new()
     Handler.Name = "Handler"
     Handler.BackgroundTransparency = 1
     Handler.Size = UDim2.new(0, 750, 0, 530)
+    Handler.ZIndex = 3
 
     -- BLABLA Title
     local Title = Instance.new("TextLabel", Handler)
@@ -986,6 +1024,7 @@ function Azure.new()
     Title.Position = UDim2.new(0.05, 0, 0.05, 0)
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.TextSize = 20
+    Title.ZIndex = 4
 
     local SubTitle = Instance.new("TextLabel", Handler)
     SubTitle.FontFace = FONT.reg
@@ -997,6 +1036,7 @@ function Azure.new()
     SubTitle.Position = UDim2.new(0.05, 0, 0.09, 0)
     SubTitle.TextXAlignment = Enum.TextXAlignment.Left
     SubTitle.TextSize = 11
+    SubTitle.ZIndex = 4
 
     local Divider = Instance.new("Frame", Handler)
     Divider.BackgroundTransparency = 0.5
@@ -1004,7 +1044,9 @@ function Azure.new()
     Divider.Size = UDim2.new(0, 1, 0, 440)
     Divider.BorderSizePixel = 0
     Divider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    Divider.ZIndex = 4
 
+    -- TabsFrame (ZIndex 10, Active)
     local TabsFrame = Instance.new("ScrollingFrame", Handler)
     TabsFrame.Name = "Tabs"
     TabsFrame.Size = UDim2.new(0, 140, 0, 445)
@@ -1012,17 +1054,23 @@ function Azure.new()
     TabsFrame.BackgroundTransparency = 1
     TabsFrame.BorderSizePixel = 0
     TabsFrame.ScrollBarThickness = 0
-    -- Selectable = true default
+    TabsFrame.Selectable = true
+    TabsFrame.Active = true
+    TabsFrame.ZIndex = 10
     TabsFrame.AutomaticCanvasSize = Enum.AutomaticSize.XY
     TabsFrame.CanvasSize = UDim2.new(0, 0, 0.5, 0)
     local tabsLayout = Instance.new("UIListLayout", TabsFrame)
     tabsLayout.Padding = UDim.new(0, 4)
     tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
+    -- SectionsFrame (ZIndex 5, NOT active, doesn't cover tabs)
     local SectionsFrame = Instance.new("Frame", Handler)
     SectionsFrame.Name = "Sections"
     SectionsFrame.BackgroundTransparency = 1
-    SectionsFrame.Size = UDim2.new(1, 0, 1, 0)
+    SectionsFrame.Position = UDim2.new(0.22, 0, 0, 0)
+    SectionsFrame.Size = UDim2.new(0.78, 0, 1, 0)
+    SectionsFrame.ZIndex = 5
+    SectionsFrame.Active = false
 
     local UIScale = Instance.new("UIScale", Container)
 
@@ -1072,34 +1120,29 @@ function Azure:create_tab(title)
 
     local Tab = Instance.new("TextButton")
     Tab.Name = "Tab"
-    Tab.Text = ""
+    Tab.FontFace = FONT.semi
+    Tab.Text = title
     Tab.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Tab.TextTransparency = 0.6
+    Tab.TextSize = 13
     Tab.AutoButtonColor = false
     Tab.BackgroundTransparency = 1
     Tab.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
     Tab.Size = UDim2.new(0, 129, 0, 38)
     Tab.BorderSizePixel = 0
     Tab.LayoutOrder = tabIndex
+    Tab.TextXAlignment = Enum.TextXAlignment.Left
+    Tab.ZIndex = 11
+    Tab.Active = true
     Tab.Parent = self._tabsFrame
     Instance.new("UICorner", Tab).CornerRadius = UDim.new(0, 8)
-
-    local TabLabel = Instance.new("TextLabel", Tab)
-    TabLabel.Name = "TextLabel"
-    TabLabel.FontFace = FONT.semi
-    TabLabel.Text = title
-    TabLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TabLabel.TextTransparency = 0.6
-    TabLabel.BackgroundTransparency = 1
-    TabLabel.Size = UDim2.new(0, 100, 0, 16)
-    TabLabel.AnchorPoint = Vector2.new(0, 0.5)
-    TabLabel.Position = UDim2.new(0.24, 0, 0.5, 0)
-    TabLabel.TextXAlignment = Enum.TextXAlignment.Left
-    TabLabel.TextSize = 13
+    local tabPad = Instance.new("UIPadding", Tab)
+    tabPad.PaddingLeft = UDim.new(0, 32)
 
     local LeftSection = Instance.new("ScrollingFrame")
     LeftSection.Name = "LeftSection"
     LeftSection.Size = UDim2.new(0, 243, 0, 445)
-    LeftSection.Position = UDim2.new(0.259, 0, 0.5, 25)
+    LeftSection.Position = UDim2.new(0.05, 0, 0.5, 25)
     LeftSection.AnchorPoint = Vector2.new(0, 0.5)
     LeftSection.BackgroundTransparency = 1
     LeftSection.BorderSizePixel = 0
@@ -1107,6 +1150,7 @@ function Azure:create_tab(title)
     LeftSection.AutomaticCanvasSize = Enum.AutomaticSize.XY
     LeftSection.CanvasSize = UDim2.new(0, 0, 0.5, 0)
     LeftSection.Visible = false
+    LeftSection.ZIndex = 6
     LeftSection.Parent = self._sections
     local leftList = Instance.new("UIListLayout", LeftSection)
     leftList.Padding = UDim.new(0, 18)
@@ -1116,7 +1160,7 @@ function Azure:create_tab(title)
     local RightSection = Instance.new("ScrollingFrame")
     RightSection.Name = "RightSection"
     RightSection.Size = UDim2.new(0, 243, 0, 445)
-    RightSection.Position = UDim2.new(0.629, 0, 0.5, 25)
+    RightSection.Position = UDim2.new(0.52, 0, 0.5, 25)
     RightSection.AnchorPoint = Vector2.new(0, 0.5)
     RightSection.BackgroundTransparency = 1
     RightSection.BorderSizePixel = 0
@@ -1124,6 +1168,7 @@ function Azure:create_tab(title)
     RightSection.AutomaticCanvasSize = Enum.AutomaticSize.XY
     RightSection.CanvasSize = UDim2.new(0, 0, 0.5, 0)
     RightSection.Visible = false
+    RightSection.ZIndex = 6
     RightSection.Parent = self._sections
     local rightList = Instance.new("UIListLayout", RightSection)
     rightList.Padding = UDim.new(0, 18)
@@ -1147,14 +1192,14 @@ function Azure:create_tab(title)
                     BackgroundTransparency = 0.85,
                     BackgroundColor3 = Color3.fromRGB(220, 220, 220)
                 }):Play()
-                TweenService:Create(rec.Tab.TextLabel, TweenInfo.new(0.25), {
+                TweenService:Create(rec.Tab, TweenInfo.new(0.25), {
                     TextTransparency = 0.2
                 }):Play()
             else
                 TweenService:Create(rec.Tab, TweenInfo.new(0.25), {
                     BackgroundTransparency = 1
                 }):Play()
-                TweenService:Create(rec.Tab.TextLabel, TweenInfo.new(0.25), {
+                TweenService:Create(rec.Tab, TweenInfo.new(0.25), {
                     TextTransparency = 0.6
                 }):Play()
             end
@@ -1163,12 +1208,11 @@ function Azure:create_tab(title)
 
     if tabIndex == 0 then activate() end
 
-    Tab.MouseButton1Click:Connect(activate)
-    Tab.Activated:Connect(activate)
+    Tab.MouseButton1Click:Connect(function() task.defer(activate) end)
     Tab.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.Touch
         or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            activate()
+            task.defer(activate)
         end
     end)
 
@@ -1185,6 +1229,7 @@ function Azure:create_tab(title)
         Module.BackgroundTransparency = 0.02
         Module.BorderSizePixel = 0
         Module.ClipsDescendants = true
+        Module.ZIndex = 7
         Instance.new("UICorner", Module).CornerRadius = UDim.new(0, 8)
         local ms = Instance.new("UIStroke", Module)
         ms.Color = Color3.fromRGB(255, 255, 255)
@@ -1199,6 +1244,7 @@ function Azure:create_tab(title)
         Header.BackgroundTransparency = 1
         Header.Size = UDim2.new(0, 241, 0, 93)
         Header.BorderSizePixel = 0
+        Header.ZIndex = 8
 
         local ModuleName = Instance.new("TextLabel", Header)
         ModuleName.FontFace = FONT.semi
@@ -1211,6 +1257,7 @@ function Azure:create_tab(title)
         ModuleName.Position = UDim2.new(0.073, 0, 0.24, 0)
         ModuleName.TextXAlignment = Enum.TextXAlignment.Left
         ModuleName.TextSize = 13
+        ModuleName.ZIndex = 9
 
         local Description = Instance.new("TextLabel", Header)
         Description.FontFace = FONT.reg
@@ -1223,6 +1270,7 @@ function Azure:create_tab(title)
         Description.Position = UDim2.new(0.073, 0, 0.42, 0)
         Description.TextXAlignment = Enum.TextXAlignment.Left
         Description.TextSize = 10
+        Description.ZIndex = 9
 
         local Toggle = Instance.new("Frame", Header)
         Toggle.Name = "Toggle"
@@ -1231,6 +1279,7 @@ function Azure:create_tab(title)
         Toggle.Size = UDim2.new(0, 25, 0, 12)
         Toggle.Position = UDim2.new(0.82, 0, 0.757, 0)
         Toggle.BorderSizePixel = 0
+        Toggle.ZIndex = 9
         Instance.new("UICorner", Toggle).CornerRadius = UDim.new(1, 0)
 
         local Circle = Instance.new("Frame", Toggle)
@@ -1241,6 +1290,7 @@ function Azure:create_tab(title)
         Circle.BackgroundTransparency = 0.2
         Circle.Size = UDim2.new(0, 12, 0, 12)
         Circle.BorderSizePixel = 0
+        Circle.ZIndex = 10
         Instance.new("UICorner", Circle).CornerRadius = UDim.new(1, 0)
 
         local Divider = Instance.new("Frame", Header)
@@ -1251,12 +1301,14 @@ function Azure:create_tab(title)
         Divider.BackgroundTransparency = 0.7
         Divider.Size = UDim2.new(0, 241, 0, 1)
         Divider.BorderSizePixel = 0
+        Divider.ZIndex = 9
 
         local Options = Instance.new("Frame", Module)
         Options.Name = "Options"
         Options.BackgroundTransparency = 1
         Options.Position = UDim2.new(0, 0, 1, 0)
         Options.Size = UDim2.new(0, 241, 0, 8)
+        Options.ZIndex = 8
         local opPad = Instance.new("UIPadding", Options)
         opPad.PaddingTop = UDim.new(0, 8)
         local opList = Instance.new("UIListLayout", Options)
@@ -1324,6 +1376,7 @@ function Azure:create_tab(title)
             Checkbox.BackgroundTransparency = 1
             Checkbox.Size = UDim2.new(0, 207, 0, 15)
             Checkbox.BorderSizePixel = 0
+            Checkbox.ZIndex = 9
 
             local TitleLabel = Instance.new("TextLabel", Checkbox)
             TitleLabel.FontFace = FONT.semi
@@ -1336,6 +1389,7 @@ function Azure:create_tab(title)
             TitleLabel.Position = UDim2.new(0, 0, 0.5, 0)
             TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
             TitleLabel.TextSize = 11
+            TitleLabel.ZIndex = 10
 
             local Box = Instance.new("Frame", Checkbox)
             Box.Name = "Box"
@@ -1345,6 +1399,7 @@ function Azure:create_tab(title)
             Box.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
             Box.BackgroundTransparency = 0.9
             Box.BorderSizePixel = 0
+            Box.ZIndex = 10
             Instance.new("UICorner", Box).CornerRadius = UDim.new(0, 7)
 
             local Fill = Instance.new("Frame", Box)
@@ -1355,6 +1410,7 @@ function Azure:create_tab(title)
             Fill.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
             Fill.BackgroundTransparency = 0.2
             Fill.BorderSizePixel = 0
+            Fill.ZIndex = 11
             Instance.new("UICorner", Fill).CornerRadius = UDim.new(0, 6)
 
             function CM:change_state(state)
@@ -1395,6 +1451,7 @@ function Azure:create_tab(title)
             Slider.BackgroundTransparency = 1
             Slider.Size = UDim2.new(0, 207, 0, 22)
             Slider.BorderSizePixel = 0
+            Slider.ZIndex = 9
 
             local TitleLabel = Instance.new("TextLabel", Slider)
             TitleLabel.FontFace = FONT.semi
@@ -1406,6 +1463,7 @@ function Azure:create_tab(title)
             TitleLabel.Position = UDim2.new(0, 0, 0.05, 0)
             TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
             TitleLabel.TextSize = 11
+            TitleLabel.ZIndex = 10
 
             local Drag = Instance.new("Frame", Slider)
             Drag.Name = "Drag"
@@ -1415,6 +1473,7 @@ function Azure:create_tab(title)
             Drag.BackgroundColor3 = Color3.fromRGB(34, 34, 40)
             Drag.BackgroundTransparency = 0.7
             Drag.BorderSizePixel = 0
+            Drag.ZIndex = 10
             Instance.new("UICorner", Drag).CornerRadius = UDim.new(1, 0)
 
             local Fill = Instance.new("Frame", Drag)
@@ -1425,6 +1484,7 @@ function Azure:create_tab(title)
             Fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             Fill.BackgroundTransparency = 0.15
             Fill.BorderSizePixel = 0
+            Fill.ZIndex = 11
             Instance.new("UICorner", Fill).CornerRadius = UDim.new(0, 3)
 
             local Circle2 = Instance.new("Frame", Fill)
@@ -1434,6 +1494,7 @@ function Azure:create_tab(title)
             Circle2.Size = UDim2.new(0, 6, 0, 6)
             Circle2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             Circle2.BorderSizePixel = 0
+            Circle2.ZIndex = 12
             Instance.new("UICorner", Circle2).CornerRadius = UDim.new(1, 0)
 
             local Value = Instance.new("TextLabel", Slider)
@@ -1448,6 +1509,7 @@ function Azure:create_tab(title)
             Value.Position = UDim2.new(1, 0, 0, 0)
             Value.TextXAlignment = Enum.TextXAlignment.Right
             Value.TextSize = 10
+            Value.ZIndex = 10
 
             local SM = {}
             local min_v = s.minimum_value or 0
@@ -1515,6 +1577,7 @@ function Azure:create_tab(title)
             Dropdown.BackgroundTransparency = 1
             Dropdown.Size = UDim2.new(0, 207, 0, 39)
             Dropdown.BorderSizePixel = 0
+            Dropdown.ZIndex = 9
 
             local TitleLabel = Instance.new("TextLabel", Dropdown)
             TitleLabel.FontFace = FONT.semi
@@ -1525,6 +1588,7 @@ function Azure:create_tab(title)
             TitleLabel.Size = UDim2.new(0, 207, 0, 13)
             TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
             TitleLabel.TextSize = 11
+            TitleLabel.ZIndex = 10
 
             local Box = Instance.new("Frame", TitleLabel)
             Box.Name = "Box"
@@ -1535,6 +1599,7 @@ function Azure:create_tab(title)
             Box.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
             Box.BackgroundTransparency = 0.9
             Box.BorderSizePixel = 0
+            Box.ZIndex = 11
             Instance.new("UICorner", Box).CornerRadius = UDim.new(0, 4)
 
             local CurrentOption = Instance.new("TextLabel", Box)
@@ -1548,6 +1613,7 @@ function Azure:create_tab(title)
             CurrentOption.Position = UDim2.new(0.05, 0, 0.5, 0)
             CurrentOption.TextXAlignment = Enum.TextXAlignment.Left
             CurrentOption.TextSize = 10
+            CurrentOption.ZIndex = 12
 
             local OptionsFrame = Instance.new("ScrollingFrame", Box)
             OptionsFrame.Name = "Options"
@@ -1556,6 +1622,7 @@ function Azure:create_tab(title)
             OptionsFrame.Position = UDim2.new(0, 0, 1, 0)
             OptionsFrame.Size = UDim2.new(0, 207, 0, 0)
             OptionsFrame.CanvasSize = UDim2.new(0, 0, 0.5, 0)
+            OptionsFrame.ZIndex = 12
             local optsList = Instance.new("UIListLayout", OptionsFrame)
             optsList.SortOrder = Enum.SortOrder.LayoutOrder
 
@@ -1580,6 +1647,7 @@ function Azure:create_tab(title)
                     Option.TextXAlignment = Enum.TextXAlignment.Left
                     Option.AutoButtonColor = false
                     Option.Size = UDim2.new(0, 186, 0, 16)
+                    Option.ZIndex = 13
                     Option.MouseButton1Click:Connect(function()
                         DM:update(value)
                         for _, child in OptionsFrame:GetChildren() do
@@ -1712,18 +1780,6 @@ auto_spam_module:create_slider({
     round_number = true,
     callback = function(value)
         System.__properties.__spam_threshold = value
-    end,
-})
-
-auto_spam_module:create_slider({
-    title = "Auto Spam Range",
-    flag = "AutoSpamRange",
-    maximum_value = 30,
-    minimum_value = 5,
-    value = 12,
-    round_number = true,
-    callback = function(value)
-        System.__properties.__auto_spam_range = value
     end,
 })
 
