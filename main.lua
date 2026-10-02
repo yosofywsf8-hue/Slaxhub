@@ -199,7 +199,6 @@ local function update_divisor()
         0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
 end
 
--- Humanizer loop
 task.spawn(function()
     while true do
         task.wait(0.1)
@@ -1946,7 +1945,7 @@ local SpamTab   = AzureWindow:create_tab("Spam")
 local DetTab    = AzureWindow:create_tab("Detection")
 local VisualTab = AzureWindow:create_tab("Visual")
 
--- MAIN — Auto Parry + Accuracy + Randomize
+-- MAIN — Auto Parry
 local autoparry_module = MainTab:create_module({
     title = "Auto Parry",
     description = "Auto Parry Settings",
