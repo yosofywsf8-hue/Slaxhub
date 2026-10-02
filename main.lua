@@ -1,8 +1,20 @@
--- Blade Ball — Azure UI + Auto Parry + Auto Spam + Manual Spam + No Render + FPS Boost
+-- BLABLA Hub — Blade Ball Script
 -- Runtime: Roblox mobile / PC
 -- Executor: cloneref, getupvalues, getrawmetatable, setreadonly
 
 local cloneref = cloneref or function(o) return o end
+
+-- ============================================================
+-- PREMIUM FONT (Ubuntu)
+-- ============================================================
+local FONT_FAMILY = "rbxasset://fonts/families/Ubuntu.json"
+local FONT = {
+    reg   = Font.new(FONT_FAMILY, Enum.FontWeight.Regular,  Enum.FontStyle.Normal),
+    med   = Font.new(FONT_FAMILY, Enum.FontWeight.Medium,   Enum.FontStyle.Normal),
+    semi  = Font.new(FONT_FAMILY, Enum.FontWeight.SemiBold, Enum.FontStyle.Normal),
+    bold  = Font.new(FONT_FAMILY, Enum.FontWeight.Bold,     Enum.FontStyle.Normal),
+    black = Font.new(FONT_FAMILY, Enum.FontWeight.Heavy,    Enum.FontStyle.Normal),
+}
 
 -- ============================================================
 -- 1. PARRY PATCH
@@ -874,21 +886,21 @@ end
 System.hotkeys.start()
 
 -- ============================================================
--- 8. AZURE UI (clean rewrite)
+-- 8. AZURE UI (BLABLA HUB) — Fixed & Ubuntu Font
 -- ============================================================
 local Config = setmetatable({
     save = function(self, file_name, config)
         pcall(function()
             if not writefile then return end
-            if isfolder and makefolder and not isfolder("Azure") then makefolder("Azure") end
-            writefile("Azure/"..file_name..".json", HttpService:JSONEncode(config))
+            if isfolder and makefolder and not isfolder("BLABLA") then makefolder("BLABLA") end
+            writefile("BLABLA/"..file_name..".json", HttpService:JSONEncode(config))
         end)
     end,
     load = function(self, file_name)
         local result
         pcall(function()
-            if not isfile or not isfile("Azure/"..file_name..".json") then return end
-            result = HttpService:JSONDecode(readfile("Azure/"..file_name..".json"))
+            if not isfile or not isfile("BLABLA/"..file_name..".json") then return end
+            result = HttpService:JSONDecode(readfile("BLABLA/"..file_name..".json"))
         end)
         return result or { _flags = {}, _keybinds = {}, _library = {} }
     end,
@@ -913,10 +925,10 @@ Azure.__index = Azure
 Azure._config = Config:load(game.GameId)
 Azure._tabCounter = 0
 Azure._tabs = {}
-Azure._sections = {}
 
 function Azure.new()
     local self = setmetatable({}, Azure)
+    self._tabs = {}
 
     local old = CoreGui:FindFirstChild("Azure")
     if old then old:Destroy() end
@@ -946,11 +958,10 @@ function Azure.new()
     containerStroke.Transparency = 0.28
     containerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    local SideBar = Instance.new("Frame")
+    local SideBar = Instance.new("Frame", Container)
     SideBar.Name = "GradientSide"
     SideBar.Size = UDim2.new(0, 10, 1, 0)
     SideBar.BackgroundTransparency = 1
-    SideBar.Parent = Container
     local sideGradient = Instance.new("UIGradient", SideBar)
     sideGradient.Color = ColorSequence.new{
         ColorSequenceKeypoint.new(0.00, Color3.fromRGB(30, 30, 34)),
@@ -959,52 +970,59 @@ function Azure.new()
     }
     sideGradient.Rotation = 90
 
-    local Handler = Instance.new("Frame")
+    local Handler = Instance.new("Frame", Container)
     Handler.Name = "Handler"
     Handler.BackgroundTransparency = 1
     Handler.Size = UDim2.new(0, 750, 0, 530)
-    Handler.Parent = Container
 
-    local ClientName = Instance.new("TextLabel")
-    ClientName.Font = Enum.Font.GothamBold
-    ClientName.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ClientName.Text = "Blade Ball"
-    ClientName.Size = UDim2.new(0, 100, 0, 13)
-    ClientName.AnchorPoint = Vector2.new(0, 0.5)
-    ClientName.Position = UDim2.new(0.06, 0, 0.049, 1.5)
-    ClientName.BackgroundTransparency = 1
-    ClientName.TextXAlignment = Enum.TextXAlignment.Left
-    ClientName.TextSize = 16
-    ClientName.Parent = Handler
+    -- BLABLA Title
+    local Title = Instance.new("TextLabel", Handler)
+    Title.FontFace = FONT.black
+    Title.Text = "BLABLA"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.BackgroundTransparency = 1
+    Title.Size = UDim2.new(0, 200, 0, 22)
+    Title.AnchorPoint = Vector2.new(0, 0.5)
+    Title.Position = UDim2.new(0.05, 0, 0.05, 0)
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.TextSize = 20
 
-    local Divider = Instance.new("Frame")
+    local SubTitle = Instance.new("TextLabel", Handler)
+    SubTitle.FontFace = FONT.reg
+    SubTitle.Text = "blade ball hub"
+    SubTitle.TextColor3 = Color3.fromRGB(160, 165, 180)
+    SubTitle.BackgroundTransparency = 1
+    SubTitle.Size = UDim2.new(0, 200, 0, 14)
+    SubTitle.AnchorPoint = Vector2.new(0, 0.5)
+    SubTitle.Position = UDim2.new(0.05, 0, 0.09, 0)
+    SubTitle.TextXAlignment = Enum.TextXAlignment.Left
+    SubTitle.TextSize = 11
+
+    local Divider = Instance.new("Frame", Handler)
     Divider.BackgroundTransparency = 0.5
     Divider.Position = UDim2.new(0.225, 0, 0, 68)
     Divider.Size = UDim2.new(0, 1, 0, 440)
     Divider.BorderSizePixel = 0
     Divider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    Divider.Parent = Handler
 
-    local TabsFrame = Instance.new("ScrollingFrame")
+    local TabsFrame = Instance.new("ScrollingFrame", Handler)
     TabsFrame.Name = "Tabs"
     TabsFrame.Size = UDim2.new(0, 140, 0, 445)
     TabsFrame.Position = UDim2.new(0.026, 0, 0.111, 10)
     TabsFrame.BackgroundTransparency = 1
     TabsFrame.BorderSizePixel = 0
     TabsFrame.ScrollBarThickness = 0
-    TabsFrame.Selectable = false
+    -- Selectable = true default
     TabsFrame.AutomaticCanvasSize = Enum.AutomaticSize.XY
     TabsFrame.CanvasSize = UDim2.new(0, 0, 0.5, 0)
-    TabsFrame.Parent = Handler
     local tabsLayout = Instance.new("UIListLayout", TabsFrame)
     tabsLayout.Padding = UDim.new(0, 4)
     tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-    local SectionsFrame = Instance.new("Frame")
+    local SectionsFrame = Instance.new("Frame", Handler)
     SectionsFrame.Name = "Sections"
     SectionsFrame.BackgroundTransparency = 1
     SectionsFrame.Size = UDim2.new(1, 0, 1, 0)
-    SectionsFrame.Parent = Handler
 
     local UIScale = Instance.new("UIScale", Container)
 
@@ -1035,7 +1053,7 @@ function Azure.new()
 
     self._container = Container
     self._handler = Handler
-    self._tabs = TabsFrame
+    self._tabsFrame = TabsFrame
     self._sections = SectionsFrame
     self._ui = ScreenGui
 
@@ -1050,11 +1068,10 @@ end
 
 function Azure:create_tab(title)
     local tabIndex = self._tabCounter
-    self._tabCounter += 1
+    self._tabCounter = self._tabCounter + 1
 
     local Tab = Instance.new("TextButton")
     Tab.Name = "Tab"
-    Tab.Font = Enum.Font.GothamBold
     Tab.Text = ""
     Tab.TextColor3 = Color3.fromRGB(255, 255, 255)
     Tab.AutoButtonColor = false
@@ -1063,15 +1080,15 @@ function Azure:create_tab(title)
     Tab.Size = UDim2.new(0, 129, 0, 38)
     Tab.BorderSizePixel = 0
     Tab.LayoutOrder = tabIndex
-    Tab.Parent = self._tabs
+    Tab.Parent = self._tabsFrame
     Instance.new("UICorner", Tab).CornerRadius = UDim.new(0, 8)
 
     local TabLabel = Instance.new("TextLabel", Tab)
     TabLabel.Name = "TextLabel"
-    TabLabel.Font = Enum.Font.GothamBold
+    TabLabel.FontFace = FONT.semi
     TabLabel.Text = title
     TabLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TabLabel.TextTransparency = 0.7
+    TabLabel.TextTransparency = 0.6
     TabLabel.BackgroundTransparency = 1
     TabLabel.Size = UDim2.new(0, 100, 0, 16)
     TabLabel.AnchorPoint = Vector2.new(0, 0.5)
@@ -1087,7 +1104,6 @@ function Azure:create_tab(title)
     LeftSection.BackgroundTransparency = 1
     LeftSection.BorderSizePixel = 0
     LeftSection.ScrollBarThickness = 0
-    LeftSection.Selectable = false
     LeftSection.AutomaticCanvasSize = Enum.AutomaticSize.XY
     LeftSection.CanvasSize = UDim2.new(0, 0, 0.5, 0)
     LeftSection.Visible = false
@@ -1105,7 +1121,6 @@ function Azure:create_tab(title)
     RightSection.BackgroundTransparency = 1
     RightSection.BorderSizePixel = 0
     RightSection.ScrollBarThickness = 0
-    RightSection.Selectable = false
     RightSection.AutomaticCanvasSize = Enum.AutomaticSize.XY
     RightSection.CanvasSize = UDim2.new(0, 0, 0.5, 0)
     RightSection.Visible = false
@@ -1115,32 +1130,31 @@ function Azure:create_tab(title)
     rightList.HorizontalAlignment = Enum.HorizontalAlignment.Center
     rightList.SortOrder = Enum.SortOrder.LayoutOrder
 
-    self._tabs[tabIndex] = { Tab = Tab, Left = LeftSection, Right = RightSection }
+    local record = { Tab = Tab, Left = LeftSection, Right = RightSection }
+    table.insert(self._tabs, record)
 
     local function activate()
-        -- hide all sections
-        for _, record in pairs(self._tabs) do
-            record.Left.Visible = false
-            record.Right.Visible = false
+        for _, rec in pairs(self._tabs) do
+            rec.Left.Visible = false
+            rec.Right.Visible = false
         end
-        -- show this tab
         LeftSection.Visible = true
         RightSection.Visible = true
 
-        for _, record in pairs(self._tabs) do
-            if record.Tab == Tab then
-                TweenService:Create(record.Tab, TweenInfo.new(0.3), {
+        for _, rec in pairs(self._tabs) do
+            if rec.Tab == Tab then
+                TweenService:Create(rec.Tab, TweenInfo.new(0.25), {
                     BackgroundTransparency = 0.85,
                     BackgroundColor3 = Color3.fromRGB(220, 220, 220)
                 }):Play()
-                TweenService:Create(record.Tab.TextLabel, TweenInfo.new(0.3), {
-                    TextTransparency = 0.3
+                TweenService:Create(rec.Tab.TextLabel, TweenInfo.new(0.25), {
+                    TextTransparency = 0.2
                 }):Play()
             else
-                TweenService:Create(record.Tab, TweenInfo.new(0.3), {
+                TweenService:Create(rec.Tab, TweenInfo.new(0.25), {
                     BackgroundTransparency = 1
                 }):Play()
-                TweenService:Create(record.Tab.TextLabel, TweenInfo.new(0.3), {
+                TweenService:Create(rec.Tab.TextLabel, TweenInfo.new(0.25), {
                     TextTransparency = 0.6
                 }):Play()
             end
@@ -1148,14 +1162,22 @@ function Azure:create_tab(title)
     end
 
     if tabIndex == 0 then activate() end
+
     Tab.MouseButton1Click:Connect(activate)
+    Tab.Activated:Connect(activate)
+    Tab.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            activate()
+        end
+    end)
 
     local TabManager = {}
 
     function TabManager:create_module(settings)
         local section = (settings.section == "right") and RightSection or LeftSection
 
-        local Module = Instance.new("Frame")
+        local Module = Instance.new("Frame", section)
         Module.Name = "Module"
         Module.Size = UDim2.new(0, 241, 0, 93)
         Module.Position = UDim2.new(0.004, 0, 0, -5)
@@ -1163,7 +1185,6 @@ function Azure:create_tab(title)
         Module.BackgroundTransparency = 0.02
         Module.BorderSizePixel = 0
         Module.ClipsDescendants = true
-        Module.Parent = section
         Instance.new("UICorner", Module).CornerRadius = UDim.new(0, 8)
         local ms = Instance.new("UIStroke", Module)
         ms.Color = Color3.fromRGB(255, 255, 255)
@@ -1171,17 +1192,16 @@ function Azure:create_tab(title)
         ms.Thickness = 1
         ms.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-        local Header = Instance.new("TextButton")
+        local Header = Instance.new("TextButton", Module)
         Header.Name = "Header"
         Header.Text = ""
         Header.AutoButtonColor = false
         Header.BackgroundTransparency = 1
         Header.Size = UDim2.new(0, 241, 0, 93)
         Header.BorderSizePixel = 0
-        Header.Parent = Module
 
-        local ModuleName = Instance.new("TextLabel")
-        ModuleName.Font = Enum.Font.GothamSemiBold
+        local ModuleName = Instance.new("TextLabel", Header)
+        ModuleName.FontFace = FONT.semi
         ModuleName.Text = settings.title or "Module"
         ModuleName.TextColor3 = Color3.fromRGB(255, 255, 255)
         ModuleName.TextTransparency = 0.2
@@ -1191,10 +1211,9 @@ function Azure:create_tab(title)
         ModuleName.Position = UDim2.new(0.073, 0, 0.24, 0)
         ModuleName.TextXAlignment = Enum.TextXAlignment.Left
         ModuleName.TextSize = 13
-        ModuleName.Parent = Header
 
-        local Description = Instance.new("TextLabel")
-        Description.Font = Enum.Font.Gotham
+        local Description = Instance.new("TextLabel", Header)
+        Description.FontFace = FONT.reg
         Description.Text = settings.description or ""
         Description.TextColor3 = Color3.fromRGB(255, 255, 255)
         Description.TextTransparency = 0.7
@@ -1204,19 +1223,17 @@ function Azure:create_tab(title)
         Description.Position = UDim2.new(0.073, 0, 0.42, 0)
         Description.TextXAlignment = Enum.TextXAlignment.Left
         Description.TextSize = 10
-        Description.Parent = Header
 
-        local Toggle = Instance.new("Frame")
+        local Toggle = Instance.new("Frame", Header)
         Toggle.Name = "Toggle"
         Toggle.BackgroundTransparency = 0.7
         Toggle.BackgroundColor3 = Color3.fromRGB(44, 44, 52)
         Toggle.Size = UDim2.new(0, 25, 0, 12)
         Toggle.Position = UDim2.new(0.82, 0, 0.757, 0)
         Toggle.BorderSizePixel = 0
-        Toggle.Parent = Header
         Instance.new("UICorner", Toggle).CornerRadius = UDim.new(1, 0)
 
-        local Circle = Instance.new("Frame")
+        local Circle = Instance.new("Frame", Toggle)
         Circle.Name = "Circle"
         Circle.AnchorPoint = Vector2.new(0, 0.5)
         Circle.Position = UDim2.new(0, 0, 0.5, 0)
@@ -1224,10 +1241,9 @@ function Azure:create_tab(title)
         Circle.BackgroundTransparency = 0.2
         Circle.Size = UDim2.new(0, 12, 0, 12)
         Circle.BorderSizePixel = 0
-        Circle.Parent = Toggle
         Instance.new("UICorner", Circle).CornerRadius = UDim.new(1, 0)
 
-        local Divider = Instance.new("Frame")
+        local Divider = Instance.new("Frame", Header)
         Divider.Name = "Divider"
         Divider.AnchorPoint = Vector2.new(0.5, 0)
         Divider.Position = UDim2.new(0.5, 0, 0.62, 0)
@@ -1235,14 +1251,12 @@ function Azure:create_tab(title)
         Divider.BackgroundTransparency = 0.7
         Divider.Size = UDim2.new(0, 241, 0, 1)
         Divider.BorderSizePixel = 0
-        Divider.Parent = Header
 
-        local Options = Instance.new("Frame")
+        local Options = Instance.new("Frame", Module)
         Options.Name = "Options"
         Options.BackgroundTransparency = 1
         Options.Position = UDim2.new(0, 0, 1, 0)
         Options.Size = UDim2.new(0, 241, 0, 8)
-        Options.Parent = Module
         local opPad = Instance.new("UIPadding", Options)
         opPad.PaddingTop = UDim.new(0, 8)
         local opList = Instance.new("UIListLayout", Options)
@@ -1279,9 +1293,7 @@ function Azure:create_tab(title)
             end
             Azure._config._flags[settings.flag] = self._state
             Config:save(game.GameId, Azure._config)
-            if settings.callback then
-                pcall(settings.callback, self._state)
-            end
+            if settings.callback then pcall(settings.callback, self._state) end
         end
 
         if Azure._config._flags[settings.flag] then
@@ -1301,23 +1313,20 @@ function Azure:create_tab(title)
         function ModuleManager:create_checkbox(s)
             if self._size == 0 then self._size = 11 end
             self._size += 20
-            if ModuleManager._state then
-                Module.Size = UDim2.fromOffset(241, 93 + self._size)
-            end
+            if ModuleManager._state then Module.Size = UDim2.fromOffset(241, 93 + self._size) end
             Options.Size = UDim2.fromOffset(241, self._size)
 
             local CM = { _state = false }
-            local Checkbox = Instance.new("TextButton")
+            local Checkbox = Instance.new("TextButton", Options)
             Checkbox.Name = "Checkbox"
             Checkbox.Text = ""
             Checkbox.AutoButtonColor = false
             Checkbox.BackgroundTransparency = 1
             Checkbox.Size = UDim2.new(0, 207, 0, 15)
             Checkbox.BorderSizePixel = 0
-            Checkbox.Parent = Options
 
             local TitleLabel = Instance.new("TextLabel", Checkbox)
-            TitleLabel.Font = Enum.Font.GothamSemiBold
+            TitleLabel.FontFace = FONT.semi
             TitleLabel.Text = s.title
             TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             TitleLabel.TextTransparency = 0.2
@@ -1376,22 +1385,19 @@ function Azure:create_tab(title)
         function ModuleManager:create_slider(s)
             if self._size == 0 then self._size = 11 end
             self._size += 27
-            if ModuleManager._state then
-                Module.Size = UDim2.fromOffset(241, 93 + self._size)
-            end
+            if ModuleManager._state then Module.Size = UDim2.fromOffset(241, 93 + self._size) end
             Options.Size = UDim2.fromOffset(241, self._size)
 
-            local Slider = Instance.new("TextButton")
+            local Slider = Instance.new("TextButton", Options)
             Slider.Name = "Slider"
             Slider.Text = ""
             Slider.AutoButtonColor = false
             Slider.BackgroundTransparency = 1
             Slider.Size = UDim2.new(0, 207, 0, 22)
             Slider.BorderSizePixel = 0
-            Slider.Parent = Options
 
             local TitleLabel = Instance.new("TextLabel", Slider)
-            TitleLabel.Font = Enum.Font.GothamSemiBold
+            TitleLabel.FontFace = FONT.semi
             TitleLabel.Text = s.title
             TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             TitleLabel.TextTransparency = 0.2
@@ -1432,7 +1438,7 @@ function Azure:create_tab(title)
 
             local Value = Instance.new("TextLabel", Slider)
             Value.Name = "Value"
-            Value.Font = Enum.Font.GothamSemiBold
+            Value.FontFace = FONT.semi
             Value.TextColor3 = Color3.fromRGB(255, 255, 255)
             Value.TextTransparency = 0.2
             Value.Text = "0"
@@ -1460,11 +1466,8 @@ function Azure:create_tab(title)
                 if s.callback then pcall(s.callback, cur) end
             end
 
-            if Azure._config._flags[s.flag] then
-                SM:set_value(Azure._config._flags[s.flag])
-            else
-                SM:set_value(cur)
-            end
+            if Azure._config._flags[s.flag] then SM:set_value(Azure._config._flags[s.flag])
+            else SM:set_value(cur) end
 
             local dragging = false
             local function update_from_input(input)
@@ -1501,23 +1504,20 @@ function Azure:create_tab(title)
         function ModuleManager:create_dropdown(s)
             if self._size == 0 then self._size = 11 end
             self._size += 44
-            if ModuleManager._state then
-                Module.Size = UDim2.fromOffset(241, 93 + self._size)
-            end
+            if ModuleManager._state then Module.Size = UDim2.fromOffset(241, 93 + self._size) end
             Options.Size = UDim2.fromOffset(241, self._size)
 
             local DM = { _state = false, _size = 0 }
-            local Dropdown = Instance.new("TextButton")
+            local Dropdown = Instance.new("TextButton", Options)
             Dropdown.Name = "Dropdown"
             Dropdown.Text = ""
             Dropdown.AutoButtonColor = false
             Dropdown.BackgroundTransparency = 1
             Dropdown.Size = UDim2.new(0, 207, 0, 39)
             Dropdown.BorderSizePixel = 0
-            Dropdown.Parent = Options
 
             local TitleLabel = Instance.new("TextLabel", Dropdown)
-            TitleLabel.Font = Enum.Font.GothamSemiBold
+            TitleLabel.FontFace = FONT.semi
             TitleLabel.Text = s.title
             TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             TitleLabel.TextTransparency = 0.2
@@ -1539,7 +1539,7 @@ function Azure:create_tab(title)
 
             local CurrentOption = Instance.new("TextLabel", Box)
             CurrentOption.Name = "CurrentOption"
-            CurrentOption.Font = Enum.Font.GothamSemiBold
+            CurrentOption.FontFace = FONT.semi
             CurrentOption.TextColor3 = Color3.fromRGB(255, 255, 255)
             CurrentOption.TextTransparency = 0.2
             CurrentOption.BackgroundTransparency = 1
@@ -1571,7 +1571,7 @@ function Azure:create_tab(title)
                 for index, value in ipairs(s.options) do
                     local Option = Instance.new("TextButton", OptionsFrame)
                     Option.Name = "Option"
-                    Option.Font = Enum.Font.GothamSemiBold
+                    Option.FontFace = FONT.semi
                     Option.Text = (typeof(value) == "string" and value) or value.Name
                     Option.TextColor3 = Color3.fromRGB(255, 255, 255)
                     Option.TextTransparency = 0.6
@@ -1649,7 +1649,7 @@ local SpamTab   = AzureWindow:create_tab("Spam")
 local DetTab    = AzureWindow:create_tab("Detection")
 local VisualTab = AzureWindow:create_tab("Visual")
 
--- MAIN
+-- MAIN — Auto Parry
 local autoparry_module = MainTab:create_module({
     title = "Auto Parry",
     description = "Auto Parry Settings",
