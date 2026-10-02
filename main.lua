@@ -1,6 +1,6 @@
--- Blade Ball — Auto Parry + Auto Spam + Manual Spam + No Render + FPS Boost + SoF
+-- Blade Ball — Azure UI + Auto Parry + Auto Spam (Smart) + Manual Spam + No Render + FPS Boost
 -- Runtime: Roblox mobile / PC
--- Executor: cloneref, getupvalues, getrawmetatable, setreadonly, loadstring
+-- Executor: cloneref, getupvalues, getrawmetatable, setreadonly
 
 local cloneref = cloneref or function(o) return o end
 
@@ -117,14 +117,8 @@ function _PARRY_PATCH.fire(curveCFrame, screenPositions, mouseLocation)
 
     return pcall(function()
         _PARRY_PATCH.parryRemote:FireServer(
-            _PARRY_PATCH.parryHash,
-            currentKey,
-            token,
-            0.5,
-            curveCFrame,
-            screenPositions,
-            mouseLocation,
-            false
+            _PARRY_PATCH.parryHash, currentKey, token, 0.5,
+            curveCFrame, screenPositions, mouseLocation, false
         )
     end)
 end
@@ -143,12 +137,8 @@ local SoundService     = cloneref(game:GetService("SoundService"))
 local Debris           = cloneref(game:GetService("Debris"))
 
 local LocalPlayer = Players.LocalPlayer
-if not LocalPlayer then
-    LocalPlayer = Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-end
-if not LocalPlayer.Character then
-    LocalPlayer.CharacterAdded:Wait()
-end
+if not LocalPlayer then LocalPlayer = Players:GetPropertyChangedSignal("LocalPlayer"):Wait() end
+if not LocalPlayer.Character then LocalPlayer.CharacterAdded:Wait() end
 
 local Alive   = workspace:FindFirstChild("Alive")   or workspace:WaitForChild("Alive")
 local Runtime = workspace:FindFirstChild("Runtime") or workspace:WaitForChild("Runtime")
@@ -173,6 +163,7 @@ local System = {
         __spam_threshold      = 1.5,
         __spam_accumulator    = 0,
         __spam_rate           = 1000,
+        __auto_spam_range     = 12,
         __tornado_time        = tick(),
         __connections         = {},
         __infinity_active     = false,
@@ -199,7 +190,6 @@ local function update_divisor()
         0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
 end
 
--- SoF constants (dari gist)
 local maxParryCount = 36
 local parryDelay    = 0.05
 
@@ -211,10 +201,7 @@ function System.ball.get()
     local balls = workspace:FindFirstChild("Balls")
     if not balls then return nil end
     for _, ball in pairs(balls:GetChildren()) do
-        if ball:GetAttribute("realBall") then
-            ball.CanCollide = false
-            return ball
-        end
+        if ball:GetAttribute("realBall") then ball.CanCollide = false; return ball end
     end
     return nil
 end
@@ -289,10 +276,7 @@ function System.curve.get_cframe()
             local attempts = 0
             repeat
                 random_offset = Vector3.new(
-                    math.random(-4000, 4000),
-                    math.random(-4000, 4000),
-                    math.random(-4000, 4000)
-                )
+                    math.random(-4000, 4000), math.random(-4000, 4000), math.random(-4000, 4000))
                 local cd = (target_pos + random_offset - root.Position).Unit
                 attempts += 1
             until direction:Dot(cd) < 0.95 or attempts > 10
@@ -304,15 +288,9 @@ function System.curve.get_cframe()
             return CFrame.new(camera.CFrame.Position, root.Position + dir * 10000 + Vector3.new(0, 1000, 0))
         end,
         function() return CFrame.new(root.Position, target_pos + Vector3.new(0, -9e18, 0)) end,
-        function() return CFrame.new(root.Position, target_pos + Vector3.new(0, 9e18, 0))  end,
-        function()
-            local left = -camera.CFrame.RightVector * 10000
-            return CFrame.new(root.Position, root.Position + left)
-        end,
-        function()
-            local right = camera.CFrame.RightVector * 10000
-            return CFrame.new(root.Position, root.Position + right)
-        end,
+        function() return CFrame.new(root.Position, target_pos + Vector3.new(0, 9e18, 0)) end,
+        function() local left = -camera.CFrame.RightVector * 10000; return CFrame.new(root.Position, root.Position + left) end,
+        function() local right = camera.CFrame.RightVector * 10000; return CFrame.new(root.Position, root.Position + right) end,
     }
     local idx = math.clamp(System.__properties.__curve_mode, 1, #fns)
     return fns[idx]()
@@ -328,9 +306,7 @@ function System.parry.execute()
     if Alive then
         for _, entity in pairs(Alive:GetChildren()) do
             if entity.PrimaryPart then
-                local ok, sp = pcall(function()
-                    return camera:WorldToScreenPoint(entity.PrimaryPart.Position)
-                end)
+                local ok, sp = pcall(function() return camera:WorldToScreenPoint(entity.PrimaryPart.Position) end)
                 if ok then screenPositions[entity.Name] = sp end
             end
         end
@@ -340,9 +316,7 @@ function System.parry.execute()
     _PARRY_PATCH.fire(curveCF, screenPositions, mouseLocation)
     System.__properties.__parries += 1
     task.delay(0.5, function()
-        if System.__properties.__parries > 0 then
-            System.__properties.__parries -= 1
-        end
+        if System.__properties.__parries > 0 then System.__properties.__parries -= 1 end
     end)
 end
 
@@ -385,9 +359,7 @@ function System.detection.is_curved()
     local clamped = math.clamp(dot, -1, 1)
     local radians = math.rad(math.asin(clamped))
     bp.__lerp_radians = linear_predict(bp.__lerp_radians, radians, 0.8)
-    if speed > 0 and reach > ping / 10 then
-        bdt = math.max(bdt - 15, 15)
-    end
+    if speed > 0 and reach > ping / 10 then bdt = math.max(bdt - 15, 15) end
     if distance < bdt then return false end
     if dot_diff < dot_thr then return true end
     if bp.__lerp_radians < 0.018 then bp.__last_warping = tick() end
@@ -397,7 +369,7 @@ function System.detection.is_curved()
 end
 
 -- ============================================================
--- 5. DETECTION HOOKS — NASKAH GIST ASLI
+-- 5. DETECTION HOOKS (gist)
 -- ============================================================
 local RS = replicated_storage
 
@@ -412,35 +384,29 @@ end)
 local netFolder = RS.Packages._Index["sleitnick_net@0.1.0"].net
 
 netFolder["RE/TimeHoleActivate"].OnClientEvent:Connect(function(...)
-    local args = {...}
-    local player = args[1]
+    local player = ({...})[1]
     if player == LocalPlayer or player == LocalPlayer.Name or (player and player.Name == LocalPlayer.Name) then
         System.__properties.__timehole_active = true
     end
 end)
-
 netFolder["RE/TimeHoleDeactivate"].OnClientEvent:Connect(function()
     System.__properties.__timehole_active = false
 end)
 
 netFolder["RE/SlashesOfFuryActivate"].OnClientEvent:Connect(function(...)
-    local args = {...}
-    local player = args[1]
+    local player = ({...})[1]
     if player == LocalPlayer or player == LocalPlayer.Name or (player and player.Name == LocalPlayer.Name) then
         System.__properties.__slashesoffury_active = true
         System.__properties.__slashesoffury_count = 0
     end
 end)
-
 netFolder["RE/SlashesOfFuryEnd"].OnClientEvent:Connect(function()
     System.__properties.__slashesoffury_active = false
     System.__properties.__slashesoffury_count = 0
 end)
-
 netFolder["RE/SlashesOfFuryParry"].OnClientEvent:Connect(function()
     System.__properties.__slashesoffury_count = System.__properties.__slashesoffury_count + 1
 end)
-
 netFolder["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(function()
     spawn(function()
         while System.__properties.__slashesoffury_active and
@@ -456,7 +422,7 @@ netFolder["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(function()
 end)
 
 -- ============================================================
--- 6. AUTOPARRY — NASKAH GIST ASLI
+-- 6. AUTOPARRY (gist)
 -- ============================================================
 System.autoparry = {}
 
@@ -466,9 +432,7 @@ function System.autoparry.start()
     end
     System.__properties.__connections.__autoparry = RunService.PreSimulation:Connect(function()
         if not System.__properties.__autoparry_enabled or not LocalPlayer.Character or
-           not LocalPlayer.Character.PrimaryPart then
-            return
-        end
+           not LocalPlayer.Character.PrimaryPart then return end
         local balls = System.ball.get_all()
         local one_ball = System.ball.get()
         local training_ball = nil
@@ -522,9 +486,7 @@ function System.autoparry.start()
                 System.__properties.__parried = true
             end
             local last_parrys = tick()
-            repeat
-                RunService.Stepped:Wait()
-            until (tick() - last_parrys) >= 1 or not System.__properties.__parried
+            repeat RunService.Stepped:Wait() until (tick() - last_parrys) >= 1 or not System.__properties.__parried
             System.__properties.__parried = false
         end
         if training_ball then
@@ -547,9 +509,7 @@ function System.autoparry.start()
                         System.parry.execute()
                         System.__properties.__training_parried = true
                         local last_parrys = tick()
-                        repeat
-                            RunService.Stepped:Wait()
-                        until (tick() - last_parrys) >= 1 or not System.__properties.__training_parried
+                        repeat RunService.Stepped:Wait() until (tick() - last_parrys) >= 1 or not System.__properties.__training_parried
                         System.__properties.__training_parried = false
                     end
                 end
@@ -566,7 +526,7 @@ function System.autoparry.stop()
 end
 
 -- ============================================================
--- 7. AUTO SPAM — NASKAH GIST ASLI
+-- 7. AUTO SPAM — SMART (targeted OR near enemy)
 -- ============================================================
 System.auto_spam = {}
 
@@ -687,8 +647,14 @@ function System.auto_spam.start()
         local pulsed = LocalPlayer.Character:GetAttribute("Pulsed")
         if pulsed then return end
 
-        if target_dist > spam_acc or ball_dist > spam_acc then return end
-        if ball_target == LocalPlayer.Name and target_dist > 30 and ball_dist > 30 then return end
+        -- ★ شرط ذكي: مستهدف OR قريب من عدو
+        local is_targeted = (ball_target == LocalPlayer.Name)
+        local near_enemy  = target_dist <= (System.__properties.__auto_spam_range or 12)
+
+        if not (is_targeted or near_enemy) then return end
+
+        -- ★ المسافة
+        if ball_dist > spam_acc then return end
 
         if ball_dist <= spam_acc then
             System.parry.execute()
@@ -705,7 +671,7 @@ function System.auto_spam.stop()
 end
 
 -- ============================================================
--- 7.5 MANUAL SPAM — logika persis gist
+-- 7.5 MANUAL SPAM (gist)
 -- ============================================================
 System.manual_spam = {}
 
@@ -713,20 +679,15 @@ function System.manual_spam.loop(delta)
     if not System.__properties.__manual_spam_enabled then return end
     if not LocalPlayer.Character or LocalPlayer.Character.Parent ~= Alive then return end
     if getgenv().spamui then return end
-
     System.__properties.__spam_accumulator =
         (System.__properties.__spam_accumulator or 0) + delta
-
     local interval
     if getgenv().ManualSpamCPSEnabled then
         interval = 1 / math.max(1, System.__properties.__spam_rate or 100)
     else
         interval = 1 / math.max(1, System.__properties.__spam_rate or 100)
     end
-    if (System.__properties.__spam_accumulator or 0) < interval then
-        return
-    end
-
+    if (System.__properties.__spam_accumulator or 0) < interval then return end
     System.__properties.__spam_accumulator = 0
     System.parry.execute()
 end
@@ -749,161 +710,14 @@ function System.manual_spam.stop()
 end
 
 -- ============================================================
--- 7.55 MANUAL SPAM FLOATING BUTTON
--- ============================================================
-System.manual_button = {
-    __gui    = nil,
-    __btn    = nil,
-    __dot    = nil,
-    __label  = nil,
-    __active = false,
-}
-
-function System.manual_button.create()
-    if System.manual_button.__gui then return end
-    local parentGui = LocalPlayer:WaitForChild("PlayerGui")
-
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "BB_ManualSpamBtn"
-    gui.ResetOnSpawn = false
-    gui.IgnoreGuiInset = true
-    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    gui.DisplayOrder = 1000001
-    gui.Parent = parentGui
-
-    local btn = Instance.new("TextButton")
-    btn.Name = "Btn"
-    btn.Size = UDim2.new(0, 70, 0, 70)
-    btn.Position = UDim2.new(0, 20, 0.5, 100)
-    btn.BackgroundColor3 = Color3.fromRGB(16, 17, 22)
-    btn.BorderSizePixel = 0
-    btn.Text = ""
-    btn.AutoButtonColor = false
-    btn.Active = true
-    btn.ZIndex = 100
-    btn.Parent = gui
-    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1, 0); c.Parent = btn
-    local s = Instance.new("UIStroke")
-    s.Color = Color3.fromRGB(78, 84, 100)
-    s.Thickness = 1.5
-    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    s.Parent = btn
-
-    local lbl = Instance.new("TextLabel")
-    lbl.BackgroundTransparency = 1
-    lbl.Position = UDim2.new(0, 0, 0.5, -8)
-    lbl.Size = UDim2.new(1, 0, 0, 20)
-    lbl.Text = "SPAM"
-    lbl.TextColor3 = Color3.fromRGB(238, 240, 246)
-    lbl.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-    lbl.TextSize = 14
-    lbl.TextXAlignment = Enum.TextXAlignment.Center
-    lbl.ZIndex = 101
-    lbl.Parent = btn
-
-    local dot = Instance.new("Frame")
-    dot.Size = UDim2.new(0, 16, 0, 16)
-    dot.Position = UDim2.new(1, -6, 0, -6)
-    dot.AnchorPoint = Vector2.new(0.5, 0.5)
-    dot.BackgroundColor3 = Color3.fromRGB(230, 90, 100)
-    dot.BorderSizePixel = 0
-    dot.ZIndex = 102
-    dot.Parent = btn
-    local dc = Instance.new("UICorner"); dc.CornerRadius = UDim.new(1, 0); dc.Parent = dot
-    local ds = Instance.new("UIStroke")
-    ds.Color = Color3.fromRGB(16, 17, 22)
-    ds.Thickness = 2
-    ds.Parent = dot
-
-    System.manual_button.__gui   = gui
-    System.manual_button.__btn   = btn
-    System.manual_button.__dot   = dot
-    System.manual_button.__label = lbl
-
-    btn.MouseButton1Click:Connect(function()
-        local new = not System.manual_button.__active
-        System.manual_button.set(new)
-    end)
-
-    local dragging, dragStart, startPos, moved
-    btn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            moved = false
-            dragStart = input.Position
-            startPos = btn.Position
-        end
-    end)
-    btn.InputChanged:Connect(function(input)
-        if not dragging then return end
-        if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseMovement then
-            local d = input.Position - dragStart
-            if math.abs(d.X) > 8 or math.abs(d.Y) > 8 then
-                moved = true
-                btn.Position = UDim2.new(
-                    startPos.X.Scale, startPos.X.Offset + d.X,
-                    startPos.Y.Scale, startPos.Y.Offset + d.Y
-                )
-            end
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-end
-
-function System.manual_button.set(state)
-    System.manual_button.__active = state
-    System.__properties.__manual_spam_enabled = state
-
-    if state then
-        System.manual_spam.start()
-        if System.manual_button.__dot then
-            System.manual_button.__dot.BackgroundColor3 = Color3.fromRGB(88, 210, 140)
-        end
-        if System.manual_button.__label then
-            System.manual_button.__label.Text = "SPAM"
-            System.manual_button.__label.TextColor3 = Color3.fromRGB(88, 210, 140)
-        end
-        if System.manual_button.__btn then
-            System.manual_button.__btn.BackgroundColor3 = Color3.fromRGB(26, 40, 32)
-        end
-    else
-        System.manual_spam.stop()
-        if System.manual_button.__dot then
-            System.manual_button.__dot.BackgroundColor3 = Color3.fromRGB(230, 90, 100)
-        end
-        if System.manual_button.__label then
-            System.manual_button.__label.Text = "SPAM"
-            System.manual_button.__label.TextColor3 = Color3.fromRGB(238, 240, 246)
-        end
-        if System.manual_button.__btn then
-            System.manual_button.__btn.BackgroundColor3 = Color3.fromRGB(16, 17, 22)
-        end
-    end
-end
-
-System.manual_button.create()
-
--- ============================================================
--- 7.6 NO RENDER — sama persis kayak gist
+-- 7.6 NO RENDER
 -- ============================================================
 function System.no_render_set(state)
     System.__properties.__no_render_enabled = state
-
     local playerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
     local effectScripts = playerScripts and playerScripts:FindFirstChild("EffectScripts")
     local clientFX      = effectScripts and effectScripts:FindFirstChild("ClientFX")
-
-    if clientFX then
-        clientFX.Disabled = state
-    end
-
+    if clientFX then clientFX.Disabled = state end
     if state then
         if not Connections_Manager["No Render"] then
             local runtime = workspace:FindFirstChild("Runtime")
@@ -922,7 +736,7 @@ function System.no_render_set(state)
 end
 
 -- ============================================================
--- 7.7 FPS BOOST — sama persis kayak gist
+-- 7.7 FPS BOOST
 -- ============================================================
 local original_fog_end   = Lighting.FogEnd
 local original_fog_start = Lighting.FogStart
@@ -955,11 +769,7 @@ local function apply_disable_postprocessing(state)
                 end
             end)
         end
-        fog_backup = {
-            FogEnd = Lighting.FogEnd,
-            FogStart = Lighting.FogStart,
-            FogColor = Lighting.FogColor,
-        }
+        fog_backup = { FogEnd = Lighting.FogEnd, FogStart = Lighting.FogStart, FogColor = Lighting.FogColor }
         pcall(function()
             Lighting.FogEnd = math.huge
             Lighting.FogStart = math.huge
@@ -968,9 +778,7 @@ local function apply_disable_postprocessing(state)
     else
         for v, enabled in pairs(postprocessing_backup) do
             pcall(function()
-                if v and v.Parent and v.Enabled ~= nil then
-                    v.Enabled = enabled
-                end
+                if v and v.Parent and v.Enabled ~= nil then v.Enabled = enabled end
             end)
         end
         postprocessing_backup = {}
@@ -1024,17 +832,11 @@ end
 function System.fps_boost_set(state)
     fps_boost_enabled = state
     System.__properties.__fps_boost_enabled = state
-
-    if fps_boost_loop then
-        fps_boost_loop:Disconnect()
-        fps_boost_loop = nil
-    end
-
+    if fps_boost_loop then fps_boost_loop:Disconnect(); fps_boost_loop = nil end
     if not state then
         apply_disable_fog(false)
         apply_disable_postprocessing(false)
         apply_remove_decals(false)
-
         if lighting_backup then
             Lighting.Brightness = lighting_backup.Brightness
             Lighting.ExposureCompensation = lighting_backup.ExposureCompensation
@@ -1047,7 +849,6 @@ function System.fps_boost_set(state)
             Lighting.ShadowSoftness = lighting_backup.ShadowSoftness
             lighting_backup = nil
         end
-
         for obj, values in pairs(scene_backup) do
             pcall(function()
                 if obj and obj.Parent then
@@ -1058,19 +859,15 @@ function System.fps_boost_set(state)
             end)
         end
         scene_backup = {}
-
         if SoundService and sound_backup ~= nil then
             SoundService.Volume = sound_backup
             sound_backup = nil
         end
-
         return
     end
-
     apply_disable_fog(true)
     apply_disable_postprocessing(true)
     apply_remove_decals(true)
-
     lighting_backup = {
         Brightness = Lighting.Brightness,
         ExposureCompensation = Lighting.ExposureCompensation,
@@ -1082,7 +879,6 @@ function System.fps_boost_set(state)
         ClockTime = Lighting.ClockTime,
         ShadowSoftness = Lighting.ShadowSoftness,
     }
-
     Lighting.Brightness = 0.18
     Lighting.ExposureCompensation = -1.2
     Lighting.GlobalShadows = false
@@ -1092,12 +888,10 @@ function System.fps_boost_set(state)
     Lighting.ColorShift_Top = Color3.new(0, 0, 0)
     Lighting.ClockTime = 14
     Lighting.ShadowSoftness = 0
-
     if SoundService and sound_backup == nil then
         sound_backup = SoundService.Volume
         SoundService.Volume = 0.03
     end
-
     fps_boost_loop = RunService.Heartbeat:Connect(function()
         if not fps_boost_enabled then return end
         for _, obj in pairs(workspace:GetDescendants()) do
@@ -1114,9 +908,7 @@ function System.fps_boost_set(state)
                     obj.Enabled = false
                 elseif obj:IsA("Part") then
                     local stored = scene_backup[obj]
-                    if not stored then
-                        scene_backup[obj] = { CastShadow = obj.CastShadow, Material = obj.Material }
-                    end
+                    if not stored then scene_backup[obj] = { CastShadow = obj.CastShadow, Material = obj.Material } end
                     obj.CastShadow = false
                     obj.Material = Enum.Material.SmoothPlastic
                 elseif obj:IsA("Atmosphere") then
@@ -1128,194 +920,855 @@ function System.fps_boost_set(state)
 end
 
 -- ============================================================
--- 7.8 HOTKEYS (PC) — T / C / E
+-- 7.8 HOTKEYS (T / C / E)
 -- ============================================================
-System.hotkeys = {
-    __enabled = true,
-    __conn    = nil,
-}
+System.hotkeys = { __enabled = true, __conn = nil }
 
 local HOTKEY_MAP = {
     [Enum.KeyCode.T] = function()
-        local new = not System.__properties.__autoparry_enabled
-        System.__properties.__autoparry_enabled = new
-        if new then System.autoparry.start() else System.autoparry.stop() end
+        System.__properties.__autoparry_enabled = not System.__properties.__autoparry_enabled
+        if System.__properties.__autoparry_enabled then System.autoparry.start() else System.autoparry.stop() end
     end,
     [Enum.KeyCode.C] = function()
-        local new = not System.__properties.__auto_spam_enabled
-        System.__properties.__auto_spam_enabled = new
-        if new then System.auto_spam.start() else System.auto_spam.stop() end
+        System.__properties.__auto_spam_enabled = not System.__properties.__auto_spam_enabled
+        if System.__properties.__auto_spam_enabled then System.auto_spam.start() else System.auto_spam.stop() end
     end,
     [Enum.KeyCode.E] = function()
-        local new = not System.manual_button.__active
-        System.manual_button.set(new)
+        System.__properties.__manual_spam_enabled = not System.__properties.__manual_spam_enabled
+        if System.__properties.__manual_spam_enabled then System.manual_spam.start() else System.manual_spam.stop() end
     end,
 }
 
 function System.hotkeys.start()
-    if System.hotkeys.__conn then
-        System.hotkeys.__conn:Disconnect()
-        System.hotkeys.__conn = nil
-    end
-    System.hotkeys.__conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
+    if System.hotkeys.__conn then System.hotkeys.__conn:Disconnect(); System.hotkeys.__conn = nil end
+    System.hotkeys.__conn = UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
         if not System.hotkeys.__enabled then return end
         local fn = HOTKEY_MAP[input.KeyCode]
         if fn then pcall(fn) end
     end)
 end
-
 System.hotkeys.start()
 
 -- ============================================================
--- 8. WIND UI
+-- 8. AZURE UI (بأسلوب الملف الأصلي)
 -- ============================================================
-local WindUI_OK, WindUI_ERR = pcall(function()
+-- ملاحظة: نستخدم Azure UI مختصر — بنية Tabs/Modules/Sliders/Checkboxes/Dropdowns
+-- الباقي للردز: هذا الحد الأدنى اللي يخلي البلوكات اللي لصقتها تشتغل.
 
-    for _, gui_name in ipairs({"WindUI", "WindUI_Parent"}) do
-        local cg = CoreGui:FindFirstChild(gui_name)
-        if cg then cg:Destroy() end
-        local pg = LocalPlayer:FindFirstChild("PlayerGui")
-        if pg then
-            local pgc = pg:FindFirstChild(gui_name)
-            if pgc then pgc:Destroy() end
+local Connections_UI = setmetatable({
+    disconnect = function(self, c) if not self[c] then return end; self[c]:Disconnect(); self[c] = nil end,
+    disconnect_all = function(self)
+        for _, v in self do if typeof(v) == 'function' then continue end; v:Disconnect() end
+    end,
+}, {})
+
+local Util = setmetatable({
+    map = function(self, value, in_min, in_max, out_min, out_max)
+        return (value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
+    end,
+}, {})
+
+local Config = setmetatable({
+    save = function(self, file_name, config)
+        pcall(function()
+            if not writefile then return end
+            writefile("Azure/"..file_name..".json", game:GetService("HttpService"):JSONEncode(config))
+        end)
+    end,
+    load = function(self, file_name)
+        local result
+        pcall(function()
+            if not isfile or not isfile("Azure/"..file_name..".json") then return end
+            result = game:GetService("HttpService"):JSONDecode(readfile("Azure/"..file_name..".json"))
+        end)
+        return result or { _flags = {}, _keybinds = {}, _library = {} }
+    end,
+}, {})
+
+local Library = {
+    _config = Config:load(game.GameId),
+    _tab = 0,
+    _ui = nil,
+    _loaded = false,
+}
+Library.__index = Library
+
+function Library:create_ui()
+    local old = CoreGui:FindFirstChild("Azure")
+    if old then old:Destroy() end
+    local AzureUI = Instance.new("ScreenGui")
+    AzureUI.ResetOnSpawn = false
+    AzureUI.Name = "Azure"
+    AzureUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    AzureUI.IgnoreGuiInset = true
+    AzureUI.Parent = CoreGui
+
+    local Container = Instance.new("Frame")
+    Container.ClipsDescendants = true
+    Container.AnchorPoint = Vector2.new(0.5, 0.5)
+    Container.Name = "Container"
+    Container.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    Container.Position = UDim2.new(0.5, 0, 0.5, 0)
+    Container.Size = UDim2.new(0, 0, 0, 0)
+    Container.Active = true
+    Container.BorderSizePixel = 0
+    Container.ZIndex = 2
+    Container.Parent = AzureUI
+    local UICorner = Instance.new('UICorner'); UICorner.CornerRadius = UDim.new(0, 12); UICorner.Parent = Container
+    local UIStroke = Instance.new('UIStroke')
+    UIStroke.Color = Color3.fromRGB(78, 92, 122); UIStroke.Thickness = 1
+    UIStroke.Transparency = 0.28; UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    UIStroke.Parent = Container
+
+    local Handler = Instance.new('Frame')
+    Handler.BackgroundTransparency = 1
+    Handler.Name = 'Handler'
+    Handler.Size = UDim2.new(0, 750, 0, 530)
+    Handler.BorderSizePixel = 0
+    Handler.Parent = Container
+
+    local Tabs = Instance.new('ScrollingFrame')
+    Tabs.ScrollBarImageTransparency = 1
+    Tabs.ScrollBarThickness = 0
+    Tabs.Name = 'Tabs'
+    Tabs.Size = UDim2.new(0, 140, 0, 445)
+    Tabs.Selectable = false
+    Tabs.AutomaticCanvasSize = Enum.AutomaticSize.XY
+    Tabs.BackgroundTransparency = 1
+    Tabs.Position = UDim2.new(0.026, 0, 0.111, 10)
+    Tabs.BorderSizePixel = 0
+    Tabs.CanvasSize = UDim2.new(0, 0, 0.5, 0)
+    Tabs.Parent = Handler
+
+    local UIListLayout = Instance.new('UIListLayout')
+    UIListLayout.Padding = UDim.new(0, 4)
+    UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    UIListLayout.Parent = Tabs
+
+    local Sections = Instance.new('Folder')
+    Sections.Name = 'Sections'
+    Sections.Parent = Handler
+
+    local UIScale = Instance.new('UIScale')
+    UIScale.Parent = Container
+
+    self._ui = AzureUI
+
+    function self:load()
+        local vp_x = workspace.CurrentCamera.ViewportSize.X
+        if UserInputService.TouchEnabled then UIScale.Scale = vp_x / 1400 end
+        TweenService:Create(Container, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {
+            Size = UDim2.fromOffset(750, 530)
+        }):Play()
+        self._loaded = true
+    end
+
+    function self:update_sections(left, right)
+        for _, object in Sections:GetChildren() do
+            if object == left or object == right then object.Visible = true else object.Visible = false end
         end
     end
 
-    local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-    WindUI:SetTheme("Dark")
-
-    local Window = WindUI:CreateWindow({
-        Title = "Blade Ball",
-        Icon = "swords",
-        Author = "mobile",
-        Folder = "BladeBallAuto",
-        Size = UDim2.fromOffset(520, 340),
-        Transparent = true,
-        Theme = "Dark",
-        SideBarWidth = 180,
-        HasOutline = true,
-    })
-
-    pcall(function() Window:SetToggleKey(Enum.KeyCode.RightShift) end)
-
-    WindUI:Notify({
-        Title = "Blade Ball",
-        Content = "Hotkeys: T = AutoParry / C = AutoSpam / E = ManualSpam",
-        Duration = 6,
-    })
-
-    local MainTab = Window:Tab({ Title = "Main", Icon = "home" })
-
-    MainTab:Toggle({
-        Title = "Auto Parry  [T]",
-        Desc = "parry when ball targets you",
-        Value = true,
-        Callback = function(v)
-            System.__properties.__autoparry_enabled = v
-            if v then System.autoparry.start() else System.autoparry.stop() end
-        end,
-    })
-
-    MainTab:Toggle({
-        Title = "Auto Spam  [C]",
-        Desc = "spam parry when ball is close",
-        Value = true,
-        Callback = function(v)
-            System.__properties.__auto_spam_enabled = v
-            if v then System.auto_spam.start() else System.auto_spam.stop() end
-        end,
-    })
-
-    MainTab:Toggle({
-        Title = "Manual Spam  [E]",
-        Desc = "toggle with on-screen button too",
-        Value = false,
-        Callback = function(v)
-            System.manual_button.set(v)
-        end,
-    })
-
-    MainTab:Slider({
-        Title = "Manual Spam Rate (CPS)",
-        Desc = "clicks per second",
-        Value = { Min = 1, Max = 200, Default = 100 },
-        Callback = function(v)
-            System.__properties.__spam_rate = v
-        end,
-    })
-
-    MainTab:Dropdown({
-        Title = "Curve Mode",
-        Values = System.__config.__curve_names,
-        Value = 1,
-        Multi = false,
-        Callback = function(v)
-            for i, name in ipairs(System.__config.__curve_names) do
-                if name == v then
-                    System.__properties.__curve_mode = i
-                    break
-                end
+    function self:update_tabs(tab)
+        for _, object in Tabs:GetChildren() do
+            if object.Name ~= "Tab" then continue end
+            if object == tab then
+                TweenService:Create(object, TweenInfo.new(0.4), {
+                    BackgroundTransparency = 0.85, BackgroundColor3 = Color3.fromRGB(220, 220, 220)
+                }):Play()
+                TweenService:Create(object.TextLabel, TweenInfo.new(0.4), {
+                    TextTransparency = 0.3, TextColor3 = Color3.fromRGB(255, 255, 255)
+                }):Play()
+            else
+                TweenService:Create(object, TweenInfo.new(0.4), { BackgroundTransparency = 1 }):Play()
+                TweenService:Create(object.TextLabel, TweenInfo.new(0.4), {
+                    TextTransparency = 0.6, TextColor3 = Color3.fromRGB(255, 255, 255)
+                }):Play()
             end
-        end,
-    })
+        end
+    end
 
-    local DetectTab = Window:Tab({ Title = "Detection", Icon = "shield" })
+    function self:create_tab(title)
+        local TabManager = {}
+        local first_tab = not Tabs:FindFirstChild("Tab")
 
-    DetectTab:Toggle({
-        Title = "Infinity Ball",
-        Desc = "pause parry while active",
-        Value = true,
-        Callback = function(v) System.__config.__detections.__infinity = v end,
-    })
+        local Tab = Instance.new('TextButton')
+        Tab.Font = Enum.Font.GothamBold
+        Tab.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Tab.Text = ""
+        Tab.AutoButtonColor = false
+        Tab.BackgroundTransparency = 1
+        Tab.Name = 'Tab'
+        Tab.Size = UDim2.new(0, 129, 0, 38)
+        Tab.BorderSizePixel = 0
+        Tab.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+        Tab.Parent = Tabs
+        Tab.LayoutOrder = self._tab
+        local UIC = Instance.new('UICorner'); UIC.CornerRadius = UDim.new(0, 8); UIC.Parent = Tab
 
-    DetectTab:Toggle({
-        Title = "Death Slash",
-        Desc = "pause parry while active",
-        Value = true,
-        Callback = function(v) System.__config.__detections.__deathslash = v end,
-    })
+        local TextLabel = Instance.new('TextLabel')
+        TextLabel.Font = Enum.Font.GothamBold
+        TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        TextLabel.TextTransparency = 0.7
+        TextLabel.Text = title
+        TextLabel.Size = UDim2.new(0, 100, 0, 16)
+        TextLabel.AnchorPoint = Vector2.new(0, 0.5)
+        TextLabel.Position = UDim2.new(0.24, 0, 0.5, 0)
+        TextLabel.BackgroundTransparency = 1
+        TextLabel.TextXAlignment = Enum.TextXAlignment.Left
+        TextLabel.TextSize = 13
+        TextLabel.Parent = Tab
 
-    DetectTab:Toggle({
-        Title = "Time Hole",
-        Desc = "pause parry while active",
-        Value = true,
-        Callback = function(v) System.__config.__detections.__timehole = v end,
-    })
+        local LeftSection = Instance.new("ScrollingFrame")
+        LeftSection.Name = "LeftSection"
+        LeftSection.AutomaticCanvasSize = Enum.AutomaticSize.XY
+        LeftSection.ScrollBarThickness = 0
+        LeftSection.Size = UDim2.new(0, 243, 0, 445)
+        LeftSection.Selectable = false
+        LeftSection.AnchorPoint = Vector2.new(0, 0.5)
+        LeftSection.BackgroundTransparency = 1
+        LeftSection.Position = UDim2.new(0.259, 0, 0.5, 25)
+        LeftSection.CanvasSize = UDim2.new(0, 0, 0.5, 0)
+        LeftSection.Visible = false
+        LeftSection.Parent = Sections
+        local L1 = Instance.new("UIListLayout"); L1.Padding = UDim.new(0, 18)
+        L1.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        L1.SortOrder = Enum.SortOrder.LayoutOrder; L1.Parent = LeftSection
 
-    DetectTab:Toggle({
-        Title = "Slashes Of Fury",
-        Desc = "parry loop while active (gist)",
-        Value = true,
-        Callback = function(v) System.__config.__detections.__slashesoffury = v end,
-    })
+        local RightSection = Instance.new("ScrollingFrame")
+        RightSection.Name = "RightSection"
+        RightSection.AutomaticCanvasSize = Enum.AutomaticSize.XY
+        RightSection.ScrollBarThickness = 0
+        RightSection.Size = UDim2.new(0, 243, 0, 445)
+        RightSection.Selectable = false
+        RightSection.AnchorPoint = Vector2.new(0, 0.5)
+        RightSection.BackgroundTransparency = 1
+        RightSection.Position = UDim2.new(0.629, 0, 0.5, 25)
+        RightSection.CanvasSize = UDim2.new(0, 0, 0.5, 0)
+        RightSection.Visible = false
+        RightSection.Parent = Sections
+        local L2 = Instance.new("UIListLayout"); L2.Padding = UDim.new(0, 18)
+        L2.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        L2.SortOrder = Enum.SortOrder.LayoutOrder; L2.Parent = RightSection
 
-    local VisualTab = Window:Tab({ Title = "Visual", Icon = "eye" })
+        self._tab += 1
+        if first_tab then
+            self:update_tabs(Tab)
+            self:update_sections(LeftSection, RightSection)
+        end
 
-    VisualTab:Toggle({
-        Title = "No Render",
-        Desc = "disable effects completely",
-        Value = false,
-        Callback = function(v)
-            System.no_render_set(v)
-        end,
-    })
+        Tab.MouseButton1Click:Connect(function()
+            self:update_tabs(Tab)
+            self:update_sections(LeftSection, RightSection)
+        end)
 
-    VisualTab:Toggle({
-        Title = "FPS Boost",
-        Desc = "hide shadows & particles + boost",
-        Value = false,
-        Callback = function(v)
-            System.fps_boost_set(v)
-        end,
-    })
+        function TabManager:create_module(settings)
+            local ModuleManager = { _state = false, _size = 0, _multiplier = 0 }
+            if settings.section == "right" then settings.section = RightSection else settings.section = LeftSection end
 
-    return true
-end)
+            local Module = Instance.new("Frame")
+            Module.ClipsDescendants = true
+            Module.BackgroundTransparency = 0.02
+            Module.Position = UDim2.new(0.004, 0, 0, -5)
+            Module.Name = "Module"
+            Module.Size = UDim2.new(0, 241, 0, 93)
+            Module.BorderSizePixel = 0
+            Module.BackgroundColor3 = Color3.fromRGB(16, 17, 22)
+            Module.Parent = settings.section
 
-if not WindUI_OK then
-    warn("[WindUI] failed:", tostring(WindUI_ERR))
+            local UL = Instance.new("UIListLayout"); UL.SortOrder = Enum.SortOrder.LayoutOrder; UL.Parent = Module
+            local UC = Instance.new("UICorner"); UC.CornerRadius = UDim.new(0, 8); UC.Parent = Module
+            local US = Instance.new("UIStroke")
+            US.Color = Color3.fromRGB(255, 255, 255); US.Transparency = 0.72
+            US.Thickness = 1; US.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; US.Parent = Module
+
+            local Header = Instance.new("TextButton")
+            Header.Text = ""; Header.AutoButtonColor = false
+            Header.BackgroundTransparency = 1; Header.Name = "Header"
+            Header.Size = UDim2.new(0, 241, 0, 93); Header.BorderSizePixel = 0; Header.Parent = Module
+
+            local ModuleName = Instance.new("TextLabel")
+            ModuleName.Font = Enum.Font.GothamSemiBold
+            ModuleName.TextColor3 = Color3.fromRGB(255, 255, 255)
+            ModuleName.TextTransparency = 0.2
+            ModuleName.Text = settings.title or "Module"
+            ModuleName.Size = UDim2.new(0, 205, 0, 13)
+            ModuleName.AnchorPoint = Vector2.new(0, 0.5)
+            ModuleName.Position = UDim2.new(0.073, 0, 0.24, 0)
+            ModuleName.BackgroundTransparency = 1
+            ModuleName.TextXAlignment = Enum.TextXAlignment.Left
+            ModuleName.TextSize = 13
+            ModuleName.Parent = Header
+
+            local Description = Instance.new("TextLabel")
+            Description.Font = Enum.Font.Gotham
+            Description.TextColor3 = Color3.fromRGB(255, 255, 255)
+            Description.TextTransparency = 0.7
+            Description.Text = settings.description or ""
+            Description.Size = UDim2.new(0, 205, 0, 13)
+            Description.AnchorPoint = Vector2.new(0, 0.5)
+            Description.Position = UDim2.new(0.073, 0, 0.42, 0)
+            Description.BackgroundTransparency = 1
+            Description.TextXAlignment = Enum.TextXAlignment.Left
+            Description.TextSize = 10
+            Description.Parent = Header
+
+            local Toggle = Instance.new("Frame")
+            Toggle.BackgroundTransparency = 0.7
+            Toggle.Position = UDim2.new(0.82, 0, 0.757, 0)
+            Toggle.Size = UDim2.new(0, 25, 0, 12)
+            Toggle.BorderSizePixel = 0
+            Toggle.BackgroundColor3 = Color3.fromRGB(44, 44, 52)
+            Toggle.Parent = Header
+            local UTC = Instance.new("UICorner"); UTC.CornerRadius = UDim.new(1, 0); UTC.Parent = Toggle
+
+            local Circle = Instance.new("Frame")
+            Circle.AnchorPoint = Vector2.new(0, 0.5)
+            Circle.BackgroundTransparency = 0.2
+            Circle.Position = UDim2.new(0, 0, 0.5, 0)
+            Circle.Size = UDim2.new(0, 12, 0, 12)
+            Circle.BorderSizePixel = 0
+            Circle.BackgroundColor3 = Color3.fromRGB(120, 120, 132)
+            Circle.Parent = Toggle
+            local UCC = Instance.new("UICorner"); UCC.CornerRadius = UDim.new(1, 0); UCC.Parent = Circle
+
+            local Divider = Instance.new("Frame")
+            Divider.AnchorPoint = Vector2.new(0.5, 0)
+            Divider.BackgroundTransparency = 0.7
+            Divider.Position = UDim2.new(0.5, 0, 0.62, 0)
+            Divider.Size = UDim2.new(0, 241, 0, 1)
+            Divider.BorderSizePixel = 0
+            Divider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            Divider.Parent = Header
+
+            local Options = Instance.new("Frame")
+            Options.Name = "Options"; Options.BackgroundTransparency = 1
+            Options.Position = UDim2.new(0, 0, 1, 0)
+            Options.Size = UDim2.new(0, 241, 0, 8); Options.BorderSizePixel = 0
+            Options.Parent = Module
+            local ULP = Instance.new('UIPadding'); ULP.PaddingTop = UDim.new(0, 8); ULP.Parent = Options
+            local UL2 = Instance.new('UIListLayout')
+            UL2.Padding = UDim.new(0, 5)
+            UL2.HorizontalAlignment = Enum.HorizontalAlignment.Center
+            UL2.SortOrder = Enum.SortOrder.LayoutOrder
+            UL2.Parent = Options
+
+            function ModuleManager:change_state(state)
+                self._state = state
+                if self._state then
+                    TweenService:Create(Module, TweenInfo.new(0.4), { Size = UDim2.fromOffset(241, 93 + self._size + self._multiplier) }):Play()
+                    TweenService:Create(Toggle, TweenInfo.new(0.4), { BackgroundColor3 = Color3.fromRGB(205, 205, 220) }):Play()
+                    TweenService:Create(Circle, TweenInfo.new(0.4), { BackgroundColor3 = Color3.fromRGB(245, 245, 250), Position = UDim2.fromScale(0.53, 0.5) }):Play()
+                else
+                    TweenService:Create(Module, TweenInfo.new(0.4), { Size = UDim2.fromOffset(241, 93) }):Play()
+                    TweenService:Create(Toggle, TweenInfo.new(0.4), { BackgroundColor3 = Color3.fromRGB(44, 44, 52) }):Play()
+                    TweenService:Create(Circle, TweenInfo.new(0.4), { BackgroundColor3 = Color3.fromRGB(120, 120, 132), Position = UDim2.fromScale(0, 0.5) }):Play()
+                end
+                Library._config._flags[settings.flag] = self._state
+                Config:save(game.GameId, Library._config)
+                settings.callback(self._state)
+            end
+
+            if Library._config._flags[settings.flag] then
+                ModuleManager._state = true
+                pcall(function() settings.callback(true) end)
+                Toggle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                Circle.Position = UDim2.fromScale(0.53, 0.5)
+            end
+
+            Header.MouseButton1Click:Connect(function()
+                ModuleManager:change_state(not ModuleManager._state)
+            end)
+
+            function ModuleManager:create_checkbox(s)
+                if self._size == 0 then self._size = 11 end
+                self._size += 20
+                if ModuleManager._state then Module.Size = UDim2.fromOffset(241, 93 + self._size) end
+                Options.Size = UDim2.fromOffset(241, self._size)
+                local CM = { _state = false }
+                local Checkbox = Instance.new("TextButton")
+                Checkbox.Text = ""; Checkbox.AutoButtonColor = false
+                Checkbox.BackgroundTransparency = 1; Checkbox.Size = UDim2.new(0, 207, 0, 15)
+                Checkbox.BorderSizePixel = 0; Checkbox.Parent = Options
+
+                local TitleLabel = Instance.new("TextLabel")
+                TitleLabel.Font = Enum.Font.GothamSemiBold
+                TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                TitleLabel.TextTransparency = 0.2
+                TitleLabel.Text = s.title
+                TitleLabel.Size = UDim2.new(0, 142, 0, 13)
+                TitleLabel.AnchorPoint = Vector2.new(0, 0.5)
+                TitleLabel.Position = UDim2.new(0, 0, 0.5, 0)
+                TitleLabel.BackgroundTransparency = 1
+                TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+                TitleLabel.TextSize = 11
+                TitleLabel.Parent = Checkbox
+
+                local Box = Instance.new("Frame")
+                Box.AnchorPoint = Vector2.new(1, 0.5)
+                Box.BackgroundTransparency = 0.9
+                Box.Position = UDim2.new(1, 0, 0.5, 0)
+                Box.Size = UDim2.new(0, 15, 0, 15)
+                Box.BorderSizePixel = 0
+                Box.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
+                Box.Parent = Checkbox
+                local BC = Instance.new("UICorner"); BC.CornerRadius = UDim.new(0, 7); BC.Parent = Box
+
+                local Fill = Instance.new("Frame")
+                Fill.AnchorPoint = Vector2.new(0.5, 0.5)
+                Fill.BackgroundTransparency = 0.2
+                Fill.Position = UDim2.new(0.5, 0, 0.5, 0)
+                Fill.Size = UDim2.fromOffset(0, 0)
+                Fill.BorderSizePixel = 0
+                Fill.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
+                Fill.Parent = Box
+                local FC = Instance.new("UICorner"); FC.CornerRadius = UDim.new(0, 6); FC.Parent = Fill
+
+                function CM:change_state(state)
+                    self._state = state
+                    if state then
+                        TweenService:Create(Box, TweenInfo.new(0.3), { BackgroundTransparency = 0.7 }):Play()
+                        TweenService:Create(Fill, TweenInfo.new(0.3), { Size = UDim2.fromOffset(9, 9) }):Play()
+                    else
+                        TweenService:Create(Box, TweenInfo.new(0.3), { BackgroundTransparency = 0.9 }):Play()
+                        TweenService:Create(Fill, TweenInfo.new(0.3), { Size = UDim2.fromOffset(0, 0) }):Play()
+                    end
+                    Library._config._flags[s.flag] = self._state
+                    Config:save(game.GameId, Library._config)
+                    if s.callback then s.callback(self._state) end
+                end
+
+                if Library._config._flags[s.flag] ~= nil then
+                    CM:change_state(Library._config._flags[s.flag])
+                end
+
+                Checkbox.MouseButton1Click:Connect(function()
+                    CM:change_state(not CM._state)
+                end)
+
+                return CM
+            end
+
+            function ModuleManager:create_slider(s)
+                if self._size == 0 then self._size = 11 end
+                self._size += 27
+                if ModuleManager._state then Module.Size = UDim2.fromOffset(241, 93 + self._size) end
+                Options.Size = UDim2.fromOffset(241, self._size)
+
+                local Slider = Instance.new("TextButton")
+                Slider.Text = ""; Slider.AutoButtonColor = false
+                Slider.BackgroundTransparency = 1
+                Slider.Size = UDim2.new(0, 207, 0, 22)
+                Slider.BorderSizePixel = 0
+                Slider.Parent = Options
+
+                local TextLabel = Instance.new("TextLabel")
+                TextLabel.Font = Enum.Font.GothamSemiBold
+                TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                TextLabel.TextTransparency = 0.2
+                TextLabel.Text = s.title
+                TextLabel.Size = UDim2.new(0, 153, 0, 13)
+                TextLabel.Position = UDim2.new(0, 0, 0.05, 0)
+                TextLabel.BackgroundTransparency = 1
+                TextLabel.TextXAlignment = Enum.TextXAlignment.Left
+                TextLabel.TextSize = 11
+                TextLabel.Parent = Slider
+
+                local Drag = Instance.new("Frame")
+                Drag.AnchorPoint = Vector2.new(0.5, 1)
+                Drag.BackgroundTransparency = 0.7
+                Drag.Position = UDim2.new(0.5, 0, 0.95, 0)
+                Drag.Size = UDim2.new(0, 207, 0, 4)
+                Drag.BorderSizePixel = 0
+                Drag.BackgroundColor3 = Color3.fromRGB(34, 34, 40)
+                Drag.Parent = Slider
+                local DC = Instance.new("UICorner"); DC.CornerRadius = UDim.new(1, 0); DC.Parent = Drag
+
+                local Fill = Instance.new("Frame")
+                Fill.AnchorPoint = Vector2.new(0, 0.5)
+                Fill.BackgroundTransparency = 0.15
+                Fill.Position = UDim2.new(0, 0, 0.5, 0)
+                Fill.Size = UDim2.new(0, 103, 0, 4)
+                Fill.BorderSizePixel = 0
+                Fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                Fill.Parent = Drag
+                local FC = Instance.new("UICorner"); FC.CornerRadius = UDim.new(0, 3); FC.Parent = Fill
+
+                local Circle2 = Instance.new("Frame")
+                Circle2.AnchorPoint = Vector2.new(1, 0.5)
+                Circle2.Position = UDim2.new(1, 0, 0.5, 0)
+                Circle2.Size = UDim2.new(0, 6, 0, 6)
+                Circle2.BorderSizePixel = 0
+                Circle2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                Circle2.Parent = Fill
+                local CC2 = Instance.new("UICorner"); CC2.CornerRadius = UDim.new(1, 0); CC2.Parent = Circle2
+
+                local Value = Instance.new("TextLabel")
+                Value.Font = Enum.Font.GothamSemiBold
+                Value.TextColor3 = Color3.fromRGB(255, 255, 255)
+                Value.TextTransparency = 0.2
+                Value.Text = "0"
+                Value.Size = UDim2.new(0, 42, 0, 13)
+                Value.AnchorPoint = Vector2.new(1, 0)
+                Value.Position = UDim2.new(1, 0, 0, 0)
+                Value.BackgroundTransparency = 1
+                Value.TextXAlignment = Enum.TextXAlignment.Right
+                Value.TextSize = 10
+                Value.Parent = Slider
+
+                local SM = {}
+                function SM:set_percentage(pct)
+                    local rounded
+                    if s.round_number then rounded = math.floor(pct) else rounded = math.floor(pct * 10) / 10 end
+                    pct = (pct - s.minimum_value) / (s.maximum_value - s.minimum_value)
+                    local slider_size = math.clamp(pct, 0.02, 1) * Drag.AbsoluteSize.X
+                    local num = math.clamp(rounded, s.minimum_value, s.maximum_value)
+                    Library._config._flags[s.flag] = num
+                    Value.Text = num
+                    TweenService:Create(Fill, TweenInfo.new(0.2), { Size = UDim2.fromOffset(slider_size, Drag.AbsoluteSize.Y) }):Play()
+                    if s.callback then s.callback(num) end
+                end
+                function SM:update()
+                    local mouse = UserInputService:GetMouseLocation()
+                    local pct = s.minimum_value + (s.maximum_value - s.minimum_value) * ((mouse.X - Drag.AbsolutePosition.X) / Drag.AbsoluteSize.X)
+                    self:set_percentage(pct)
+                end
+                function SM:input()
+                    SM:update()
+                    Connections_UI["slider_drag_"..s.flag] = UserInputService.InputChanged:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                            SM:update()
+                        end
+                    end)
+                    Connections_UI["slider_input_"..s.flag] = UserInputService.InputEnded:Connect(function(input)
+                        if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+                        Connections_UI:disconnect("slider_drag_"..s.flag)
+                        Connections_UI:disconnect("slider_input_"..s.flag)
+                        Config:save(game.GameId, Library._config)
+                    end)
+                end
+
+                if Library._config._flags[s.flag] then SM:set_percentage(Library._config._flags[s.flag])
+                else SM:set_percentage(s.value) end
+
+                Slider.MouseButton1Down:Connect(function() SM:input() end)
+                return SM
+            end
+
+            function ModuleManager:create_dropdown(s)
+                local DM = { _state = false, _size = 0 }
+                if self._size == 0 then self._size = 11 end
+                self._size += 44
+                if ModuleManager._state then Module.Size = UDim2.fromOffset(241, 93 + self._size) end
+                Options.Size = UDim2.fromOffset(241, self._size)
+
+                local Dropdown = Instance.new("TextButton")
+                Dropdown.Text = ""; Dropdown.AutoButtonColor = false
+                Dropdown.BackgroundTransparency = 1
+                Dropdown.Size = UDim2.new(0, 207, 0, 39)
+                Dropdown.BorderSizePixel = 0
+                Dropdown.Parent = Options
+
+                local TextLabel = Instance.new("TextLabel")
+                TextLabel.Font = Enum.Font.GothamSemiBold
+                TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                TextLabel.TextTransparency = 0.2
+                TextLabel.Text = s.title
+                TextLabel.Size = UDim2.new(0, 207, 0, 13)
+                TextLabel.BackgroundTransparency = 1
+                TextLabel.TextXAlignment = Enum.TextXAlignment.Left
+                TextLabel.TextSize = 11
+                TextLabel.Parent = Dropdown
+
+                local Box = Instance.new("Frame")
+                Box.ClipsDescendants = true
+                Box.AnchorPoint = Vector2.new(0.5, 0)
+                Box.BackgroundTransparency = 0.9
+                Box.Position = UDim2.new(0.5, 0, 1.2, 0)
+                Box.Size = UDim2.new(0, 207, 0, 22)
+                Box.BorderSizePixel = 0
+                Box.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
+                Box.Parent = TextLabel
+                local BC = Instance.new("UICorner"); BC.CornerRadius = UDim.new(0, 4); BC.Parent = Box
+
+                local CurrentOption = Instance.new("TextLabel")
+                CurrentOption.Font = Enum.Font.GothamSemiBold
+                CurrentOption.TextColor3 = Color3.fromRGB(255, 255, 255)
+                CurrentOption.TextTransparency = 0.2
+                CurrentOption.Size = UDim2.new(0, 161, 0, 13)
+                CurrentOption.AnchorPoint = Vector2.new(0, 0.5)
+                CurrentOption.Position = UDim2.new(0.05, 0, 0.5, 0)
+                CurrentOption.BackgroundTransparency = 1
+                CurrentOption.TextXAlignment = Enum.TextXAlignment.Left
+                CurrentOption.TextSize = 10
+                CurrentOption.Parent = Box
+
+                local OptionsFrame = Instance.new("ScrollingFrame")
+                OptionsFrame.ScrollBarThickness = 0
+                OptionsFrame.Size = UDim2.new(0, 207, 0, 0)
+                OptionsFrame.BackgroundTransparency = 1
+                OptionsFrame.Position = UDim2.new(0, 0, 1, 0)
+                OptionsFrame.CanvasSize = UDim2.new(0, 0, 0.5, 0)
+                OptionsFrame.Parent = Box
+                local UL3 = Instance.new('UIListLayout'); UL3.SortOrder = Enum.SortOrder.LayoutOrder; UL3.Parent = OptionsFrame
+
+                function DM:update(option)
+                    CurrentOption.Text = (typeof(option) == "string" and option) or option.Name
+                    Library._config._flags[s.flag] = option
+                    Config:save(game.GameId, Library._config)
+                    if s.callback then s.callback(option) end
+                end
+
+                if #s.options > 0 then
+                    DM._size = 3
+                    for index, value in ipairs(s.options) do
+                        local Option = Instance.new("TextButton")
+                        Option.Font = Enum.Font.GothamSemiBold
+                        Option.TextTransparency = 0.6
+                        Option.TextSize = 10
+                        Option.Size = UDim2.new(0, 186, 0, 16)
+                        Option.TextColor3 = Color3.fromRGB(255, 255, 255)
+                        Option.Text = (typeof(value) == "string" and value) or value.Name
+                        Option.AutoButtonColor = false
+                        Option.BackgroundTransparency = 1
+                        Option.TextXAlignment = Enum.TextXAlignment.Left
+                        Option.Parent = OptionsFrame
+                        Option.MouseButton1Click:Connect(function()
+                            DM:update(value)
+                            for _, child in OptionsFrame:GetChildren() do
+                                if child.Name == "Option" then
+                                    child.TextTransparency = (child.Text == CurrentOption.Text) and 0.2 or 0.6
+                                end
+                            end
+                        end)
+                        if index > (s.maximum_options or 10) then continue end
+                        DM._size += 16
+                        OptionsFrame.Size = UDim2.fromOffset(207, DM._size)
+                    end
+                end
+
+                if Library._config._flags[s.flag] then DM:update(Library._config._flags[s.flag])
+                else DM:update(s.options[1]) end
+
+                Dropdown.MouseButton1Click:Connect(function()
+                    self._state = not self._state
+                    if self._state then
+                        ModuleManager._multiplier += self._size
+                        TweenService:Create(Module, TweenInfo.new(0.4), { Size = UDim2.fromOffset(241, 93 + ModuleManager._size + ModuleManager._multiplier) }):Play()
+                        TweenService:Create(Module.Options, TweenInfo.new(0.4), { Size = UDim2.fromOffset(241, ModuleManager._size + ModuleManager._multiplier) }):Play()
+                        TweenService:Create(Dropdown, TweenInfo.new(0.4), { Size = UDim2.fromOffset(207, 39 + self._size) }):Play()
+                        TweenService:Create(Box, TweenInfo.new(0.4), { Size = UDim2.fromOffset(207, 22 + self._size) }):Play()
+                    else
+                        ModuleManager._multiplier -= self._size
+                        TweenService:Create(Module, TweenInfo.new(0.4), { Size = UDim2.fromOffset(241, 93 + ModuleManager._size + ModuleManager._multiplier) }):Play()
+                        TweenService:Create(Module.Options, TweenInfo.new(0.4), { Size = UDim2.fromOffset(241, ModuleManager._size + ModuleManager._multiplier) }):Play()
+                        TweenService:Create(Dropdown, TweenInfo.new(0.4), { Size = UDim2.fromOffset(207, 39) }):Play()
+                        TweenService:Create(Box, TweenInfo.new(0.4), { Size = UDim2.fromOffset(207, 22) }):Play()
+                    end
+                end)
+
+                return DM
+            end
+
+            return ModuleManager
+        end
+
+        return TabManager
+    end
+
+    return self
 end
+
+local library = Library:create_ui()
+library:load()
+
+-- ============================================================
+-- 8.5 TABS + MODULES (Azure UI)
+-- ============================================================
+local MainTab   = library:create_tab("Main")
+local SpamTab   = library:create_tab("Spam")
+local DetTab    = library:create_tab("Detection")
+local VisualTab = library:create_tab("Visual")
+
+-- ============================================================
+-- MAIN TAB — Auto Parry
+-- ============================================================
+local autoparry_module = MainTab:create_module({
+    title = "Auto Parry",
+    description = "Auto Parry Settings",
+    flag = "AutoParryModule",
+    section = "left",
+    callback = function(state)
+        System.__properties.__autoparry_enabled = state
+        if state then System.autoparry.start() else System.autoparry.stop() end
+    end,
+})
+autoparry_module:change_state(true)
+
+autoparry_module:create_dropdown({
+    title = "Mode curve",
+    flag = "ModeCurve",
+    options = System.__config.__curve_names,
+    maximum_options = 10,
+    callback = function(value)
+        for i, name in ipairs(System.__config.__curve_names) do
+            if name == value then System.__properties.__curve_mode = i break end
+        end
+    end,
+})
+
+-- ============================================================
+-- SPAM TAB — Auto Spam (نفس البلوكات اللي لصقها ردز)
+-- ============================================================
+local auto_spam_module = SpamTab:create_module({
+    title = "Auto Spam",
+    description = "Automatically spam parries ball",
+    flag = "AutoSpamModule",
+    section = "right",
+    callback = function(state)
+        if System and System.auto_spam then
+            System.__properties.__auto_spam_enabled = state
+            if state then
+                if System.auto_spam and System.auto_spam.start then pcall(System.auto_spam.start) end
+            else
+                if System.auto_spam and System.auto_spam.stop then pcall(System.auto_spam.stop) end
+            end
+        end
+    end,
+})
+auto_spam_module:change_state(true)
+
+auto_spam_module:create_dropdown({
+    title = "Mode",
+    flag = "AutoSpamMode",
+    options = {"Remote", "Keypress"},
+    maximum_options = 10,
+    callback = function(Value)
+        getgenv().AutoSpamMode = Value
+    end,
+})
+
+auto_spam_module:create_checkbox({
+    title = "Animation Fix",
+    flag = "AutoSpamAnimationFix",
+    callback = function(value)
+        getgenv().AutoSpamAnimationFix = value
+    end,
+})
+
+auto_spam_module:create_slider({
+    title = "Parry Threshold",
+    flag = "ParryThreshold",
+    maximum_value = 3,
+    minimum_value = 1,
+    value = 1,
+    round_number = true,
+    callback = function(value)
+        if System then System.__properties.__spam_threshold = value end
+    end,
+})
+
+auto_spam_module:create_slider({
+    title = "Auto Spam Range",
+    flag = "AutoSpamRange",
+    maximum_value = 30,
+    minimum_value = 5,
+    value = 12,
+    round_number = true,
+    callback = function(value)
+        System.__properties.__auto_spam_range = value
+    end,
+})
+
+-- ============================================================
+-- SPAM TAB — Manual Spam
+-- ============================================================
+local manual_spam_module = SpamTab:create_module({
+    title = "Manual Spam",
+    description = "Spam parries continuously",
+    flag = "ManualSpamModule",
+    section = "left",
+    callback = function(state)
+        System.__properties.__manual_spam_enabled = state
+        if state then System.manual_spam.start() else System.manual_spam.stop() end
+    end,
+})
+
+manual_spam_module:create_slider({
+    title = "CPS",
+    flag = "ManualSpamCPS",
+    maximum_value = 200,
+    minimum_value = 1,
+    value = 100,
+    round_number = true,
+    callback = function(value)
+        System.__properties.__spam_rate = value
+    end,
+})
+
+-- ============================================================
+-- DETECTION TAB
+-- ============================================================
+local inf_mod = DetTab:create_module({
+    title = "Infinity Ball",
+    description = "skip parry while active",
+    flag = "InfModule",
+    section = "left",
+    callback = function(state) System.__config.__detections.__infinity = state end,
+})
+inf_mod:change_state(true)
+
+local ds_mod = DetTab:create_module({
+    title = "Death Slash",
+    description = "skip parry while active",
+    flag = "DSModule",
+    section = "left",
+    callback = function(state) System.__config.__detections.__deathslash = state end,
+})
+ds_mod:change_state(true)
+
+local th_mod = DetTab:create_module({
+    title = "Time Hole",
+    description = "skip parry while active",
+    flag = "THModule",
+    section = "right",
+    callback = function(state) System.__config.__detections.__timehole = state end,
+})
+th_mod:change_state(true)
+
+local sof_mod = DetTab:create_module({
+    title = "Slashes of Fury",
+    description = "parry loop while active",
+    flag = "SoFModule",
+    section = "right",
+    callback = function(state) System.__config.__detections.__slashesoffury = state end,
+})
+sof_mod:change_state(true)
+
+-- ============================================================
+-- VISUAL TAB
+-- ============================================================
+local nr_mod = VisualTab:create_module({
+    title = "No Render",
+    description = "disable effects completely",
+    flag = "NRModule",
+    section = "left",
+    callback = function(state)
+        System.no_render_set(state)
+    end,
+})
+
+local fps_mod = VisualTab:create_module({
+    title = "FPS Boost",
+    description = "hide shadows & particles + boost",
+    flag = "FPSModule",
+    section = "right",
+    callback = function(state)
+        System.fps_boost_set(state)
+    end,
+})
 
 -- ============================================================
 -- 9. AUTO START
