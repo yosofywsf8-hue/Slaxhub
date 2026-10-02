@@ -169,6 +169,7 @@ local System = {
         __parried            = false,
         __training_parried   = false,
         __parries            = 0,
+        __spam_threshold     = 1.5,
         __tornado_time       = tick(),
         __connections        = {},
         __infinity_active    = false,
@@ -556,7 +557,7 @@ function System.autoparry.stop()
 end
 
 -- ============================================================
--- 7. AUTO SPAM
+-- 7. AUTO SPAM — NASKAH GIST ASLI
 -- ============================================================
 System.auto_spam = {}
 
@@ -564,30 +565,33 @@ function System.auto_spam:get_entity_properties()
     System.player.get_closest()
     if not Closest_Entity or not Closest_Entity.PrimaryPart then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-    local ev = Closest_Entity.PrimaryPart.Velocity
-    local ed = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Unit
-    local ds = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Magnitude
-    return { Velocity = ev, Direction = ed, Distance = ds }
+    local entity_velocity = Closest_Entity.PrimaryPart.Velocity
+    local entity_direction = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Unit
+    local entity_distance = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Magnitude
+    return { Velocity = entity_velocity, Direction = entity_direction, Distance = entity_distance }
 end
 
 function System.auto_spam:get_ball_properties()
     local ball = System.ball.get()
     if not ball then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-    local bv  = ball.AssemblyLinearVelocity or Vector3.new()
-    local dv  = LocalPlayer.Character.PrimaryPart.Position - ball.Position
-    local ds  = dv.Magnitude
-    local bd  = Vector3.new()
-    local dot = 0
-    if ds > 0 then
-        bd = dv.Unit
-        if bv.Magnitude > 0 then dot = bd:Dot(bv.Unit) end
+    local ball_velocity = ball.AssemblyLinearVelocity or Vector3.new()
+    local ball_origin = ball
+    local ball_direction_vector = LocalPlayer.Character.PrimaryPart.Position - ball_origin.Position
+    local ball_distance = ball_direction_vector.Magnitude
+    local ball_direction = Vector3.new()
+    local ball_dot = 0
+    if ball_distance > 0 then
+        ball_direction = ball_direction_vector.Unit
+        if ball_velocity.Magnitude > 0 then
+            ball_dot = ball_direction:Dot(ball_velocity.Unit)
+        end
     end
-    return { Velocity = bv, Direction = bd, Distance = ds, Dot = dot }
+    return { Velocity = ball_velocity, Direction = ball_direction, Distance = ball_distance, Dot = ball_dot }
 end
 
 function System.auto_spam.spam_service(self)
-    local ball   = System.ball.get()
+    local ball = System.ball.get()
     local entity = System.player.get_closest()
     if not ball or not entity or not entity.PrimaryPart then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
@@ -597,26 +601,29 @@ function System.auto_spam.spam_service(self)
     local n = velocity.Magnitude
     if n == 0 then return D end
 
-    local to_ball = LocalPlayer.Character.PrimaryPart.Position - ball.Position
+    local to_ball = (LocalPlayer.Character.PrimaryPart.Position - ball.Position)
     if to_ball.Magnitude == 0 then return D end
-    local r = to_ball.Unit
 
+    local r = to_ball.Unit
     local t = 0
-    if velocity.Magnitude > 0 then t = r:Dot(velocity.Unit) end
+    if n > 0 and velocity.Magnitude > 0 then
+        t = r:Dot(velocity.Unit)
+    end
 
     local target_pos = entity.PrimaryPart.Position
     local X = LocalPlayer:DistanceFromCharacter(target_pos)
 
     local E = 1
     local Fmove = Vector3.new()
-    local ok, hum = pcall(function()
+    local success, humanoid = pcall(function()
         return LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     end)
-    if ok and hum and hum.MoveDirection then Fmove = hum.MoveDirection end
+    if success and humanoid and humanoid.MoveDirection then
+        Fmove = humanoid.MoveDirection
+    end
 
     local N = (target_pos - LocalPlayer.Character.PrimaryPart.Position)
     if N.Magnitude > 0 then N = N.Unit else N = Vector3.new() end
-
     local lmove = Vector3.new()
     if entity then
         local ehum = entity:FindFirstChildOfClass("Humanoid")
@@ -624,26 +631,39 @@ function System.auto_spam.spam_service(self)
     end
 
     _G.Last_Close_Contact = _G.Last_Close_Contact or 0
-    _G.In_Close_Contact   = _G.In_Close_Contact or false
+    _G.In_Close_Contact = _G.In_Close_Contact or false
     local now = tick()
-    if X <= 3 then _G.In_Close_Contact = true end
+    if X <= 3 then
+        _G.In_Close_Contact = true
+    end
     if _G.In_Close_Contact and X > 3.3 then
         _G.In_Close_Contact = false
         _G.Last_Close_Contact = now
     end
     local u = (not _G.In_Close_Contact) and (now - (_G.Last_Close_Contact or 0) >= 1.5)
-    if u and (Fmove.Magnitude > 0.2 and Fmove:Dot(N) < -0.4) then E = 10 end
-    if u and (lmove.Magnitude > 0.2 and lmove:Dot(-N) < -0.4) then E = 10 end
+    if u and (Fmove.Magnitude > 0.2 and Fmove:Dot(N) < -0.4) then
+        E = 10
+    end
+    if u and (lmove.Magnitude > 0.2 and lmove:Dot(-N) < -0.4) then
+        E = 10
+    end
 
     local B = (self.Ping or 50) * 0.7 + math.min(n / (E * 1.2), 80)
 
-    if (self.Entity_Properties and self.Entity_Properties.Distance or math.huge) > B then return D end
-    if (self.Ball_Properties   and self.Ball_Properties.Distance   or math.huge) > B then return D end
-    if X > B then return D end
+    if (self.Entity_Properties and self.Entity_Properties.Distance or math.huge) > B then
+        return D
+    end
+    if (self.Ball_Properties and self.Ball_Properties.Distance or math.huge) > B then
+        return D
+    end
+    if X > B then
+        return D
+    end
 
     local U = math.clamp(-t, 0, 1)
     local q = math.clamp(U * (n / 40), 0, 4)
-    return B - q
+    D = B - q
+    return D
 end
 
 function System.auto_spam.start()
@@ -666,32 +686,37 @@ function System.auto_spam.start()
         if not Closest_Entity or not Closest_Entity.PrimaryPart then return end
 
         local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-        local ping_thr = math.clamp(ping / 10, 1, 16)
-
-        local bp = System.auto_spam:get_ball_properties()
-        local ep = System.auto_spam:get_entity_properties()
-        if not bp or not ep then return end
-
-        local spam_acc = System.auto_spam.spam_service({
-            Ball_Properties   = bp,
-            Entity_Properties = ep,
-            Ping              = ping_thr,
-        })
-
-        local target_pos  = Closest_Entity.PrimaryPart.Position
-        local target_dist = LocalPlayer:DistanceFromCharacter(target_pos)
-        local ball_dist   = LocalPlayer:DistanceFromCharacter(ball.Position)
+        local ping_threshold = math.clamp(ping / 10, 1, 16)
 
         local ball_target = ball:GetAttribute("target")
+        local ball_properties = System.auto_spam:get_ball_properties()
+        local entity_properties = System.auto_spam:get_entity_properties()
+        if not ball_properties or not entity_properties then return end
+
+        local spam_accuracy = System.auto_spam.spam_service({
+            Ball_Properties = ball_properties,
+            Entity_Properties = entity_properties,
+            Ping = ping_threshold,
+        })
+
+        local target_position = Closest_Entity.PrimaryPart.Position
+        local target_distance = LocalPlayer:DistanceFromCharacter(target_position)
+        if zoomies.VectorVelocity.Magnitude == 0 then return end
+
+        local direction = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Unit
+        local ball_direction = zoomies.VectorVelocity.Unit
+        local dot = direction:Dot(ball_direction)
+        local distance = LocalPlayer:DistanceFromCharacter(ball.Position)
+
         if not ball_target then return end
+        if target_distance > spam_accuracy or distance > spam_accuracy then return end
 
         local pulsed = LocalPlayer.Character:GetAttribute("Pulsed")
         if pulsed then return end
 
-        if target_dist > spam_acc or ball_dist > spam_acc then return end
-        if ball_target == LocalPlayer.Name and target_dist > 30 and ball_dist > 30 then return end
+        if ball_target == LocalPlayer.Name and target_distance > 30 and distance > 30 then return end
 
-        if ball_dist <= spam_acc then
+        if distance <= spam_accuracy and System.__properties.__parries > System.__properties.__spam_threshold then
             System.parry.execute()
         end
     end)
@@ -978,7 +1003,7 @@ curveGrid.Parent = body
 
 local curveLayout = Instance.new("UIGridLayout")
 curveLayout.CellSize = UDim2.new(0.25, -6, 0, 32)
-curveLayout.CellPadding = UDim2.new(0, 8, 0, 8)
+curveLayout.CellPadding = UDim.new(0, 8, 0, 8)
 curveLayout.SortOrder = Enum.SortOrder.LayoutOrder
 curveLayout.Parent = curveGrid
 
