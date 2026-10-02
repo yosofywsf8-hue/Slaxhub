@@ -556,7 +556,7 @@ function System.autoparry.stop()
 end
 
 -- ============================================================
--- 7. AUTO SPAM — DIGANTI VERSI GIST
+-- 7. AUTO SPAM
 -- ============================================================
 System.auto_spam = {}
 
@@ -564,32 +564,30 @@ function System.auto_spam:get_entity_properties()
     System.player.get_closest()
     if not Closest_Entity or not Closest_Entity.PrimaryPart then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-    local entity_velocity = Closest_Entity.PrimaryPart.Velocity
-    local entity_direction = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Unit
-    local entity_distance = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Magnitude
-    return { Velocity = entity_velocity, Direction = entity_direction, Distance = entity_distance }
+    local ev = Closest_Entity.PrimaryPart.Velocity
+    local ed = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Unit
+    local ds = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Magnitude
+    return { Velocity = ev, Direction = ed, Distance = ds }
 end
 
 function System.auto_spam:get_ball_properties()
     local ball = System.ball.get()
     if not ball then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-    local ball_velocity = ball.AssemblyLinearVelocity or Vector3.new()
-    local ball_direction_vector = LocalPlayer.Character.PrimaryPart.Position - ball.Position
-    local ball_distance = ball_direction_vector.Magnitude
-    local ball_direction = Vector3.new()
-    local ball_dot = 0
-    if ball_distance > 0 then
-        ball_direction = ball_direction_vector.Unit
-        if ball_velocity.Magnitude > 0 then
-            ball_dot = ball_direction:Dot(ball_velocity.Unit)
-        end
+    local bv  = ball.AssemblyLinearVelocity or Vector3.new()
+    local dv  = LocalPlayer.Character.PrimaryPart.Position - ball.Position
+    local ds  = dv.Magnitude
+    local bd  = Vector3.new()
+    local dot = 0
+    if ds > 0 then
+        bd = dv.Unit
+        if bv.Magnitude > 0 then dot = bd:Dot(bv.Unit) end
     end
-    return { Velocity = ball_velocity, Direction = ball_direction, Distance = ball_distance, Dot = ball_dot }
+    return { Velocity = bv, Direction = bd, Distance = ds, Dot = dot }
 end
 
 function System.auto_spam.spam_service(self)
-    local ball = System.ball.get()
+    local ball   = System.ball.get()
     local entity = System.player.get_closest()
     if not ball or not entity or not entity.PrimaryPart then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
@@ -599,29 +597,26 @@ function System.auto_spam.spam_service(self)
     local n = velocity.Magnitude
     if n == 0 then return D end
 
-    local to_ball = (LocalPlayer.Character.PrimaryPart.Position - ball.Position)
+    local to_ball = LocalPlayer.Character.PrimaryPart.Position - ball.Position
     if to_ball.Magnitude == 0 then return D end
-
     local r = to_ball.Unit
+
     local t = 0
-    if n > 0 and velocity.Magnitude > 0 then
-        t = r:Dot(velocity.Unit)
-    end
+    if velocity.Magnitude > 0 then t = r:Dot(velocity.Unit) end
 
     local target_pos = entity.PrimaryPart.Position
     local X = LocalPlayer:DistanceFromCharacter(target_pos)
 
     local E = 1
     local Fmove = Vector3.new()
-    local success, humanoid = pcall(function()
+    local ok, hum = pcall(function()
         return LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     end)
-    if success and humanoid and humanoid.MoveDirection then
-        Fmove = humanoid.MoveDirection
-    end
+    if ok and hum and hum.MoveDirection then Fmove = hum.MoveDirection end
 
     local N = (target_pos - LocalPlayer.Character.PrimaryPart.Position)
     if N.Magnitude > 0 then N = N.Unit else N = Vector3.new() end
+
     local lmove = Vector3.new()
     if entity then
         local ehum = entity:FindFirstChildOfClass("Humanoid")
@@ -629,39 +624,26 @@ function System.auto_spam.spam_service(self)
     end
 
     _G.Last_Close_Contact = _G.Last_Close_Contact or 0
-    _G.In_Close_Contact = _G.In_Close_Contact or false
+    _G.In_Close_Contact   = _G.In_Close_Contact or false
     local now = tick()
-    if X <= 3 then
-        _G.In_Close_Contact = true
-    end
+    if X <= 3 then _G.In_Close_Contact = true end
     if _G.In_Close_Contact and X > 3.3 then
         _G.In_Close_Contact = false
         _G.Last_Close_Contact = now
     end
     local u = (not _G.In_Close_Contact) and (now - (_G.Last_Close_Contact or 0) >= 1.5)
-    if u and (Fmove.Magnitude > 0.2 and Fmove:Dot(N) < -0.4) then
-        E = 10
-    end
-    if u and (lmove.Magnitude > 0.2 and lmove:Dot(-N) < -0.4) then
-        E = 10
-    end
+    if u and (Fmove.Magnitude > 0.2 and Fmove:Dot(N) < -0.4) then E = 10 end
+    if u and (lmove.Magnitude > 0.2 and lmove:Dot(-N) < -0.4) then E = 10 end
 
     local B = (self.Ping or 50) * 0.7 + math.min(n / (E * 1.2), 80)
 
-    if (self.Entity_Properties and self.Entity_Properties.Distance or math.huge) > B then
-        return D
-    end
-    if (self.Ball_Properties and self.Ball_Properties.Distance or math.huge) > B then
-        return D
-    end
-    if X > B then
-        return D
-    end
+    if (self.Entity_Properties and self.Entity_Properties.Distance or math.huge) > B then return D end
+    if (self.Ball_Properties   and self.Ball_Properties.Distance   or math.huge) > B then return D end
+    if X > B then return D end
 
     local U = math.clamp(-t, 0, 1)
     local q = math.clamp(U * (n / 40), 0, 4)
-    D = B - q
-    return D
+    return B - q
 end
 
 function System.auto_spam.start()
@@ -996,7 +978,7 @@ curveGrid.Parent = body
 
 local curveLayout = Instance.new("UIGridLayout")
 curveLayout.CellSize = UDim2.new(0.25, -6, 0, 32)
-curveLayout.CellPadding = UDim.new(0, 8, 0, 8)
+curveLayout.CellPadding = UDim2.new(0, 8, 0, 8)
 curveLayout.SortOrder = Enum.SortOrder.LayoutOrder
 curveLayout.Parent = curveGrid
 
