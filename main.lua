@@ -168,11 +168,11 @@ local System = {
         __spam_accumulator    = 0,
         __spam_rate           = 1000,
         __distance_multiplier = 1,
-        __humanized_enabled   = false,
-        __humanized_min       = 1,
-        __humanized_max       = 100,
-        __humanized_last      = 0,
-        __humanized_next      = 0.8,
+        __humanizer_enabled      = false,
+        __humanizer_min_accuracy = 1,
+        __humanizer_max_accuracy = 50,
+        __humanizer_last_update  = 0,
+        __humanizer_next_change  = 0.8,
         __tornado_time        = tick(),
         __connections         = {},
         __infinity_active     = false,
@@ -199,21 +199,23 @@ local function update_divisor()
         0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
 end
 
+-- Humanizer loop
 task.spawn(function()
     while true do
         task.wait(0.1)
-        if System.__properties.__humanized_enabled then
+        if System.__properties.__humanizer_enabled then
+            local props = System.__properties
             local now = os.clock()
-            if now >= System.__properties.__humanized_last + System.__properties.__humanized_next then
-                System.__properties.__humanized_last = now
+            if now >= props.__humanizer_last_update + props.__humanizer_next_change then
+                props.__humanizer_last_update = now
                 local ping_str = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
                 local ping = tonumber(ping_str:match("%d+")) or 0
-                local min_h = math.clamp(System.__properties.__humanized_min, 1, 100)
-                local max_h = math.clamp(System.__properties.__humanized_max, 1, 100)
+                local min_h = math.clamp(props.__humanizer_min_accuracy, 1, 50)
+                local max_h = math.clamp(props.__humanizer_max_accuracy, 1, 50)
                 if min_h > max_h then min_h, max_h = max_h, min_h end
-                local current = math.clamp(System.__properties.__accuracy, min_h, max_h)
+                local current = math.clamp(props.__accuracy, min_h, max_h)
                 local span = math.max(1, max_h - min_h)
-                local pf = ping >= 90 and 0.75 or (ping <= 50 and 1.25 or 1)
+                local ping_factor = ping >= 90 and 0.75 or (ping <= 50 and 1.25 or 1)
                 local roll = math.random(1, 100)
                 local new_acc
                 if ping >= 90 then
@@ -222,13 +224,13 @@ task.spawn(function()
                     new_acc = math.clamp(current + math.random(-2, 2), min_h, max_h)
                 elseif roll <= 80 then
                     local drift = math.random(2, math.max(3, math.floor(span * 0.2)))
-                    local dir = roll < 62 and -drift or drift
+                    local dir = math.random() < 0.5 and -drift or drift
                     new_acc = math.clamp(current + dir, min_h, max_h)
                 else
                     new_acc = math.random(min_h, max_h)
                 end
-                System.__properties.__accuracy = new_acc
-                System.__properties.__humanized_next = math.random(0.7, 1.4) / pf
+                props.__accuracy = new_acc
+                props.__humanizer_next_change = math.random(0.7, 1.4) / ping_factor
                 update_divisor()
             end
         end
@@ -1945,7 +1947,7 @@ local SpamTab   = AzureWindow:create_tab("Spam")
 local DetTab    = AzureWindow:create_tab("Detection")
 local VisualTab = AzureWindow:create_tab("Visual")
 
--- MAIN — Auto Parry
+-- MAIN — Auto Parry + Accuracy
 local autoparry_module = MainTab:create_module({
     title = "Auto Parry",
     description = "Auto Parry Settings",
@@ -1977,35 +1979,38 @@ autoparry_module:create_slider({
     value = 100,
     round_number = true,
     callback = function(value)
-        if not System.__properties.__humanized_enabled then
+        if not System.__properties.__humanizer_enabled then
             System.__properties.__accuracy = value
             update_divisor()
         end
     end,
 })
 
-autoparry_module:create_checkbox({
-    title = "Randomize Accuracy",
-    flag = "ParryRandomizeAccuracy",
-    callback = function(value)
-        System.__properties.__humanized_enabled = value
+-- MAIN — Humanizer (module منفصل زي الملف الأصلي)
+local humanizer_module = MainTab:create_module({
+    title = "Humanizer",
+    description = "Choose a random parry accuracy range",
+    flag = "HumanizerModule",
+    section = "left",
+    callback = function(state)
+        System.__properties.__humanizer_enabled = state
     end,
 })
 
-autoparry_module:create_range_slider({
-    title = "Accuracy Range",
+humanizer_module:create_range_slider({
+    title = "Humanizer Accuracy",
     flag = "HumanizerAccuracyRange",
-    maximum_value = 100,
+    maximum_value = 50,
     minimum_value = 1,
-    value = { min = 1, max = 100 },
+    value = { min = 1, max = 50 },
     round_number = true,
     callback = function(min_value, max_value)
-        System.__properties.__humanized_min = min_value
-        System.__properties.__humanized_max = max_value
+        System.__properties.__humanizer_min_accuracy = min_value
+        System.__properties.__humanizer_max_accuracy = max_value
     end,
 })
 
--- SPAM — Auto Spam
+-- SPAM — Auto Spam (Threshold + Distance Multiplier تحت toggle)
 local auto_spam_module = SpamTab:create_module({
     title = "Auto Spam",
     description = "Automatically spam parries ball",
@@ -2140,12 +2145,16 @@ local fps_mod = VisualTab:create_module({
 -- ============================================================
 -- 10. AUTO START
 -- ============================================================
-autoparry_module:change_state(true)
-auto_spam_module:change_state(true)
-
 System.__properties.__autoparry_enabled = true
 System.__properties.__auto_spam_enabled = true
 System.autoparry.start()
 System.auto_spam.start()
 System.manual_spam.stop()
 update_divisor()
+
+-- ★ افتح Auto Parry + Auto Spam modules بعد ما كل العناصر تنضاف
+task.defer(function()
+    task.wait(0.3)
+    pcall(function() autoparry_module:change_state(true) end)
+    pcall(function() auto_spam_module:change_state(true) end)
+end)
