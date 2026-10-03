@@ -1,13 +1,12 @@
--- BLABLA Hub v3 — Blade Ball Script
--- Font: LuckiestGuy (bubble chunky) + FredokaOne (rounded) + DenkOne (soft)
--- Runtime: Roblox mobile / PC
--- Executor: cloneref, getupvalues, getrawmetatable, setreadonly
+-- ═══════════════════════════════════════════════════════════
+-- BLABLA Hub v4 FINAL — Blade Ball Script
+-- Font: LuckiestGuy + FredokaOne + DenkOne
+-- Auto Parry: ML Profiling + Predictive + Anti-Detect
+-- ═══════════════════════════════════════════════════════════
 
 local cloneref = cloneref or function(o) return o end
 
--- ============================================================
--- FONTS (Bubble Theme)
--- ============================================================
+-- ─── FONTS (Bubble Theme) ───
 local FONT_FAMILY_BUBBLE = "rbxasset://fonts/families/LuckiestGuy.json"
 local FONT_FAMILY_ROUND  = "rbxasset://fonts/families/FredokaOne.json"
 local FONT_FAMILY_SOFT   = "rbxasset://fonts/families/DenkOne.json"
@@ -20,28 +19,18 @@ local FONT = {
     reg   = Font.new(FONT_FAMILY_SOFT,   Enum.FontWeight.Regular,  Enum.FontStyle.Normal),
 }
 
--- ============================================================
--- ANIMATION HELPERS
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
+-- 0. ANIMATION HELPERS
+-- ═══════════════════════════════════════════════════════════
 local Animation = {}
 
 Animation.Ease = {
-    Out    = Enum.EasingStyle.Quint,
-    In     = Enum.EasingStyle.Quint,
-    InOut  = Enum.EasingStyle.Quad,
+    Out = Enum.EasingStyle.Quint,
+    In = Enum.EasingStyle.Quint,
+    InOut = Enum.EasingStyle.Quad,
     Bounce = Enum.EasingStyle.Back,
     Smooth = Enum.EasingStyle.Sine,
 }
-
-function Animation.spring(obj, duration, props, style, dir)
-    local tween = TweenService:Create(
-        obj,
-        TweenInfo.new(duration or 0.4, style or Animation.Ease.Out, dir or Enum.EasingDirection.Out),
-        props
-    )
-    tween:Play()
-    return tween
-end
 
 function Animation.stagger(items, baseDelay, perIndex, fn)
     for i, item in ipairs(items) do
@@ -80,15 +69,12 @@ function Animation.shimmer(gradient, duration, waitBetween)
     end)
 end
 
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- 1. PARRY PATCH
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 local _PARRY_PATCH = {
-    keyTable    = nil,
-    transformFn = nil,
-    parryHash   = nil,
-    parryRemote = nil,
-    ready       = false,
+    keyTable = nil, transformFn = nil, parryHash = nil,
+    parryRemote = nil, ready = false,
 }
 
 task.spawn(function()
@@ -108,15 +94,15 @@ task.spawn(function()
         if not getupvals then warn("[PARRY] executor missing getupvalues"); return end
         local ups = getupvals(Parry_Function)
         if not ups or #ups < 8 then warn("[PARRY] unexpected upvalue count"); return end
-        _PARRY_PATCH.keyTable    = ups[3]
+        _PARRY_PATCH.keyTable = ups[3]
         _PARRY_PATCH.transformFn = ups[4]
-        _PARRY_PATCH.parryHash   = ups[8]
+        _PARRY_PATCH.parryHash = ups[8]
     end)
     if not ok then warn("[PARRY] init error:", tostring(err)) end
 end)
 
 local replicated_storage = cloneref(game:GetService("ReplicatedStorage"))
-local workspace          = cloneref(game:GetService("Workspace"))
+local workspace = cloneref(game:GetService("Workspace"))
 
 local _reverted = {}
 local _original = {}
@@ -142,8 +128,8 @@ local function _hook(remote)
             return function(_, ...)
                 local _args = {...}
                 if _is_valid(_args) and not _reverted[self] then
-                    _reverted[self]          = _args
-                    _PARRY_PATCH.ready       = true
+                    _reverted[self] = _args
+                    _PARRY_PATCH.ready = true
                     _PARRY_PATCH.parryRemote = self
                 end
                 return _old(self, key)(_, unpack(_args))
@@ -164,7 +150,7 @@ function _PARRY_PATCH.fire(curveCFrame, screenPositions, mouseLocation)
     if not _PARRY_PATCH.ready then return false end
     local kt = _PARRY_PATCH.keyTable
     if not kt then return false end
-    local keyIndex   = kt[1]
+    local keyIndex = kt[1]
     local currentKey = kt[2] and kt[2][keyIndex]
     if not currentKey then return false end
     local tok, transformed = pcall(_PARRY_PATCH.transformFn, currentKey, "TIME")
@@ -173,7 +159,7 @@ function _PARRY_PATCH.fire(curveCFrame, screenPositions, mouseLocation)
         if not tok or not transformed then return false end
     end
     local serverTime = workspace:GetServerTimeNow() * 100
-    local timeStr    = tostring(math.floor(serverTime))
+    local timeStr = tostring(math.floor(serverTime))
     local tc = {}
     for i = 1, #timeStr do
         local ki = (i - 1) % #transformed + 1
@@ -190,9 +176,9 @@ function _PARRY_PATCH.fire(curveCFrame, screenPositions, mouseLocation)
     end)
 end
 
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- 2. IMPORTS
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 local Players          = cloneref(game:GetService("Players"))
 local RunService       = cloneref(game:GetService("RunService"))
 local UserInputService = cloneref(game:GetService("UserInputService"))
@@ -216,102 +202,272 @@ getgenv().Connections_Manager = Connections_Manager
 
 getgenv().AutoParryMode = getgenv().AutoParryMode or "Remote"
 
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- 3. STATE
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 local System = {
     __properties = {
-        __autoparry_enabled   = false,
-        __auto_spam_enabled   = false,
+        __autoparry_enabled = false,
+        __auto_spam_enabled = false,
         __manual_spam_enabled = false,
-        __curve_mode          = 1,
-        __accuracy            = 50,
-        __divisor_multiplier  = 1.1,
-        __parried             = false,
-        __training_parried    = false,
-        __parries             = 0,
-        __spam_threshold      = 1.5,
-        __spam_accumulator    = 0,
-        __spam_rate           = 1000,
+        __curve_mode = 1,
+        __accuracy = 50,
+        __divisor_multiplier = 1.1,
+        __parried = false,
+        __training_parried = false,
+        __parries = 0,
+        __spam_threshold = 1.5,
+        __spam_accumulator = 0,
+        __spam_rate = 1000,
         __distance_multiplier = 1,
-        __humanizer_enabled      = false,
+        __humanizer_enabled = false,
         __humanizer_min_accuracy = 1,
         __humanizer_max_accuracy = 50,
-        __humanizer_last_update  = 0,
-        __humanizer_next_change  = 0.8,
-        __tornado_time        = tick(),
-        __connections         = {},
-        __infinity_active     = false,
-        __deathslash_active   = false,
-        __timehole_active     = false,
+        __humanizer_last_update = 0,
+        __humanizer_next_change = 0.8,
+        __tornado_time = tick(),
+        __connections = {},
+        __infinity_active = false,
+        __deathslash_active = false,
+        __timehole_active = false,
         __slashesoffury_active = false,
-        __slashesoffury_count  = 0,
-        __no_render_enabled   = false,
-        __fps_boost_enabled   = false,
+        __slashesoffury_count = 0,
+        __no_render_enabled = false,
+        __fps_boost_enabled = false,
+        __ml_enabled = true,
+        __anti_detect_enabled = true,
+        __fatigue_enabled = true,
+        __trajectory_enabled = true,
     },
     __config = {
         __curve_names = {"Camera", "Random", "Accelerated", "Backwards", "Slow", "High", "Left", "Right"},
         __detections = {
-            __infinity      = true,
-            __deathslash    = true,
-            __timehole      = true,
-            __slashesoffury = true,
+            __infinity = true, __deathslash = true,
+            __timehole = true, __slashesoffury = true,
         },
     },
 }
 
-local function update_divisor()
-    System.__properties.__divisor_multiplier =
-        0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
+-- ═══════════════════════════════════════════════════════════
+-- ML PROFILING ENGINE
+-- ═══════════════════════════════════════════════════════════
+local ML = {
+    ping_samples = {},
+    parry_outcomes = {},
+    player_data = {},
+    session = {
+        start_time = tick(),
+        total_parries = 0,
+        total_success = 0,
+        fatigue_level = 0,
+        recent_parries = {},
+    },
+    rolling_stats = {
+        last_parry_time = 0,
+        last_success_time = 0,
+        success_streak = 0,
+        fail_streak = 0,
+    },
+}
+
+function ML:add_ping(ping)
+    table.insert(self.ping_samples, {t = tick(), ping = ping})
+    if #self.ping_samples > 60 then table.remove(self.ping_samples, 1) end
 end
 
-local function update_randomized_accuracy()
-    if not System.__properties.__humanizer_enabled then return end
-    local props = System.__properties
-    local now = os.clock()
-    if now < props.__humanizer_last_update + props.__humanizer_next_change then return end
-    props.__humanizer_last_update = now
-    local ping_str = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
-    local ping = tonumber(ping_str:match("%d+")) or 0
-    local min_h = math.clamp(props.__humanizer_min_accuracy, 1, 50)
-    local max_h = math.clamp(props.__humanizer_max_accuracy, 1, 50)
-    if min_h > max_h then min_h, max_h = max_h, min_h end
-    local current = math.clamp(props.__accuracy, min_h, max_h)
-    local span = math.max(1, max_h - min_h)
-    local ping_factor = ping >= 90 and 0.75 or (ping <= 50 and 1.25 or 1)
-    local roll = math.random(1, 100)
-    local new_acc
-    if ping >= 90 then
-        new_acc = math.clamp(current + math.random(-1, 1), min_h, max_h)
-    elseif roll <= 45 then
-        new_acc = math.clamp(current + math.random(-2, 2), min_h, max_h)
-    elseif roll <= 80 then
-        local drift = math.random(2, math.max(3, math.floor(span * 0.2)))
-        local dir = math.random() < 0.5 and -drift or drift
-        new_acc = math.clamp(current + dir, min_h, max_h)
-    else
-        new_acc = math.random(min_h, max_h)
+function ML:get_ping_stats()
+    local now = tick()
+    local valid = {}
+    for _, s in ipairs(self.ping_samples) do
+        if now - s.t < 5 then table.insert(valid, s.ping) end
     end
-    props.__accuracy = new_acc
-    props.__humanizer_next_change = math.random(0.7, 1.4) / ping_factor
-    update_divisor()
+    local n = #valid
+    if n == 0 then return {avg = 50, stddev = 0, p95 = 50, vol = 0} end
+    local sum = 0
+    for _, p in ipairs(valid) do sum = sum + p end
+    local avg = sum / n
+    local var = 0
+    for _, p in ipairs(valid) do var = var + (p - avg)^2 end
+    local stddev = math.sqrt(var / n)
+    local vol = avg > 0 and (stddev / avg) or 0
+    return {avg = avg, stddev = stddev, p95 = avg + 1.65 * stddev, vol = vol}
+end
+
+function ML:record_parry(success, delay, ping, mode)
+    table.insert(self.parry_outcomes, {
+        t = tick(), success = success, delay = delay, ping = ping, mode = mode,
+    })
+    if #self.parry_outcomes > 200 then table.remove(self.parry_outcomes, 1) end
+    self.session.total_parries = self.session.total_parries + 1
+    if success then
+        self.session.total_success = self.session.total_success + 1
+        self.rolling_stats.success_streak = self.rolling_stats.success_streak + 1
+        self.rolling_stats.fail_streak = 0
+        self.rolling_stats.last_success_time = tick()
+    else
+        self.rolling_stats.fail_streak = self.rolling_stats.fail_streak + 1
+        self.rolling_stats.success_streak = 0
+    end
+    self.rolling_stats.last_parry_time = tick()
+    table.insert(self.session.recent_parries, tick())
+    local cutoff = tick() - 30
+    while #self.session.recent_parries > 0 and self.session.recent_parries[1] < cutoff do
+        table.remove(self.session.recent_parries, 1)
+    end
+end
+
+function ML:update_fatigue()
+    if not System.__properties.__fatigue_enabled then
+        self.session.fatigue_level = 0
+        return
+    end
+    local elapsed = tick() - self.session.start_time
+    local base_fatigue = math.clamp(elapsed / 3600, 0, 1)
+    local parry_fatigue = math.clamp(self.session.total_parries / 3000, 0, 0.3)
+    self.session.fatigue_level = math.clamp(base_fatigue + parry_fatigue, 0, 1)
+end
+
+function ML:predict_optimal_delay()
+    local ping_stats = self:get_ping_stats()
+    local ping_delay = ping_stats.avg * 0.15
+    local vol_delay = ping_stats.vol * 50
+    self:update_fatigue()
+    local fatigue_delay = self.session.fatigue_level * 0.025
+    local successful = {}
+    for _, o in ipairs(self.parry_outcomes) do
+        if o.success and tick() - o.t < 120 then table.insert(successful, o.delay) end
+    end
+    local base_delay
+    if #successful >= 5 then
+        table.sort(successful)
+        base_delay = successful[math.floor(#successful / 2)]
+    else
+        base_delay = 0.012
+    end
+    if self.rolling_stats.fail_streak >= 3 then
+        base_delay = base_delay + 0.008 * math.min(self.rolling_stats.fail_streak, 5)
+    end
+    if self.rolling_stats.success_streak >= 10 then
+        base_delay = base_delay * 0.85
+    end
+    return base_delay + ping_delay + vol_delay + fatigue_delay
+end
+
+function ML:should_human_error()
+    if not System.__properties.__anti_detect_enabled then return false end
+    local base_chance = 0.02
+    local fatigue_chance = self.session.fatigue_level * 0.03
+    return math.random() < (base_chance + fatigue_chance)
+end
+
+function ML:get_jitter()
+    if not System.__properties.__anti_detect_enabled then return 0 end
+    local r = (math.random() + math.random() + math.random() - 1.5) / 1.5
+    return r * 0.004
+end
+
+function ML:is_rate_limited()
+    if not System.__properties.__anti_detect_enabled then return false end
+    if #self.session.recent_parries >= 40 then return true end
+    return false
+end
+
+function ML:record_player(player_name, ball_speed, curve_direction, curve_amount)
+    if not self.player_data[player_name] then
+        self.player_data[player_name] = {
+            samples = {}, avg_speed = 0, curve_bias = 0,
+            curve_intensity = 0, last_seen = 0,
+        }
+    end
+    local pd = self.player_data[player_name]
+    table.insert(pd.samples, {speed = ball_speed, curve_dir = curve_direction, curve_amt = curve_amount})
+    if #pd.samples > 20 then table.remove(pd.samples, 1) end
+    local sum_speed, sum_curve_bias, sum_curve_amt = 0, 0, 0
+    for _, s in ipairs(pd.samples) do
+        sum_speed = sum_speed + s.speed
+        sum_curve_bias = sum_curve_bias + s.curve_dir
+        sum_curve_amt = sum_curve_amt + s.curve_amt
+    end
+    pd.avg_speed = sum_speed / #pd.samples
+    pd.curve_bias = sum_curve_bias / #pd.samples
+    pd.curve_intensity = sum_curve_amt / #pd.samples
+    pd.last_seen = tick()
+end
+
+function ML:predict_ball_position(ball, ball_pos, ball_vel, ping_ms)
+    if not System.__properties.__trajectory_enabled then return ball_pos end
+    local ping_sec = ping_ms / 1000
+    local predicted = ball_pos + ball_vel * ping_sec
+    local gravity = workspace.Gravity or 196.2
+    local gravity_effect = Vector3.new(0, -0.5 * gravity * ping_sec * ping_sec, 0)
+    return predicted + gravity_effect
+end
+
+function ML:compute_parry_params(ball, player_name, ping_stats)
+    local ball_pos = ball.Position
+    local ball_vel = ball.AssemblyLinearVelocity or Vector3.new()
+    local ball_speed = ball_vel.Magnitude
+    local predicted_pos = self:predict_ball_position(ball, ball_pos, ball_vel, ping_stats.avg)
+    local my_pos = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
+        and LocalPlayer.Character.PrimaryPart.Position or Vector3.zero
+    local distance = (predicted_pos - my_pos).Magnitude
+    local time_to_reach = ball_speed > 0 and (distance / ball_speed) or 999
+    local player_pattern = self.player_data[player_name]
+    local curve_adaptation = 0
+    if player_pattern and #player_pattern.samples >= 5 then
+        curve_adaptation = player_pattern.curve_bias
+    end
+    local optimal_delay = self:predict_optimal_delay()
+    return {
+        predicted_pos = predicted_pos, time_to_reach = time_to_reach,
+        distance = distance, ball_speed = ball_speed,
+        optimal_delay = optimal_delay, curve_adaptation = curve_adaptation,
+    }
+end
+
+function ML:should_parry(ball, ball_target, distance, parry_accuracy, player_name)
+    if self:is_rate_limited() then return false, "rate_limited" end
+    local ping_stats = self:get_ping_stats()
+    local params = self:compute_parry_params(ball, player_name, ping_stats)
+    local threshold = parry_accuracy
+    if params.ball_speed > 250 then threshold = threshold + 2 end
+    if ping_stats.vol > 0.4 then threshold = threshold + 1.5 end
+    if self.rolling_stats.success_streak >= 10 then threshold = threshold - 1 end
+    if distance <= threshold and ball_target == LocalPlayer.Name then
+        return true, params
+    end
+    return false, nil
+end
+
+function ML:get_ping()
+    local ping_str = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
+    return tonumber(ping_str:match("%d+")) or 50
 end
 
 task.spawn(function()
-    while true do
-        task.wait(0.1)
-        if System.__properties.__humanizer_enabled then
-            pcall(update_randomized_accuracy)
-        end
+    while task.wait(0.5) do
+        pcall(function()
+            ML:add_ping(ML:get_ping())
+        end)
     end
 end)
 
-local maxParryCount = 36
-local parryDelay    = 0.05
+task.spawn(function()
+    while task.wait(60) do
+        pcall(function()
+            local now = tick()
+            for name, data in pairs(ML.player_data) do
+                if now - data.last_seen > 300 then
+                    ML.player_data[name] = nil
+                end
+            end
+        end)
+    end
+end)
 
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- 4. BALL / PLAYER / CURVE / PARRY / DETECTION
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 System.ball = {}
 function System.ball.get()
     local balls = workspace:FindFirstChild("Balls")
@@ -354,7 +510,7 @@ function System.player.get_closest_to_cursor()
     local camera = workspace.CurrentCamera
     if not Alive then return nil end
     local vp = camera.ViewportSize
-    local ray     = camera:ScreenPointToRay(vp.X / 2, vp.Y / 2)
+    local ray = camera:ScreenPointToRay(vp.X / 2, vp.Y / 2)
     local pointer = CFrame.lookAt(ray.Origin, ray.Origin + ray.Direction)
     local closest, min_dot = nil, -math.huge
     for _, player in pairs(Alive:GetChildren()) do
@@ -370,7 +526,7 @@ end
 System.curve = {}
 function System.curve.get_cframe()
     local camera = workspace.CurrentCamera
-    local root   = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not root then return camera.CFrame end
     local targetPart
     local closest = System.player.get_closest_to_cursor()
@@ -413,14 +569,28 @@ local function fireKeypress()
     end)
 end
 
-function System.parry.execute()
+function System.parry.execute(override_delay)
     if System.__properties.__parries > 10000 or not LocalPlayer.Character then return end
-
     local mode = getgenv().AutoParryMode or "Remote"
+    local delay = override_delay or (System.__properties.__ml_enabled and ML:predict_optimal_delay()) or 0
+    if System.__properties.__ml_enabled then
+        delay = delay + ML:get_jitter()
+    end
+
+    if System.__properties.__anti_detect_enabled and System.__properties.__ml_enabled then
+        if ML:should_human_error() then
+            ML:record_parry(false, delay, ML:get_ping(), mode)
+            return
+        end
+    end
 
     if mode == "Keypress" then
+        if delay > 0 then task.wait(delay) end
         fireKeypress()
         System.__properties.__parries += 1
+        if System.__properties.__ml_enabled then
+            ML:record_parry(true, delay, ML:get_ping(), mode)
+        end
         task.delay(0.5, function()
             if System.__properties.__parries > 0 then System.__properties.__parries -= 1 end
         end)
@@ -428,9 +598,10 @@ function System.parry.execute()
     end
 
     if not _PARRY_PATCH or not _PARRY_PATCH.ready then return end
+    if delay > 0 then task.wait(delay) end
 
     local camera = workspace.CurrentCamera
-    local vp     = camera.ViewportSize
+    local vp = camera.ViewportSize
     local screenPositions = {}
     if Alive then
         for _, entity in pairs(Alive:GetChildren()) do
@@ -441,9 +612,22 @@ function System.parry.execute()
         end
     end
     local curveCF = System.curve.get_cframe() or camera.CFrame
+    local ball = System.ball.get()
     local mouseLocation = {vp.X / 2, vp.Y / 2}
-    _PARRY_PATCH.fire(curveCF, screenPositions, mouseLocation)
+    if ball and System.__properties.__trajectory_enabled then
+        pcall(function()
+            local predicted_world = ML:predict_ball_position(
+                ball, ball.Position, ball.AssemblyLinearVelocity or Vector3.new(), ML:get_ping()
+            )
+            local screen_pos = camera:WorldToScreenPoint(predicted_world)
+            mouseLocation = {screen_pos.X, screen_pos.Y}
+        end)
+    end
+    local success = _PARRY_PATCH.fire(curveCF, screenPositions, mouseLocation)
     System.__properties.__parries += 1
+    if System.__properties.__ml_enabled then
+        ML:record_parry(success ~= false, delay, ML:get_ping(), mode)
+    end
     task.delay(0.5, function()
         if System.__properties.__parries > 0 then System.__properties.__parries -= 1 end
     end)
@@ -453,7 +637,8 @@ local function linear_predict(a, b, t) return a + (b - a) * t end
 
 System.detection = {
     __ball_properties = {
-        __aerodynamic_time = tick(), __last_warping = tick(), __lerp_radians = 0, __curving = tick(),
+        __aerodynamic_time = tick(), __last_warping = tick(),
+        __lerp_radians = 0, __curving = tick(),
     },
 }
 
@@ -494,9 +679,9 @@ function System.detection.is_curved()
     return dot < dot_thr
 end
 
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- 5. DETECTION HOOKS
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 local RS = replicated_storage
 
 RS.Remotes.DeathBall.OnClientEvent:Connect(function(_, d)
@@ -534,18 +719,18 @@ end)
 netFolder["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(function()
     spawn(function()
         while System.__properties.__slashesoffury_active and
-              System.__properties.__slashesoffury_count < maxParryCount do
+              System.__properties.__slashesoffury_count < 36 do
             if System.__config.__detections.__slashesoffury then
                 System.parry.execute()
-                task.wait(parryDelay)
+                task.wait(0.05)
             else break end
         end
     end)
 end)
 
--- ============================================================
--- 6. AUTOPARRY
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
+-- 6. AUTOPARRY (ML Enhanced)
+-- ═══════════════════════════════════════════════════════════
 System.autoparry = {}
 
 function System.autoparry.start()
@@ -596,42 +781,65 @@ function System.autoparry.start()
             if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then continue end
             if System.__config.__detections.__timehole and System.__properties.__timehole_active then continue end
             if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then continue end
-            if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
 
-                if getgenv().CooldownProtection then
-                    local hotbar = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
-                    local block  = hotbar and hotbar:FindFirstChild("Block")
-                    local cd     = block and block:FindFirstChild("UIGradient")
-                    if cd and cd.Offset.Y < 0.4 then
-                        System.__properties.__parried = true
-                        continue
+            if System.__properties.__ml_enabled and ball_target and ball_target ~= LocalPlayer.Name then
+                pcall(function()
+                    local curve_dir = 0
+                    if curved then
+                        local rel = ball.Position - LocalPlayer.Character.PrimaryPart.Position
+                        curve_dir = math.sign(rel.X + rel.Z)
+                    end
+                    ML:record_player(ball_target, speed, curve_dir, curved and speed or 0)
+                end)
+            end
+
+            if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
+                local should = true
+                local params = nil
+                if System.__properties.__ml_enabled then
+                    local ok, s, p = pcall(function()
+                        return ML:should_parry(ball, ball_target, distance, parry_accuracy, ball_target or "")
+                    end)
+                    if ok then
+                        should = s
+                        params = p
                     end
                 end
 
-                if getgenv().AutoAbility then
-                    local hotbar  = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
-                    local ability = hotbar and hotbar:FindFirstChild("Ability")
-                    local abCd    = ability and ability:FindFirstChild("UIGradient")
-                    if abCd and abCd.Offset.Y == 0.5 then
-                        local char      = LocalPlayer.Character
-                        local abilities = char and char:FindFirstChild("Abilities")
-                        if abilities and (
-                            (abilities:FindFirstChild("Raging Deflection") and abilities["Raging Deflection"].Enabled) or
-                            (abilities:FindFirstChild("Rapture")           and abilities["Rapture"].Enabled) or
-                            (abilities:FindFirstChild("Calming Deflection") and abilities["Calming Deflection"].Enabled) or
-                            (abilities:FindFirstChild("Aerodynamic Slash") and abilities["Aerodynamic Slash"].Enabled) or
-                            (abilities:FindFirstChild("Fracture")          and abilities["Fracture"].Enabled) or
-                            (abilities:FindFirstChild("Death Slash")       and abilities["Death Slash"].Enabled)
-                        ) then
-                            pcall(function()
-                                RS.Remotes.AbilityButtonPress:FireServer()
-                            end)
+                if should then
+                    if getgenv().CooldownProtection then
+                        local hotbar = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
+                        local block = hotbar and hotbar:FindFirstChild("Block")
+                        local cd = block and block:FindFirstChild("UIGradient")
+                        if cd and cd.Offset.Y < 0.4 then
+                            System.__properties.__parried = true
+                            continue
                         end
                     end
+                    if getgenv().AutoAbility then
+                        local hotbar = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
+                        local ability = hotbar and hotbar:FindFirstChild("Ability")
+                        local abCd = ability and ability:FindFirstChild("UIGradient")
+                        if abCd and abCd.Offset.Y == 0.5 then
+                            local char = LocalPlayer.Character
+                            local abilities = char and char:FindFirstChild("Abilities")
+                            if abilities and (
+                                (abilities:FindFirstChild("Raging Deflection") and abilities["Raging Deflection"].Enabled) or
+                                (abilities:FindFirstChild("Rapture") and abilities["Rapture"].Enabled) or
+                                (abilities:FindFirstChild("Calming Deflection") and abilities["Calming Deflection"].Enabled) or
+                                (abilities:FindFirstChild("Aerodynamic Slash") and abilities["Aerodynamic Slash"].Enabled) or
+                                (abilities:FindFirstChild("Fracture") and abilities["Fracture"].Enabled) or
+                                (abilities:FindFirstChild("Death Slash") and abilities["Death Slash"].Enabled)
+                            ) then
+                                pcall(function()
+                                    RS.Remotes.AbilityButtonPress:FireServer()
+                                end)
+                            end
+                        end
+                    end
+                    System.parry.execute(params and params.optimal_delay or nil)
+                    System.__properties.__parried = true
                 end
-
-                System.parry.execute()
-                System.__properties.__parried = true
             end
             local last_parrys = tick()
             repeat RunService.Stepped:Wait() until (tick() - last_parrys) >= 1 or not System.__properties.__parried
@@ -673,9 +881,9 @@ function System.autoparry.stop()
     end
 end
 
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- 7. AUTO SPAM
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 System.auto_spam = {}
 
 function System.auto_spam:get_entity_properties()
@@ -693,8 +901,7 @@ function System.auto_spam:get_ball_properties()
     if not ball then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
     local ball_velocity = ball.AssemblyLinearVelocity or Vector3.new()
-    local ball_origin = ball
-    local ball_direction_vector = LocalPlayer.Character.PrimaryPart.Position - ball_origin.Position
+    local ball_direction_vector = LocalPlayer.Character.PrimaryPart.Position - ball.Position
     local ball_distance = ball_direction_vector.Magnitude
     local ball_direction = Vector3.new()
     local ball_dot = 0
@@ -712,33 +919,23 @@ function System.auto_spam.spam_service(self)
     local entity = System.player.get_closest()
     if not ball or not entity or not entity.PrimaryPart then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-
     local D = 5
     local velocity = ball.AssemblyLinearVelocity or Vector3.new()
     local n = velocity.Magnitude
     if n == 0 then return D end
-
     local to_ball = (LocalPlayer.Character.PrimaryPart.Position - ball.Position)
     if to_ball.Magnitude == 0 then return D end
-
     local r = to_ball.Unit
     local t = 0
-    if n > 0 and velocity.Magnitude > 0 then
-        t = r:Dot(velocity.Unit)
-    end
-
+    if n > 0 and velocity.Magnitude > 0 then t = r:Dot(velocity.Unit) end
     local target_pos = entity.PrimaryPart.Position
     local X = LocalPlayer:DistanceFromCharacter(target_pos)
-
     local E = 1
     local Fmove = Vector3.new()
     local success, humanoid = pcall(function()
         return LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     end)
-    if success and humanoid and humanoid.MoveDirection then
-        Fmove = humanoid.MoveDirection
-    end
-
+    if success and humanoid and humanoid.MoveDirection then Fmove = humanoid.MoveDirection end
     local N = (target_pos - LocalPlayer.Character.PrimaryPart.Position)
     if N.Magnitude > 0 then N = N.Unit else N = Vector3.new() end
     local lmove = Vector3.new()
@@ -746,37 +943,21 @@ function System.auto_spam.spam_service(self)
         local ehum = entity:FindFirstChildOfClass("Humanoid")
         if ehum and ehum.MoveDirection then lmove = ehum.MoveDirection end
     end
-
     _G.Last_Close_Contact = _G.Last_Close_Contact or 0
     _G.In_Close_Contact = _G.In_Close_Contact or false
     local now = tick()
-    if X <= 3 then
-        _G.In_Close_Contact = true
-    end
+    if X <= 3 then _G.In_Close_Contact = true end
     if _G.In_Close_Contact and X > 3.3 then
         _G.In_Close_Contact = false
         _G.Last_Close_Contact = now
     end
     local u = (not _G.In_Close_Contact) and (now - (_G.Last_Close_Contact or 0) >= 1.5)
-    if u and (Fmove.Magnitude > 0.2 and Fmove:Dot(N) < -0.4) then
-        E = 10
-    end
-    if u and (lmove.Magnitude > 0.2 and lmove:Dot(-N) < -0.4) then
-        E = 10
-    end
-
+    if u and (Fmove.Magnitude > 0.2 and Fmove:Dot(N) < -0.4) then E = 10 end
+    if u and (lmove.Magnitude > 0.2 and lmove:Dot(-N) < -0.4) then E = 10 end
     local B = (self.Ping or 50) * 0.7 + math.min(n / (E * 1.2), 80)
-
-    if (self.Entity_Properties and self.Entity_Properties.Distance or math.huge) > B then
-        return D
-    end
-    if (self.Ball_Properties and self.Ball_Properties.Distance or math.huge) > B then
-        return D
-    end
-    if X > B then
-        return D
-    end
-
+    if (self.Entity_Properties and self.Entity_Properties.Distance or math.huge) > B then return D end
+    if (self.Ball_Properties and self.Ball_Properties.Distance or math.huge) > B then return D end
+    if X > B then return D end
     local U = math.clamp(-t, 0, 1)
     local q = math.clamp(U * (n / 40), 0, 4)
     D = B - q
@@ -790,53 +971,39 @@ function System.auto_spam.start()
     System.__properties.__connections.__auto_spam = RunService.PreSimulation:Connect(function()
         if not System.__properties.__auto_spam_enabled then return end
         if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
-
         local ball = System.ball.get()
         if not ball then return end
         if System.__properties.__slashesoffury_active then return end
-
         local zoomies = ball:FindFirstChild("zoomies")
         if not zoomies then return end
         if zoomies.VectorVelocity.Magnitude == 0 then return end
-
         System.player.get_closest()
         if not Closest_Entity or not Closest_Entity.PrimaryPart then return end
-
         local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
         local ping_threshold = math.clamp(ping / 10, 1, 16)
-
         local ball_target = ball:GetAttribute("target")
         local ball_properties = System.auto_spam:get_ball_properties()
         local entity_properties = System.auto_spam:get_entity_properties()
         if not ball_properties or not entity_properties then return end
-
         local spam_accuracy = System.auto_spam.spam_service({
             Ball_Properties = ball_properties,
             Entity_Properties = entity_properties,
             Ping = ping_threshold,
         })
-
         local target_position = Closest_Entity.PrimaryPart.Position
         local target_distance = LocalPlayer:DistanceFromCharacter(target_position)
         if zoomies.VectorVelocity.Magnitude == 0 then return end
-
         local direction = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Unit
         local ball_direction = zoomies.VectorVelocity.Unit
         local dot = direction:Dot(ball_direction)
         local distance = LocalPlayer:DistanceFromCharacter(ball.Position)
-
         if not ball_target then return end
-
         local dist_mult = System.__properties.__distance_multiplier or 1
         spam_accuracy = spam_accuracy * dist_mult
-
         if target_distance > spam_accuracy or distance > spam_accuracy then return end
-
         local pulsed = LocalPlayer.Character:GetAttribute("Pulsed")
         if pulsed then return end
-
         if ball_target == LocalPlayer.Name and target_distance > 30 and distance > 30 then return end
-
         if distance <= spam_accuracy and System.__properties.__parries > System.__properties.__spam_threshold then
             System.parry.execute()
         end
@@ -851,9 +1018,9 @@ function System.auto_spam.stop()
     end
 end
 
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- 7.5 MANUAL SPAM
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 System.manual_spam = {}
 
 function System.manual_spam.loop(delta)
@@ -883,14 +1050,14 @@ function System.manual_spam.stop()
     end
 end
 
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- 7.6 NO RENDER
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 function System.no_render_set(state)
     System.__properties.__no_render_enabled = state
     local playerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
     local effectScripts = playerScripts and playerScripts:FindFirstChild("EffectScripts")
-    local clientFX      = effectScripts and effectScripts:FindFirstChild("ClientFX")
+    local clientFX = effectScripts and effectScripts:FindFirstChild("ClientFX")
     if clientFX then clientFX.Disabled = state end
     if state then
         if not Connections_Manager["No Render"] then
@@ -909,9 +1076,9 @@ function System.no_render_set(state)
     end
 end
 
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- 7.7 FPS BOOST
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 local original_fog_end = Lighting.FogEnd
 local original_fog_start = Lighting.FogStart
 local postprocessing_backup = {}
@@ -924,8 +1091,11 @@ local fps_boost_loop = nil
 local fps_boost_enabled = false
 
 local function apply_disable_fog(state)
-    if state then Lighting.FogEnd = math.huge; Lighting.FogStart = math.huge
-    else Lighting.FogEnd = original_fog_end; Lighting.FogStart = original_fog_start end
+    if state then
+        Lighting.FogEnd = math.huge; Lighting.FogStart = math.huge
+    else
+        Lighting.FogEnd = original_fog_end; Lighting.FogStart = original_fog_start
+    end
 end
 
 local function apply_disable_postprocessing(state)
@@ -1073,9 +1243,9 @@ function System.fps_boost_set(state)
     end)
 end
 
--- ============================================================
--- 7.8 HOTKEYS (Combat)
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
+-- 7.8 HOTKEYS
+-- ═══════════════════════════════════════════════════════════
 System.hotkeys = { __enabled = true, __conn = nil }
 
 local HOTKEY_MAP = {
@@ -1104,9 +1274,9 @@ function System.hotkeys.start()
 end
 System.hotkeys.start()
 
--- ============================================================
--- 8. AZURE UI v3 (Bubble Font + Animated)
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
+-- 8. UI (Bubble Font + Animations)
+-- ═══════════════════════════════════════════════════════════
 local Config = setmetatable({
     save = function(self, file_name, config)
         pcall(function()
@@ -1134,7 +1304,6 @@ Azure._tabs = {}
 function Azure.new()
     local self = setmetatable({}, Azure)
     self._tabs = {}
-
     local old = CoreGui:FindFirstChild("Azure")
     if old then old:Destroy() end
 
@@ -1202,7 +1371,6 @@ function Azure.new()
     shimmerGradient.Rotation = 45
     shimmerGradient.Offset = Vector2.new(-1, 0)
     shimmerGradient.Parent = Shimmer
-
     Animation.shimmer(shimmerGradient, 1.4, 2.2)
 
     local Handler = Instance.new("Frame", Container)
@@ -1362,14 +1530,10 @@ function Azure:create_tab(title)
     Instance.new("UICorner", activeBar).CornerRadius = UDim.new(1, 0)
 
     Tab.MouseEnter:Connect(function()
-        TweenService:Create(tabScale, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-            Scale = 1.04
-        }):Play()
+        TweenService:Create(tabScale, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Scale = 1.04 }):Play()
     end)
     Tab.MouseLeave:Connect(function()
-        TweenService:Create(tabScale, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-            Scale = 1
-        }):Play()
+        TweenService:Create(tabScale, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Scale = 1 }):Play()
     end)
 
     local LeftSection = Instance.new("ScrollingFrame")
@@ -1418,13 +1582,10 @@ function Azure:create_tab(title)
         end
         LeftSection.Visible = true
         RightSection.Visible = true
-
         local function staggerIn(container)
             local children = {}
             for _, c in ipairs(container:GetChildren()) do
-                if c:IsA("Frame") and c.Name == "Module" then
-                    table.insert(children, c)
-                end
+                if c:IsA("Frame") and c.Name == "Module" then table.insert(children, c) end
             end
             Animation.stagger(children, 0, 0.04, function(mod)
                 local startPos = UDim2.new(mod.Position.X.Scale, mod.Position.X.Offset, mod.Position.Y.Scale, mod.Position.Y.Offset - 12)
@@ -1436,28 +1597,21 @@ function Azure:create_tab(title)
                 }):Play()
             end)
         end
-
         for _, rec in pairs(self._tabs) do
             local isActive = (rec.Tab == Tab)
-            local targetBg = isActive and Color3.fromRGB(140, 90, 220) or Color3.fromRGB(60, 40, 120)
-            local targetTransparency = isActive and 0.7 or 1
-            local targetText = isActive and 0.1 or 0.6
-            local targetBar = isActive and 0 or 1
-
             TweenService:Create(rec.Tab, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                BackgroundTransparency = targetTransparency,
-                BackgroundColor3 = targetBg,
+                BackgroundTransparency = isActive and 0.7 or 1,
+                BackgroundColor3 = isActive and Color3.fromRGB(140, 90, 220) or Color3.fromRGB(60, 40, 120),
             }):Play()
             TweenService:Create(rec.Tab, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                TextTransparency = targetText,
+                TextTransparency = isActive and 0.1 or 0.6,
             }):Play()
             if rec.ActiveBar then
                 TweenService:Create(rec.ActiveBar, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                    BackgroundTransparency = targetBar,
+                    BackgroundTransparency = isActive and 0 or 1,
                 }):Play()
             end
         end
-
         if LeftSection.Visible then staggerIn(LeftSection) end
         if RightSection.Visible then staggerIn(RightSection) end
     end
@@ -1496,14 +1650,12 @@ function Azure:create_tab(title)
 
         Module.MouseEnter:Connect(function()
             TweenService:Create(ms, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                Transparency = 0.15,
-                Thickness = 1.3,
+                Transparency = 0.15, Thickness = 1.3,
             }):Play()
         end)
         Module.MouseLeave:Connect(function()
             TweenService:Create(ms, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                Transparency = 0.55,
-                Thickness = 1,
+                Transparency = 0.55, Thickness = 1,
             }):Play()
         end)
 
@@ -1607,13 +1759,11 @@ function Azure:create_tab(title)
                     Position = UDim2.fromScale(0.53, 0.5)
                 }):Play()
                 TweenService:Create(ms, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                    Color = Color3.fromRGB(200, 160, 255),
-                    Transparency = 0.3,
+                    Color = Color3.fromRGB(200, 160, 255), Transparency = 0.3,
                 }):Play()
                 task.delay(0.5, function()
                     TweenService:Create(ms, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                        Color = Color3.fromRGB(180, 130, 255),
-                        Transparency = 0.55,
+                        Color = Color3.fromRGB(180, 130, 255), Transparency = 0.55,
                     }):Play()
                 end)
             else
@@ -1636,16 +1786,14 @@ function Azure:create_tab(title)
             Toggle.BackgroundColor3 = Color3.fromRGB(180, 140, 255)
             Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             Circle.Position = UDim2.fromScale(0.53, 0.5)
-            pcall(function()
-                if settings.callback then settings.callback(true) end
-            end)
+            pcall(function() if settings.callback then settings.callback(true) end end)
         end
 
         Header.MouseButton1Click:Connect(function()
             ModuleManager:change_state(not ModuleManager._state)
         end)
 
-        -- ========== CHECKBOX ==========
+        -- CHECKBOX
         function ModuleManager:create_checkbox(s)
             if self._size == 0 then self._size = 11 end
             self._size += 20
@@ -1729,7 +1877,7 @@ function Azure:create_tab(title)
             return CM
         end
 
-        -- ========== SLIDER ==========
+        -- SLIDER
         function ModuleManager:create_slider(s)
             if self._size == 0 then self._size = 11 end
             self._size += 27
@@ -1812,14 +1960,10 @@ function Azure:create_tab(title)
                 if s.round_number then cur = math.floor(cur + 0.5) end
                 local pct = (cur - min_v) / (max_v - min_v)
                 Value.Text = tostring(cur)
-                TweenService:Create(Fill, TweenInfo.new(0.15), {
-                    Size = UDim2.new(pct, 0, 0, 4)
-                }):Play()
+                TweenService:Create(Fill, TweenInfo.new(0.15), { Size = UDim2.new(pct, 0, 0, 4) }):Play()
                 local scale = Circle2:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", Circle2)
                 scale.Scale = 1.3
-                TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                    Scale = 1
-                }):Play()
+                TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Scale = 1 }):Play()
                 Azure._config._flags[s.flag] = cur
                 if s.callback then pcall(s.callback, cur) end
             end
@@ -1860,7 +2004,7 @@ function Azure:create_tab(title)
             return SM
         end
 
-        -- ========== RANGE SLIDER ==========
+        -- RANGE SLIDER
         function ModuleManager:create_range_slider(s)
             if self._size == 0 then self._size = 11 end
             self._size += 27
@@ -1972,11 +2116,8 @@ function Azure:create_tab(title)
             local function update_from_input(input)
                 local rel = math.clamp((input.Position.X - Drag.AbsolutePosition.X) / Drag.AbsoluteSize.X, 0, 1)
                 local val = min_v + rel * (max_v - min_v)
-                if active == "min" then
-                    cur_min = math.clamp(val, min_v, cur_max)
-                else
-                    cur_max = math.clamp(val, cur_min, max_v)
-                end
+                if active == "min" then cur_min = math.clamp(val, min_v, cur_max)
+                else cur_max = math.clamp(val, cur_min, max_v) end
                 refresh()
             end
             Slider.InputBegan:Connect(function(input)
@@ -2012,7 +2153,7 @@ function Azure:create_tab(title)
             return SM
         end
 
-        -- ========== DROPDOWN ==========
+        -- DROPDOWN
         function ModuleManager:create_dropdown(s)
             if self._size == 0 then self._size = 11 end
             self._size += 44
@@ -2159,9 +2300,9 @@ function Azure:create_tab(title)
     return TabManager
 end
 
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- 9. TABS + MODULES
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 local AzureWindow = Azure.new()
 
 local MainTab   = AzureWindow:create_tab("Main")
@@ -2191,7 +2332,7 @@ autoparry_module:create_slider({
     callback = function(value)
         if System and not System.__properties.__humanizer_enabled then
             System.__properties.__accuracy = value
-            if update_divisor then pcall(update_divisor) end
+            update_divisor()
         end
     end,
 })
@@ -2213,11 +2354,40 @@ autoparry_module:create_dropdown({
     maximum_options = 10,
     callback = function(value)
         for i, name in ipairs(System.__config.__curve_names) do
-            if name == value then
-                System.__properties.__curve_mode = i
-                break
-            end
+            if name == value then System.__properties.__curve_mode = i; break end
         end
+    end,
+})
+
+autoparry_module:create_checkbox({
+    title = "ML Profiling",
+    flag = "MLProfiling",
+    callback = function(value)
+        System.__properties.__ml_enabled = value
+    end,
+})
+
+autoparry_module:create_checkbox({
+    title = "Anti-Detect",
+    flag = "AntiDetect",
+    callback = function(value)
+        System.__properties.__anti_detect_enabled = value
+    end,
+})
+
+autoparry_module:create_checkbox({
+    title = "Trajectory Predict",
+    flag = "TrajectoryPredict",
+    callback = function(value)
+        System.__properties.__trajectory_enabled = value
+    end,
+})
+
+autoparry_module:create_checkbox({
+    title = "Fatigue Mode",
+    flag = "FatigueMode",
+    callback = function(value)
+        System.__properties.__fatigue_enabled = value
     end,
 })
 
@@ -2356,61 +2526,49 @@ auto_spam_module:create_checkbox({
 
 -- DETECTION
 local inf_mod = DetTab:create_module({
-    title = "Infinity Ball",
-    description = "skip parry while active",
-    flag = "InfModule",
-    section = "left",
+    title = "Infinity Ball", description = "skip parry while active",
+    flag = "InfModule", section = "left",
     callback = function(state) System.__config.__detections.__infinity = state end,
 })
 inf_mod:change_state(true)
 
 local ds_mod = DetTab:create_module({
-    title = "Death Slash",
-    description = "skip parry while active",
-    flag = "DSModule",
-    section = "left",
+    title = "Death Slash", description = "skip parry while active",
+    flag = "DSModule", section = "left",
     callback = function(state) System.__config.__detections.__deathslash = state end,
 })
 ds_mod:change_state(true)
 
 local th_mod = DetTab:create_module({
-    title = "Time Hole",
-    description = "skip parry while active",
-    flag = "THModule",
-    section = "right",
+    title = "Time Hole", description = "skip parry while active",
+    flag = "THModule", section = "right",
     callback = function(state) System.__config.__detections.__timehole = state end,
 })
 th_mod:change_state(true)
 
 local sof_mod = DetTab:create_module({
-    title = "Slashes of Fury",
-    description = "parry loop while active",
-    flag = "SoFModule",
-    section = "right",
+    title = "Slashes of Fury", description = "parry loop while active",
+    flag = "SoFModule", section = "right",
     callback = function(state) System.__config.__detections.__slashesoffury = state end,
 })
 sof_mod:change_state(true)
 
 -- VISUAL
 local nr_mod = VisualTab:create_module({
-    title = "No Render",
-    description = "disable effects completely",
-    flag = "NRModule",
-    section = "left",
+    title = "No Render", description = "disable effects completely",
+    flag = "NRModule", section = "left",
     callback = function(state) System.no_render_set(state) end,
 })
 
 local fps_mod = VisualTab:create_module({
-    title = "FPS Boost",
-    description = "hide shadows & particles + boost",
-    flag = "FPSModule",
-    section = "right",
+    title = "FPS Boost", description = "hide shadows & particles + boost",
+    flag = "FPSModule", section = "right",
     callback = function(state) System.fps_boost_set(state) end,
 })
 
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- 10. AUTO START
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 System.__properties.__autoparry_enabled = true
 System.__properties.__auto_spam_enabled = true
 System.autoparry.start()
