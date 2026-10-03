@@ -199,7 +199,6 @@ local function update_divisor()
         0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
 end
 
--- Humanizer loop
 task.spawn(function()
     while true do
         task.wait(0.1)
@@ -1947,7 +1946,7 @@ local SpamTab   = AzureWindow:create_tab("Spam")
 local DetTab    = AzureWindow:create_tab("Detection")
 local VisualTab = AzureWindow:create_tab("Visual")
 
--- MAIN — Auto Parry + Accuracy
+-- MAIN — Auto Parry + كل العناصر تحته
 local autoparry_module = MainTab:create_module({
     title = "Auto Parry",
     description = "Auto Parry Settings",
@@ -1956,18 +1955,6 @@ local autoparry_module = MainTab:create_module({
     callback = function(state)
         System.__properties.__autoparry_enabled = state
         if state then System.autoparry.start() else System.autoparry.stop() end
-    end,
-})
-
-autoparry_module:create_dropdown({
-    title = "Mode curve",
-    flag = "ModeCurve",
-    options = System.__config.__curve_names,
-    maximum_options = 10,
-    callback = function(value)
-        for i, name in ipairs(System.__config.__curve_names) do
-            if name == value then System.__properties.__curve_mode = i; break end
-        end
     end,
 })
 
@@ -1986,31 +1973,61 @@ autoparry_module:create_slider({
     end,
 })
 
--- MAIN — Humanizer (module منفصل زي الملف الأصلي)
-local humanizer_module = MainTab:create_module({
-    title = "Humanizer",
-    description = "Choose a random parry accuracy range",
-    flag = "HumanizerModule",
-    section = "left",
-    callback = function(state)
-        System.__properties.__humanizer_enabled = state
+autoparry_module:create_checkbox({
+    title = "Randomize Accuracy",
+    flag = "ParryRandomizeAccuracy",
+    callback = function(value)
+        System.__properties.__humanizer_enabled = value
     end,
 })
 
-humanizer_module:create_range_slider({
-    title = "Humanizer Accuracy",
-    flag = "HumanizerAccuracyRange",
-    maximum_value = 50,
-    minimum_value = 1,
-    value = { min = 1, max = 50 },
-    round_number = true,
-    callback = function(min_value, max_value)
-        System.__properties.__humanizer_min_accuracy = min_value
-        System.__properties.__humanizer_max_accuracy = max_value
+autoparry_module:create_dropdown({
+    title = "Parry Mode",
+    flag = "AutoParryMode",
+    options = {"Remote", "Keypress"},
+    maximum_options = 10,
+    callback = function(value)
+        getgenv().AutoParryMode = value
     end,
 })
 
--- SPAM — Auto Spam (Threshold + Distance Multiplier تحت toggle)
+autoparry_module:create_dropdown({
+    title = "Mode curve",
+    flag = "ModeCurve",
+    options = System.__config.__curve_names,
+    maximum_options = 10,
+    callback = function(value)
+        for i, name in ipairs(System.__config.__curve_names) do
+            if name == value then System.__properties.__curve_mode = i; break end
+        end
+    end,
+})
+
+autoparry_module:create_checkbox({
+    title = "Cooldown Protection",
+    flag = "CooldownProtection",
+    callback = function(value)
+        getgenv().CooldownProtection = value
+    end,
+})
+
+autoparry_module:create_checkbox({
+    title = "Auto Ability",
+    flag = "AutoAbility",
+    callback = function(value)
+        getgenv().AutoAbility = value
+    end,
+})
+
+autoparry_module:create_checkbox({
+    title = "Notify",
+    flag = "AutoParryNotify",
+    callback = function(value)
+        getgenv().AutoParryNotify = value
+    end,
+})
+
+-- SPAM — Auto Spam
 local auto_spam_module = SpamTab:create_module({
     title = "Auto Spam",
     description = "Automatically spam parries ball",
@@ -2152,7 +2169,6 @@ System.auto_spam.start()
 System.manual_spam.stop()
 update_divisor()
 
--- ★ افتح Auto Parry + Auto Spam modules بعد ما كل العناصر تنضاف
 task.defer(function()
     task.wait(0.3)
     pcall(function() autoparry_module:change_state(true) end)
