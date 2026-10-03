@@ -1177,7 +1177,7 @@ function Azure.new()
     TabsFrame.Active = true
     TabsFrame.ZIndex = 10
     TabsFrame.AutomaticCanvasSize = Enum.AutomaticSize.XY
-    TabsFrame.CanvasSize = UDim2.new(0, 0, 0.5, 0)
+    TabsFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     local tabsLayout = Instance.new("UIListLayout", TabsFrame)
     tabsLayout.Padding = UDim.new(0, 4)
     tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -1265,7 +1265,7 @@ function Azure:create_tab(title)
     LeftSection.BorderSizePixel = 0
     LeftSection.ScrollBarThickness = 0
     LeftSection.AutomaticCanvasSize = Enum.AutomaticSize.XY
-    LeftSection.CanvasSize = UDim2.new(0, 0, 0.5, 0)
+    LeftSection.CanvasSize = UDim2.new(0, 0, 0, 0)
     LeftSection.Visible = false
     LeftSection.ZIndex = 6
     LeftSection.Parent = self._sections
@@ -1283,7 +1283,7 @@ function Azure:create_tab(title)
     RightSection.BorderSizePixel = 0
     RightSection.ScrollBarThickness = 0
     RightSection.AutomaticCanvasSize = Enum.AutomaticSize.XY
-    RightSection.CanvasSize = UDim2.new(0, 0, 0.5, 0)
+    RightSection.CanvasSize = UDim2.new(0, 0, 0, 0)
     RightSection.Visible = false
     RightSection.ZIndex = 6
     RightSection.Parent = self._sections
@@ -1345,7 +1345,8 @@ function Azure:create_tab(title)
         Module.BackgroundColor3 = Color3.fromRGB(24, 18, 42)
         Module.BackgroundTransparency = 0.05
         Module.BorderSizePixel = 0
-        Module.ClipsDescendants = true
+        Module.ClipsDescendants = false  -- ★ لا تقص المحتوى
+        Module.AutomaticSize = Enum.AutomaticSize.Y  -- ★ ينمو مع المحتوى
         Module.ZIndex = 7
         Instance.new("UICorner", Module).CornerRadius = UDim.new(0, 8)
         local ms = Instance.new("UIStroke", Module)
@@ -1423,9 +1424,10 @@ function Azure:create_tab(title)
         local Options = Instance.new("Frame", Module)
         Options.Name = "Options"
         Options.BackgroundTransparency = 1
-        Options.Position = UDim2.new(0, 0, 1, 0)
+        Options.Position = UDim2.new(0, 0, 0, 93)  -- ★ ثابت تحت الـ header
         Options.Size = UDim2.new(0, 241, 0, 8)
         Options.ZIndex = 8
+        Options.ClipsDescendants = false
         local opPad = Instance.new("UIPadding", Options)
         opPad.PaddingTop = UDim.new(0, 8)
         local opList = Instance.new("UIListLayout", Options)
@@ -1435,11 +1437,12 @@ function Azure:create_tab(title)
 
         local ModuleManager = { _state = false, _size = 0, _multiplier = 0 }
 
-        -- ★ دالة تحديث الحجم — تُنادى بعد كل عنصر جديد
+        -- ★ الدالة المصححة
         local function refresh_size()
-            local total = 93 + (ModuleManager._size or 0) + (ModuleManager._multiplier or 0)
+            local contentHeight = (ModuleManager._size or 0) + (ModuleManager._multiplier or 0)
+            local total = 93 + contentHeight
             Module.Size = UDim2.fromOffset(241, total)
-            Options.Size = UDim2.fromOffset(241, (ModuleManager._size or 0) + (ModuleManager._multiplier or 0))
+            Options.Size = UDim2.fromOffset(241, contentHeight)
         end
 
         function ModuleManager:change_state(state)
@@ -1461,7 +1464,7 @@ function Azure:create_tab(title)
                     Position = UDim2.fromScale(0, 0.5)
                 }):Play()
             end
-            refresh_size() -- ★
+            refresh_size()
             Azure._config._flags[settings.flag] = self._state
             Config:save(game.GameId, Azure._config)
             if settings.callback then pcall(settings.callback, self._state) end
@@ -1485,7 +1488,7 @@ function Azure:create_tab(title)
         function ModuleManager:create_checkbox(s)
             if self._size == 0 then self._size = 11 end
             self._size += 20
-            refresh_size() -- ★
+            refresh_size()
 
             local CM = { _state = false }
             local Checkbox = Instance.new("TextButton", Options)
@@ -1554,6 +1557,7 @@ function Azure:create_tab(title)
                 CM:change_state(not CM._state)
             end)
 
+            refresh_size()
             return CM
         end
 
@@ -1561,7 +1565,7 @@ function Azure:create_tab(title)
         function ModuleManager:create_slider(s)
             if self._size == 0 then self._size = 11 end
             self._size += 27
-            refresh_size() -- ★
+            refresh_size()
 
             local Slider = Instance.new("TextButton", Options)
             Slider.Name = "Slider"
@@ -1679,6 +1683,7 @@ function Azure:create_tab(title)
                 end
             end)
 
+            refresh_size()
             return SM
         end
 
@@ -1686,7 +1691,7 @@ function Azure:create_tab(title)
         function ModuleManager:create_range_slider(s)
             if self._size == 0 then self._size = 11 end
             self._size += 27
-            refresh_size() -- ★
+            refresh_size()
 
             local Slider = Instance.new("TextButton", Options)
             Slider.Name = "RangeSlider"
@@ -1830,6 +1835,7 @@ function Azure:create_tab(title)
                 end
             end)
 
+            refresh_size()
             return SM
         end
 
@@ -1837,7 +1843,7 @@ function Azure:create_tab(title)
         function ModuleManager:create_dropdown(s)
             if self._size == 0 then self._size = 11 end
             self._size += 44
-            refresh_size() -- ★
+            refresh_size()
 
             local DM = { _state = false, _size = 0 }
             local Dropdown = Instance.new("TextButton", Options)
@@ -1954,12 +1960,14 @@ function Azure:create_tab(title)
                         Size = UDim2.fromOffset(207, 22)
                     }):Play()
                 end
-                refresh_size() -- ★
+                refresh_size()
             end)
 
+            refresh_size()
             return DM
         end
 
+        refresh_size()
         return ModuleManager
     end
 
@@ -2224,7 +2232,7 @@ update_divisor()
 
 -- ★ يفتح الموديولات بعد ما تنضاف كل العناصر
 task.defer(function()
-    task.wait(0.1)
+    task.wait(0.2)
     autoparry_module:change_state(true)
     auto_spam_module:change_state(true)
 end)
