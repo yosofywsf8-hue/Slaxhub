@@ -199,39 +199,43 @@ local function update_divisor()
         0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
 end
 
+local function update_randomized_accuracy()
+    if not System.__properties.__humanizer_enabled then return end
+    local props = System.__properties
+    local now = os.clock()
+    if now < props.__humanizer_last_update + props.__humanizer_next_change then return end
+    props.__humanizer_last_update = now
+    local ping_str = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
+    local ping = tonumber(ping_str:match("%d+")) or 0
+    local min_h = math.clamp(props.__humanizer_min_accuracy, 1, 50)
+    local max_h = math.clamp(props.__humanizer_max_accuracy, 1, 50)
+    if min_h > max_h then min_h, max_h = max_h, min_h end
+    local current = math.clamp(props.__accuracy, min_h, max_h)
+    local span = math.max(1, max_h - min_h)
+    local ping_factor = ping >= 90 and 0.75 or (ping <= 50 and 1.25 or 1)
+    local roll = math.random(1, 100)
+    local new_acc
+    if ping >= 90 then
+        new_acc = math.clamp(current + math.random(-1, 1), min_h, max_h)
+    elseif roll <= 45 then
+        new_acc = math.clamp(current + math.random(-2, 2), min_h, max_h)
+    elseif roll <= 80 then
+        local drift = math.random(2, math.max(3, math.floor(span * 0.2)))
+        local dir = math.random() < 0.5 and -drift or drift
+        new_acc = math.clamp(current + dir, min_h, max_h)
+    else
+        new_acc = math.random(min_h, max_h)
+    end
+    props.__accuracy = new_acc
+    props.__humanizer_next_change = math.random(0.7, 1.4) / ping_factor
+    update_divisor()
+end
+
 task.spawn(function()
     while true do
         task.wait(0.1)
         if System.__properties.__humanizer_enabled then
-            local props = System.__properties
-            local now = os.clock()
-            if now >= props.__humanizer_last_update + props.__humanizer_next_change then
-                props.__humanizer_last_update = now
-                local ping_str = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
-                local ping = tonumber(ping_str:match("%d+")) or 0
-                local min_h = math.clamp(props.__humanizer_min_accuracy, 1, 50)
-                local max_h = math.clamp(props.__humanizer_max_accuracy, 1, 50)
-                if min_h > max_h then min_h, max_h = max_h, min_h end
-                local current = math.clamp(props.__accuracy, min_h, max_h)
-                local span = math.max(1, max_h - min_h)
-                local ping_factor = ping >= 90 and 0.75 or (ping <= 50 and 1.25 or 1)
-                local roll = math.random(1, 100)
-                local new_acc
-                if ping >= 90 then
-                    new_acc = math.clamp(current + math.random(-1, 1), min_h, max_h)
-                elseif roll <= 45 then
-                    new_acc = math.clamp(current + math.random(-2, 2), min_h, max_h)
-                elseif roll <= 80 then
-                    local drift = math.random(2, math.max(3, math.floor(span * 0.2)))
-                    local dir = math.random() < 0.5 and -drift or drift
-                    new_acc = math.clamp(current + dir, min_h, max_h)
-                else
-                    new_acc = math.random(min_h, max_h)
-                end
-                props.__accuracy = new_acc
-                props.__humanizer_next_change = math.random(0.7, 1.4) / ping_factor
-                update_divisor()
-            end
+            pcall(update_randomized_accuracy)
         end
     end
 end)
@@ -1440,11 +1444,17 @@ function Azure:create_tab(title)
             ModuleManager:change_state(not ModuleManager._state)
         end)
 
+        -- ★ يحدّث الحجم مباشرة بدون شرط
+        local function refresh_size()
+            local new_size = 93 + ModuleManager._size + (ModuleManager._multiplier or 0)
+            Module.Size = UDim2.fromOffset(241, new_size)
+            Options.Size = UDim2.fromOffset(241, ModuleManager._size + (ModuleManager._multiplier or 0))
+        end
+
         function ModuleManager:create_checkbox(s)
             if self._size == 0 then self._size = 11 end
             self._size += 20
-            if ModuleManager._state then Module.Size = UDim2.fromOffset(241, 93 + self._size) end
-            Options.Size = UDim2.fromOffset(241, self._size)
+            refresh_size()
 
             local CM = { _state = false }
             local Checkbox = Instance.new("TextButton", Options)
@@ -1519,8 +1529,7 @@ function Azure:create_tab(title)
         function ModuleManager:create_slider(s)
             if self._size == 0 then self._size = 11 end
             self._size += 27
-            if ModuleManager._state then Module.Size = UDim2.fromOffset(241, 93 + self._size) end
-            Options.Size = UDim2.fromOffset(241, self._size)
+            refresh_size()
 
             local Slider = Instance.new("TextButton", Options)
             Slider.Name = "Slider"
@@ -1644,8 +1653,7 @@ function Azure:create_tab(title)
         function ModuleManager:create_range_slider(s)
             if self._size == 0 then self._size = 11 end
             self._size += 27
-            if ModuleManager._state then Module.Size = UDim2.fromOffset(241, 93 + self._size) end
-            Options.Size = UDim2.fromOffset(241, self._size)
+            refresh_size()
 
             local Slider = Instance.new("TextButton", Options)
             Slider.Name = "RangeSlider"
@@ -1795,8 +1803,7 @@ function Azure:create_tab(title)
         function ModuleManager:create_dropdown(s)
             if self._size == 0 then self._size = 11 end
             self._size += 44
-            if ModuleManager._state then Module.Size = UDim2.fromOffset(241, 93 + self._size) end
-            Options.Size = UDim2.fromOffset(241, self._size)
+            refresh_size()
 
             local DM = { _state = false, _size = 0 }
             local Dropdown = Instance.new("TextButton", Options)
@@ -2169,8 +2176,9 @@ System.auto_spam.start()
 System.manual_spam.stop()
 update_divisor()
 
+-- ★ يفتح الـ module بعد ما تنضاف كل العناصر
 task.defer(function()
-    task.wait(0.3)
-    pcall(function() autoparry_module:change_state(true) end)
-    pcall(function() auto_spam_module:change_state(true) end)
+    task.wait(0.1)
+    autoparry_module:change_state(true)
+    auto_spam_module:change_state(true)
 end)
