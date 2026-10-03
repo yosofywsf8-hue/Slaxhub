@@ -1,4 +1,4 @@
--- BLABLA Hub — Blade Ball Script
+-- BLABLA Hub v2 — Blade Ball Script
 -- Runtime: Roblox mobile / PC
 -- Executor: cloneref, getupvalues, getrawmetatable, setreadonly
 
@@ -15,6 +15,181 @@ local FONT = {
     bold  = Font.new(FONT_FAMILY, Enum.FontWeight.Bold,     Enum.FontStyle.Normal),
     black = Font.new(FONT_FAMILY, Enum.FontWeight.Heavy,    Enum.FontStyle.Normal),
 }
+
+-- ============================================================
+-- 0. ANIMATION HELPERS (Spring · Ease · Stagger · Parallax)
+-- ============================================================
+local Animation = {}
+
+-- ★ ثوابت الحركة
+Animation.Ease = {
+    Out    = Enum.EasingStyle.Quint,
+    In     = Enum.EasingStyle.Quint,
+    InOut  = Enum.EasingStyle.Quad,
+    Bounce = Enum.EasingStyle.Back,
+    Smooth = Enum.EasingStyle.Sine,
+}
+
+-- ★ Spring tween — اختياري (انتعاش مريح)
+function Animation.spring(obj, duration, props, style, dir)
+    local tween = TweenService:Create(
+        obj,
+        TweenInfo.new(duration or 0.4, style or Animation.Ease.Out, dir or Enum.EasingDirection.Out),
+        props
+    )
+    tween:Play()
+    return tween
+end
+
+-- ★ Stagger — يوزع تأخير بين العناصر
+function Animation.stagger(items, baseDelay, perIndex, fn)
+    for i, item in ipairs(items) do
+        task.delay((baseDelay or 0) + (perIndex or 0.025) * i, function()
+            pcall(fn, item, i)
+        end)
+    end
+end
+
+-- ★ Parallax tilt — لما الماوس يتحرك، العنصر يميل
+function Animation.parallax(obj, maxAngle)
+    maxAngle = maxAngle or 6
+    local conn = UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement
+        and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        if not obj.Parent then return end
+        local pos = UserInputService:GetMouseLocation()
+        local vp  = workspace.CurrentCamera.ViewportSize
+        local nx = (pos.X / vp.X) * 2 - 1
+        local ny = (pos.Y / vp.Y) * 2 - 1
+        local rx = math.clamp(-ny * maxAngle, -maxAngle, maxAngle)
+        local ry = math.clamp( nx * maxAngle, -maxAngle, maxAngle)
+        obj.Rotation = rx * 0.4 + ry * 0.4
+    end)
+    return conn
+end
+
+-- ★ Glow pulse — نبض مستمر للتوهج
+function Animation.glowPulse(stroke, base, peak, speed)
+    task.spawn(function()
+        local up = true
+        while stroke.Parent do
+            local target = up and peak or base
+            TweenService:Create(stroke, TweenInfo.new(speed or 1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                Transparency = target
+            }):Play()
+            up = not up
+            task.wait(speed or 1.2)
+        end
+    end)
+end
+
+-- ★ Hover scale — كبّر عند المرور
+function Animation.hoverScale(obj, normalScale, hoverScale, duration)
+    normalScale = normalScale or 1
+    hoverScale  = hoverScale or 1.03
+    duration    = duration or 0.25
+    local uiScale = obj:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", obj)
+    uiScale.Scale = normalScale
+
+    obj.MouseEnter:Connect(function()
+        TweenService:Create(uiScale, TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            Scale = hoverScale
+        }):Play()
+    end)
+    obj.MouseLeave:Connect(function()
+        TweenService:Create(uiScale, TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            Scale = normalScale
+        }):Play()
+    end)
+end
+
+-- ★ Ripple effect — دوائر تنتشر عند الضغط
+function Animation.ripple(button, color, duration)
+    color = color or Color3.fromRGB(255, 255, 255)
+    duration = duration or 0.6
+    button.MouseButton1Down:Connect(function(x, y)
+        local relX = (x - button.AbsolutePosition.X) / button.AbsoluteSize.X
+        local relY = (y - button.AbsolutePosition.Y) / button.AbsoluteSize.Y
+
+        local ripple = Instance.new("Frame")
+        ripple.AnchorPoint = Vector2.new(0.5, 0.5)
+        ripple.Position = UDim2.new(relX, 0, relY, 0)
+        ripple.Size = UDim2.fromOffset(0, 0)
+        ripple.BackgroundColor3 = color
+        ripple.BackgroundTransparency = 0.4
+        ripple.BorderSizePixel = 0
+        ripple.ZIndex = button.ZIndex + 1
+        ripple.Parent = button
+        Instance.new("UICorner", ripple).CornerRadius = UDim.new(1, 0)
+
+        local maxSize = math.max(button.AbsoluteSize.X, button.AbsoluteSize.Y) * 2.2
+        TweenService:Create(ripple, TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            Size = UDim2.fromOffset(maxSize, maxSize),
+            BackgroundTransparency = 1
+        }):Play()
+        task.delay(duration + 0.05, function()
+            if ripple and ripple.Parent then ripple:Destroy() end
+        end)
+    end)
+end
+
+-- ★ Slide in — دخول من الأسفل
+function Animation.slideIn(obj, offset, duration, delay)
+    offset = offset or 20
+    duration = duration or 0.45
+    delay = delay or 0
+    local startPos = UDim2.new(obj.Position.X.Scale, obj.Position.X.Offset, obj.Position.Y.Scale, obj.Position.Y.Offset + offset)
+    obj.Position = startPos
+    local targetPos = UDim2.new(obj.Position.X.Scale, obj.Position.X.Offset, obj.Position.Y.Scale, obj.Position.Y.Offset - offset)
+    obj.BackgroundTransparency = 1
+    task.delay(delay, function()
+        TweenService:Create(obj, TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            Position = targetPos,
+            BackgroundTransparency = 0.05,
+        }):Play()
+    end)
+end
+
+-- ★ Bounce — نطة سريعة
+function Animation.bounce(obj, duration)
+    duration = duration or 0.35
+    local oldSize = obj.Size
+    local uiScale = obj:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", obj)
+    uiScale.Scale = 1
+    TweenService:Create(uiScale, TweenInfo.new(duration * 0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Scale = 1.12
+    }):Play()
+    task.delay(duration * 0.4, function()
+        TweenService:Create(uiScale, TweenInfo.new(duration * 0.6, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            Scale = 1
+        }):Play()
+    end)
+end
+
+-- ★ Shimmer sweep — لمعان يعبر
+function Animation.shimmer(gradient, duration, waitBetween)
+    duration = duration or 1.4
+    waitBetween = waitBetween or 2.2
+    task.spawn(function()
+        while gradient.Parent do
+            gradient.Offset = Vector2.new(-1, 0)
+            task.wait(waitBetween)
+            TweenService:Create(gradient, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+                Offset = Vector2.new(1, 0)
+            }):Play()
+            task.wait(duration + 0.2)
+        end
+    end)
+end
+
+-- ★ Nav pill — شريط يتحرك بين التابات
+function Animation.navPill(pill, tab, duration)
+    duration = duration or 0.4
+    TweenService:Create(pill, TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0, tab.AbsolutePosition.X - pill.Parent.AbsolutePosition.X, 0, tab.AbsolutePosition.Y - pill.Parent.AbsolutePosition.Y),
+        Size = UDim2.new(0, tab.AbsoluteSize.X, 0, tab.AbsoluteSize.Y),
+    }):Play()
+end
 
 -- ============================================================
 -- 1. PARRY PATCH
@@ -508,7 +683,6 @@ function System.autoparry.start()
             if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then continue end
             if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
 
-                -- ★ Cooldown Protection
                 if getgenv().CooldownProtection then
                     local hotbar = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
                     local block  = hotbar and hotbar:FindFirstChild("Block")
@@ -519,7 +693,6 @@ function System.autoparry.start()
                     end
                 end
 
-                -- ★ Auto Ability
                 if getgenv().AutoAbility then
                     local hotbar  = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
                     local ability = hotbar and hotbar:FindFirstChild("Ability")
@@ -986,7 +1159,7 @@ function System.fps_boost_set(state)
 end
 
 -- ============================================================
--- 7.8 HOTKEYS
+-- 7.8 HOTKEYS (Combat + Curve)
 -- ============================================================
 System.hotkeys = { __enabled = true, __conn = nil }
 
@@ -1016,8 +1189,179 @@ function System.hotkeys.start()
 end
 System.hotkeys.start()
 
+-- ★ Curve hotkeys (1-9)
+local CURVE_HOTKEY_MAP = {
+    [Enum.KeyCode.One]   = 1,
+    [Enum.KeyCode.Two]   = 2,
+    [Enum.KeyCode.Three] = 3,
+    [Enum.KeyCode.Four]  = 4,
+    [Enum.KeyCode.Five]  = 5,
+    [Enum.KeyCode.Six]   = 6,
+    [Enum.KeyCode.Seven] = 7,
+    [Enum.KeyCode.Eight] = 8,
+    [Enum.KeyCode.Nine]  = 9,
+}
+
+getgenv().CurveHotkeysEnabled = true
+
+System.curve_hotkeys = {}
+function System.curve_hotkeys.start()
+    if System.curve_hotkeys.__conn then
+        System.curve_hotkeys.__conn:Disconnect()
+        System.curve_hotkeys.__conn = nil
+    end
+    System.curve_hotkeys.__conn = UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if not getgenv().CurveHotkeysEnabled then return end
+        local idx = CURVE_HOTKEY_MAP[input.KeyCode]
+        if not idx then return end
+        if idx > #System.__config.__curve_names then return end
+        System.__properties.__curve_mode = idx
+        local name = System.__config.__curve_names[idx]
+        if getgenv().__modeCurveDropdown and getgenv().__modeCurveDropdown.update then
+            pcall(function() getgenv().__modeCurveDropdown:update(name) end)
+        end
+        if System.curve_indicator and System.curve_indicator.set then
+            System.curve_indicator.set(name, idx)
+        end
+    end)
+end
+System.curve_hotkeys.start()
+
 -- ============================================================
--- 8. AZURE UI (BLABLA HUB)
+-- 7.9 CURVE MODE INDICATOR (animated)
+-- ============================================================
+System.curve_indicator = {}
+function System.curve_indicator.create()
+    if System.curve_indicator.gui then return end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "BlablaCurveIndicator"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.DisplayOrder = 999
+    gui.Parent = CoreGui
+
+    local frame = Instance.new("Frame")
+    frame.Name = "Indicator"
+    frame.Size = UDim2.fromOffset(170, 38)
+    frame.Position = UDim2.new(0, 20, 0.5, -100)
+    frame.BackgroundColor3 = Color3.fromRGB(24, 18, 42)
+    frame.BackgroundTransparency = 0.05
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Parent = gui
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+
+    local grad = Instance.new("UIGradient", frame)
+    grad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(42, 25, 82)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(75, 45, 150)),
+    }
+    grad.Rotation = 90
+
+    local stroke = Instance.new("UIStroke", frame)
+    stroke.Color = Color3.fromRGB(180, 130, 255)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.4
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    Animation.glowPulse(stroke, 0.4, 0.1, 1.5)
+
+    local dot = Instance.new("Frame")
+    dot.Name = "Dot"
+    dot.Size = UDim2.fromOffset(6, 6)
+    dot.Position = UDim2.new(0, 10, 0, 6)
+    dot.BackgroundColor3 = Color3.fromRGB(180, 140, 255)
+    dot.BorderSizePixel = 0
+    dot.Parent = frame
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+    local title = Instance.new("TextLabel")
+    title.FontFace = FONT.semi
+    title.Text = "CURVE MODE"
+    title.TextColor3 = Color3.fromRGB(200, 180, 255)
+    title.BackgroundTransparency = 1
+    title.Size = UDim2.new(1, -20, 0, 11)
+    title.Position = UDim2.new(0, 22, 0, 5)
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.TextSize = 8
+    title.Parent = frame
+
+    local value = Instance.new("TextLabel")
+    value.Name = "Value"
+    value.FontFace = FONT.bold
+    value.Text = System.__config.__curve_names[System.__properties.__curve_mode] or "Camera"
+    value.TextColor3 = Color3.fromRGB(255, 255, 255)
+    value.BackgroundTransparency = 1
+    value.Size = UDim2.new(1, -20, 0, 16)
+    value.Position = UDim2.new(0, 22, 0, 16)
+    value.TextXAlignment = Enum.TextXAlignment.Left
+    value.TextSize = 13
+    value.Parent = frame
+
+    -- Draggable
+    local dragging, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            local d = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + d.X,
+                startPos.Y.Scale, startPos.Y.Offset + d.Y
+            )
+        end
+    end)
+
+    System.curve_indicator.gui = gui
+    System.curve_indicator.frame = frame
+    System.curve_indicator.valueLabel = value
+    System.curve_indicator.dot = dot
+end
+
+function System.curve_indicator.set(name, idx)
+    if not System.curve_indicator.valueLabel then return end
+    local lbl = System.curve_indicator.valueLabel
+    lbl.Text = name or "Camera"
+    -- Flash color
+    lbl.TextColor3 = Color3.fromRGB(180, 140, 255)
+    TweenService:Create(lbl, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+        TextColor3 = Color3.fromRGB(255, 255, 255)
+    }):Play()
+    -- Bounce the dot
+    if System.curve_indicator.dot then
+        local d = System.curve_indicator.dot
+        local s = Instance.new("UIScale", d)
+        s.Scale = 1
+        TweenService:Create(s, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.6 }):Play()
+        task.delay(0.15, function()
+            TweenService:Create(s, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+        end)
+    end
+end
+
+function System.curve_indicator.toggle(state)
+    if not System.curve_indicator.gui then return end
+    System.curve_indicator.gui.Enabled = state
+end
+
+System.curve_indicator.create()
+System.curve_indicator.gui.Enabled = false
+
+-- ============================================================
+-- 8. AZURE UI v2 (ANIMATED)
 -- ============================================================
 local Config = setmetatable({
     save = function(self, file_name, config)
@@ -1115,18 +1459,7 @@ function Azure.new()
     shimmerGradient.Offset = Vector2.new(-1, 0)
     shimmerGradient.Parent = Shimmer
 
-    task.spawn(function()
-        while Shimmer.Parent do
-            shimmerGradient.Offset = Vector2.new(-1, 0)
-            task.wait(2.2)
-            TweenService:Create(
-                shimmerGradient,
-                TweenInfo.new(1.4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-                { Offset = Vector2.new(1, 0) }
-            ):Play()
-            task.wait(1.4)
-        end
-    end)
+    Animation.shimmer(shimmerGradient, 1.4, 2.2)
 
     local Handler = Instance.new("Frame", Container)
     Handler.Name = "Handler"
@@ -1145,6 +1478,14 @@ function Azure.new()
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.TextSize = 20
     Title.ZIndex = 4
+
+    -- ★ Title glow pulse
+    local titleStroke = Instance.new("UIStroke", Title)
+    titleStroke.Color = Color3.fromRGB(180, 130, 255)
+    titleStroke.Thickness = 1.2
+    titleStroke.Transparency = 0.5
+    titleStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+    Animation.glowPulse(titleStroke, 0.5, 0.15, 1.8)
 
     local SubTitle = Instance.new("TextLabel", Handler)
     SubTitle.FontFace = FONT.reg
@@ -1224,9 +1565,18 @@ function Azure.new()
 
     local vp_x = workspace.CurrentCamera.ViewportSize.X
     if UserInputService.TouchEnabled then UIScale.Scale = vp_x / 1400 end
-    TweenService:Create(Container, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {
-        Size = UDim2.fromOffset(750, 530)
-    }):Play()
+
+    -- ★ Open animation: scale from 0.7 + fade in
+    UIScale.Scale = (UserInputService.TouchEnabled and (vp_x / 1400) or 1) * 0.7
+    task.spawn(function()
+        task.wait(0.02)
+        TweenService:Create(Container, TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = UDim2.fromOffset(750, 530)
+        }):Play()
+        TweenService:Create(UIScale, TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Scale = (UserInputService.TouchEnabled and (vp_x / 1400) or 1)
+        }):Play()
+    end)
 
     return self
 end
@@ -1255,6 +1605,32 @@ function Azure:create_tab(title)
     Instance.new("UICorner", Tab).CornerRadius = UDim.new(0, 8)
     local tabPad = Instance.new("UIPadding", Tab)
     tabPad.PaddingLeft = UDim.new(0, 32)
+
+    -- ★ Tab hover scale + active indicator bar
+    local tabScale = Instance.new("UIScale", Tab)
+    tabScale.Scale = 1
+
+    local activeBar = Instance.new("Frame", Tab)
+    activeBar.Name = "ActiveBar"
+    activeBar.AnchorPoint = Vector2.new(0, 0.5)
+    activeBar.Position = UDim2.new(0, 0, 0.5, 0)
+    activeBar.Size = UDim2.new(0, 3, 0.6, 0)
+    activeBar.BackgroundColor3 = Color3.fromRGB(200, 160, 255)
+    activeBar.BorderSizePixel = 0
+    activeBar.ZIndex = 12
+    activeBar.BackgroundTransparency = 1
+    Instance.new("UICorner", activeBar).CornerRadius = UDim.new(1, 0)
+
+    Tab.MouseEnter:Connect(function()
+        TweenService:Create(tabScale, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            Scale = 1.04
+        }):Play()
+    end)
+    Tab.MouseLeave:Connect(function()
+        TweenService:Create(tabScale, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            Scale = 1
+        }):Play()
+    end)
 
     local LeftSection = Instance.new("ScrollingFrame")
     LeftSection.Name = "LeftSection"
@@ -1292,7 +1668,7 @@ function Azure:create_tab(title)
     rightList.HorizontalAlignment = Enum.HorizontalAlignment.Center
     rightList.SortOrder = Enum.SortOrder.LayoutOrder
 
-    local record = { Tab = Tab, Left = LeftSection, Right = RightSection }
+    local record = { Tab = Tab, Left = LeftSection, Right = RightSection, ActiveBar = activeBar }
     table.insert(self._tabs, record)
 
     local function activate()
@@ -1303,24 +1679,48 @@ function Azure:create_tab(title)
         LeftSection.Visible = true
         RightSection.Visible = true
 
+        -- ★ Stagger fade-in modules
+        local function staggerIn(container)
+            local children = {}
+            for _, c in ipairs(container:GetChildren()) do
+                if c:IsA("Frame") and c.Name == "Module" then
+                    table.insert(children, c)
+                end
+            end
+            Animation.stagger(children, 0, 0.04, function(mod)
+                local startPos = UDim2.new(mod.Position.X.Scale, mod.Position.X.Offset, mod.Position.Y.Scale, mod.Position.Y.Offset - 12)
+                mod.Position = startPos
+                mod.BackgroundTransparency = 1
+                TweenService:Create(mod, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                    Position = UDim2.new(mod.Position.X.Scale, mod.Position.X.Offset, mod.Position.Y.Scale, mod.Position.Y.Offset + 12),
+                    BackgroundTransparency = 0.05
+                }):Play()
+            end)
+        end
+
         for _, rec in pairs(self._tabs) do
-            if rec.Tab == Tab then
-                TweenService:Create(rec.Tab, TweenInfo.new(0.25), {
-                    BackgroundTransparency = 0.7,
-                    BackgroundColor3 = Color3.fromRGB(140, 90, 220)
-                }):Play()
-                TweenService:Create(rec.Tab, TweenInfo.new(0.25), {
-                    TextTransparency = 0.1
-                }):Play()
-            else
-                TweenService:Create(rec.Tab, TweenInfo.new(0.25), {
-                    BackgroundTransparency = 1
-                }):Play()
-                TweenService:Create(rec.Tab, TweenInfo.new(0.25), {
-                    TextTransparency = 0.6
+            local isActive = (rec.Tab == Tab)
+            local targetBg = isActive and Color3.fromRGB(140, 90, 220) or Color3.fromRGB(60, 40, 120)
+            local targetTransparency = isActive and 0.7 or 1
+            local targetText = isActive and 0.1 or 0.6
+            local targetBar = isActive and 0 or 1
+
+            TweenService:Create(rec.Tab, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                BackgroundTransparency = targetTransparency,
+                BackgroundColor3 = targetBg,
+            }):Play()
+            TweenService:Create(rec.Tab, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                TextTransparency = targetText,
+            }):Play()
+            if rec.ActiveBar then
+                TweenService:Create(rec.ActiveBar, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                    BackgroundTransparency = targetBar,
                 }):Play()
             end
         end
+
+        if LeftSection.Visible then staggerIn(LeftSection) end
+        if RightSection.Visible then staggerIn(RightSection) end
     end
 
     if tabIndex == 0 then activate() end
@@ -1345,8 +1745,8 @@ function Azure:create_tab(title)
         Module.BackgroundColor3 = Color3.fromRGB(24, 18, 42)
         Module.BackgroundTransparency = 0.05
         Module.BorderSizePixel = 0
-        Module.ClipsDescendants = false  -- ★ لا تقص المحتوى
-        Module.AutomaticSize = Enum.AutomaticSize.Y  -- ★ ينمو مع المحتوى
+        Module.ClipsDescendants = false
+        Module.AutomaticSize = Enum.AutomaticSize.Y
         Module.ZIndex = 7
         Instance.new("UICorner", Module).CornerRadius = UDim.new(0, 8)
         local ms = Instance.new("UIStroke", Module)
@@ -1354,6 +1754,20 @@ function Azure:create_tab(title)
         ms.Transparency = 0.55
         ms.Thickness = 1
         ms.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+        -- ★ Module hover glow
+        Module.MouseEnter:Connect(function()
+            TweenService:Create(ms, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                Transparency = 0.15,
+                Thickness = 1.3,
+            }):Play()
+        end)
+        Module.MouseLeave:Connect(function()
+            TweenService:Create(ms, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                Transparency = 0.55,
+                Thickness = 1,
+            }):Play()
+        end)
 
         local Header = Instance.new("TextButton", Module)
         Header.Name = "Header"
@@ -1424,7 +1838,7 @@ function Azure:create_tab(title)
         local Options = Instance.new("Frame", Module)
         Options.Name = "Options"
         Options.BackgroundTransparency = 1
-        Options.Position = UDim2.new(0, 0, 0, 93)  -- ★ ثابت تحت الـ header
+        Options.Position = UDim2.new(0, 0, 0, 93)
         Options.Size = UDim2.new(0, 241, 0, 8)
         Options.ZIndex = 8
         Options.ClipsDescendants = false
@@ -1437,7 +1851,6 @@ function Azure:create_tab(title)
 
         local ModuleManager = { _state = false, _size = 0, _multiplier = 0 }
 
-        -- ★ الدالة المصححة
         local function refresh_size()
             local contentHeight = (ModuleManager._size or 0) + (ModuleManager._multiplier or 0)
             local total = 93 + contentHeight
@@ -1448,18 +1861,30 @@ function Azure:create_tab(title)
         function ModuleManager:change_state(state)
             self._state = state
             if self._state then
-                TweenService:Create(Toggle, TweenInfo.new(0.35), {
+                -- ★ Toggle bounce animation
+                TweenService:Create(Toggle, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
                     BackgroundColor3 = Color3.fromRGB(180, 140, 255)
                 }):Play()
-                TweenService:Create(Circle, TweenInfo.new(0.35), {
+                TweenService:Create(Circle, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
                     BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                     Position = UDim2.fromScale(0.53, 0.5)
                 }):Play()
+                -- ★ Module glow boost
+                TweenService:Create(ms, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                    Color = Color3.fromRGB(200, 160, 255),
+                    Transparency = 0.3,
+                }):Play()
+                task.delay(0.5, function()
+                    TweenService:Create(ms, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                        Color = Color3.fromRGB(180, 130, 255),
+                        Transparency = 0.55,
+                    }):Play()
+                end)
             else
-                TweenService:Create(Toggle, TweenInfo.new(0.35), {
+                TweenService:Create(Toggle, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
                     BackgroundColor3 = Color3.fromRGB(60, 45, 90)
                 }):Play()
-                TweenService:Create(Circle, TweenInfo.new(0.35), {
+                TweenService:Create(Circle, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
                     BackgroundColor3 = Color3.fromRGB(140, 120, 180),
                     Position = UDim2.fromScale(0, 0.5)
                 }):Play()
@@ -1535,11 +1960,19 @@ function Azure:create_tab(title)
             Fill.ZIndex = 11
             Instance.new("UICorner", Fill).CornerRadius = UDim.new(0, 6)
 
+            -- ★ Hover glow for checkbox
+            Checkbox.MouseEnter:Connect(function()
+                TweenService:Create(TitleLabel, TweenInfo.new(0.2), { TextTransparency = 0 }):Play()
+            end)
+            Checkbox.MouseLeave:Connect(function()
+                TweenService:Create(TitleLabel, TweenInfo.new(0.2), { TextTransparency = 0.2 }):Play()
+            end)
+
             function CM:change_state(state)
                 self._state = state
                 if state then
-                    TweenService:Create(Box, TweenInfo.new(0.25), { BackgroundTransparency = 0.7 }):Play()
-                    TweenService:Create(Fill, TweenInfo.new(0.25), { Size = UDim2.fromOffset(9, 9) }):Play()
+                    TweenService:Create(Box, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { BackgroundTransparency = 0.7 }):Play()
+                    TweenService:Create(Fill, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(9, 9) }):Play()
                 else
                     TweenService:Create(Box, TweenInfo.new(0.25), { BackgroundTransparency = 0.9 }):Play()
                     TweenService:Create(Fill, TweenInfo.new(0.25), { Size = UDim2.fromOffset(0, 0) }):Play()
@@ -1646,6 +2079,12 @@ function Azure:create_tab(title)
                 Value.Text = tostring(cur)
                 TweenService:Create(Fill, TweenInfo.new(0.15), {
                     Size = UDim2.new(pct, 0, 0, 4)
+                }):Play()
+                -- ★ Circle pulse
+                local scale = Circle2:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", Circle2)
+                scale.Scale = 1.3
+                TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                    Scale = 1
                 }):Play()
                 Azure._config._flags[s.flag] = cur
                 if s.callback then pcall(s.callback, cur) end
@@ -1924,6 +2363,19 @@ function Azure:create_tab(title)
                     Option.AutoButtonColor = false
                     Option.Size = UDim2.new(0, 186, 0, 16)
                     Option.ZIndex = 13
+
+                    -- ★ Option hover
+                    Option.MouseEnter:Connect(function()
+                        if Option.Text ~= CurrentOption.Text then
+                            TweenService:Create(Option, TweenInfo.new(0.15), { TextTransparency = 0.2 }):Play()
+                        end
+                    end)
+                    Option.MouseLeave:Connect(function()
+                        if Option.Text ~= CurrentOption.Text then
+                            TweenService:Create(Option, TweenInfo.new(0.15), { TextTransparency = 0.6 }):Play()
+                        end
+                    end)
+
                     Option.MouseButton1Click:Connect(function()
                         DM:update(value)
                         for _, child in OptionsFrame:GetChildren() do
@@ -1945,18 +2397,18 @@ function Azure:create_tab(title)
                 self._state = not self._state
                 if self._state then
                     ModuleManager._multiplier += self._size
-                    TweenService:Create(Dropdown, TweenInfo.new(0.35), {
+                    TweenService:Create(Dropdown, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
                         Size = UDim2.fromOffset(207, 39 + self._size)
                     }):Play()
-                    TweenService:Create(Box, TweenInfo.new(0.35), {
+                    TweenService:Create(Box, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
                         Size = UDim2.fromOffset(207, 22 + self._size)
                     }):Play()
                 else
                     ModuleManager._multiplier -= self._size
-                    TweenService:Create(Dropdown, TweenInfo.new(0.35), {
+                    TweenService:Create(Dropdown, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
                         Size = UDim2.fromOffset(207, 39)
                     }):Play()
-                    TweenService:Create(Box, TweenInfo.new(0.35), {
+                    TweenService:Create(Box, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
                         Size = UDim2.fromOffset(207, 22)
                     }):Play()
                 end
@@ -1984,7 +2436,7 @@ local SpamTab   = AzureWindow:create_tab("Spam")
 local DetTab    = AzureWindow:create_tab("Detection")
 local VisualTab = AzureWindow:create_tab("Visual")
 
--- MAIN — Auto Parry + كل العناصر تحته
+-- MAIN — Auto Parry
 local autoparry_module = MainTab:create_module({
     title = "Auto Parry",
     description = "Auto Parry Settings",
@@ -2021,17 +2473,25 @@ autoparry_module:create_dropdown({
     end,
 })
 
-autoparry_module:create_dropdown({
+local mode_curve_dropdown = autoparry_module:create_dropdown({
     title = "Mode curve",
     flag = "ModeCurve",
     options = System.__config.__curve_names,
     maximum_options = 10,
     callback = function(value)
         for i, name in ipairs(System.__config.__curve_names) do
-            if name == value then System.__properties.__curve_mode = i; break end
+            if name == value then
+                System.__properties.__curve_mode = i
+                if System.curve_indicator and System.curve_indicator.set then
+                    System.curve_indicator.set(name, i)
+                end
+                break
+            end
         end
     end,
 })
+
+getgenv().__modeCurveDropdown = mode_curve_dropdown
 
 autoparry_module:create_checkbox({
     title = "Cooldown Protection",
@@ -2057,7 +2517,25 @@ autoparry_module:create_checkbox({
     end,
 })
 
--- Humanizer module — تاب Main، قسم right
+autoparry_module:create_checkbox({
+    title = "Curve Hotkeys (1-9)",
+    flag = "CurveHotkeys",
+    callback = function(value)
+        getgenv().CurveHotkeysEnabled = value
+    end,
+})
+
+autoparry_module:create_checkbox({
+    title = "Curve Indicator",
+    flag = "CurveIndicator",
+    callback = function(value)
+        if System.curve_indicator then
+            System.curve_indicator.toggle(value)
+        end
+    end,
+})
+
+-- Humanizer
 local humanizer_module = MainTab:create_module({
     title = "Humanizer",
     description = "Choose a random parry accuracy range.",
@@ -2230,9 +2708,8 @@ System.auto_spam.start()
 System.manual_spam.stop()
 update_divisor()
 
--- ★ يفتح الموديولات بعد ما تنضاف كل العناصر
 task.defer(function()
-    task.wait(0.2)
+    task.wait(0.25)
     autoparry_module:change_state(true)
     auto_spam_module:change_state(true)
 end)
