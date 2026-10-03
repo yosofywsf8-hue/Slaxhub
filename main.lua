@@ -159,7 +159,7 @@ local System = {
         __auto_spam_enabled   = false,
         __manual_spam_enabled = false,
         __curve_mode          = 1,
-        __accuracy            = 100,
+        __accuracy            = 50,
         __divisor_multiplier  = 1.1,
         __parried             = false,
         __training_parried    = false,
@@ -507,6 +507,41 @@ function System.autoparry.start()
             if System.__config.__detections.__timehole and System.__properties.__timehole_active then continue end
             if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then continue end
             if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
+
+                -- ★ Cooldown Protection
+                if getgenv().CooldownProtection then
+                    local hotbar = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
+                    local block  = hotbar and hotbar:FindFirstChild("Block")
+                    local cd     = block and block:FindFirstChild("UIGradient")
+                    if cd and cd.Offset.Y < 0.4 then
+                        System.__properties.__parried = true
+                        continue
+                    end
+                end
+
+                -- ★ Auto Ability
+                if getgenv().AutoAbility then
+                    local hotbar  = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
+                    local ability = hotbar and hotbar:FindFirstChild("Ability")
+                    local abCd    = ability and ability:FindFirstChild("UIGradient")
+                    if abCd and abCd.Offset.Y == 0.5 then
+                        local char      = LocalPlayer.Character
+                        local abilities = char and char:FindFirstChild("Abilities")
+                        if abilities and (
+                            (abilities:FindFirstChild("Raging Deflection") and abilities["Raging Deflection"].Enabled) or
+                            (abilities:FindFirstChild("Rapture")           and abilities["Rapture"].Enabled) or
+                            (abilities:FindFirstChild("Calming Deflection") and abilities["Calming Deflection"].Enabled) or
+                            (abilities:FindFirstChild("Aerodynamic Slash") and abilities["Aerodynamic Slash"].Enabled) or
+                            (abilities:FindFirstChild("Fracture")          and abilities["Fracture"].Enabled) or
+                            (abilities:FindFirstChild("Death Slash")       and abilities["Death Slash"].Enabled)
+                        ) then
+                            pcall(function()
+                                RS.Remotes.AbilityButtonPress:FireServer()
+                            end)
+                        end
+                    end
+                end
+
                 System.parry.execute()
                 System.__properties.__parried = true
             end
@@ -1400,12 +1435,16 @@ function Azure:create_tab(title)
 
         local ModuleManager = { _state = false, _size = 0, _multiplier = 0 }
 
+        -- ★ دالة تحديث الحجم — تُنادى بعد كل عنصر جديد
+        local function refresh_size()
+            local total = 93 + (ModuleManager._size or 0) + (ModuleManager._multiplier or 0)
+            Module.Size = UDim2.fromOffset(241, total)
+            Options.Size = UDim2.fromOffset(241, (ModuleManager._size or 0) + (ModuleManager._multiplier or 0))
+        end
+
         function ModuleManager:change_state(state)
             self._state = state
             if self._state then
-                TweenService:Create(Module, TweenInfo.new(0.35), {
-                    Size = UDim2.fromOffset(241, 93 + self._size + self._multiplier)
-                }):Play()
                 TweenService:Create(Toggle, TweenInfo.new(0.35), {
                     BackgroundColor3 = Color3.fromRGB(180, 140, 255)
                 }):Play()
@@ -1414,9 +1453,6 @@ function Azure:create_tab(title)
                     Position = UDim2.fromScale(0.53, 0.5)
                 }):Play()
             else
-                TweenService:Create(Module, TweenInfo.new(0.35), {
-                    Size = UDim2.fromOffset(241, 93)
-                }):Play()
                 TweenService:Create(Toggle, TweenInfo.new(0.35), {
                     BackgroundColor3 = Color3.fromRGB(60, 45, 90)
                 }):Play()
@@ -1425,6 +1461,7 @@ function Azure:create_tab(title)
                     Position = UDim2.fromScale(0, 0.5)
                 }):Play()
             end
+            refresh_size() -- ★
             Azure._config._flags[settings.flag] = self._state
             Config:save(game.GameId, Azure._config)
             if settings.callback then pcall(settings.callback, self._state) end
@@ -1444,17 +1481,11 @@ function Azure:create_tab(title)
             ModuleManager:change_state(not ModuleManager._state)
         end)
 
-        -- ★ يحدّث الحجم مباشرة بدون شرط
-        local function refresh_size()
-            local new_size = 93 + ModuleManager._size + (ModuleManager._multiplier or 0)
-            Module.Size = UDim2.fromOffset(241, new_size)
-            Options.Size = UDim2.fromOffset(241, ModuleManager._size + (ModuleManager._multiplier or 0))
-        end
-
+        -- ========== CHECKBOX ==========
         function ModuleManager:create_checkbox(s)
             if self._size == 0 then self._size = 11 end
             self._size += 20
-            refresh_size()
+            refresh_size() -- ★
 
             local CM = { _state = false }
             local Checkbox = Instance.new("TextButton", Options)
@@ -1526,10 +1557,11 @@ function Azure:create_tab(title)
             return CM
         end
 
+        -- ========== SLIDER ==========
         function ModuleManager:create_slider(s)
             if self._size == 0 then self._size = 11 end
             self._size += 27
-            refresh_size()
+            refresh_size() -- ★
 
             local Slider = Instance.new("TextButton", Options)
             Slider.Name = "Slider"
@@ -1650,10 +1682,11 @@ function Azure:create_tab(title)
             return SM
         end
 
+        -- ========== RANGE SLIDER ==========
         function ModuleManager:create_range_slider(s)
             if self._size == 0 then self._size = 11 end
             self._size += 27
-            refresh_size()
+            refresh_size() -- ★
 
             local Slider = Instance.new("TextButton", Options)
             Slider.Name = "RangeSlider"
@@ -1800,10 +1833,11 @@ function Azure:create_tab(title)
             return SM
         end
 
+        -- ========== DROPDOWN ==========
         function ModuleManager:create_dropdown(s)
             if self._size == 0 then self._size = 11 end
             self._size += 44
-            refresh_size()
+            refresh_size() -- ★
 
             local DM = { _state = false, _size = 0 }
             local Dropdown = Instance.new("TextButton", Options)
@@ -1905,12 +1939,6 @@ function Azure:create_tab(title)
                 self._state = not self._state
                 if self._state then
                     ModuleManager._multiplier += self._size
-                    TweenService:Create(Module, TweenInfo.new(0.35), {
-                        Size = UDim2.fromOffset(241, 93 + ModuleManager._size + ModuleManager._multiplier)
-                    }):Play()
-                    TweenService:Create(Options, TweenInfo.new(0.35), {
-                        Size = UDim2.fromOffset(241, ModuleManager._size + ModuleManager._multiplier)
-                    }):Play()
                     TweenService:Create(Dropdown, TweenInfo.new(0.35), {
                         Size = UDim2.fromOffset(207, 39 + self._size)
                     }):Play()
@@ -1919,12 +1947,6 @@ function Azure:create_tab(title)
                     }):Play()
                 else
                     ModuleManager._multiplier -= self._size
-                    TweenService:Create(Module, TweenInfo.new(0.35), {
-                        Size = UDim2.fromOffset(241, 93 + ModuleManager._size + ModuleManager._multiplier)
-                    }):Play()
-                    TweenService:Create(Options, TweenInfo.new(0.35), {
-                        Size = UDim2.fromOffset(241, ModuleManager._size + ModuleManager._multiplier)
-                    }):Play()
                     TweenService:Create(Dropdown, TweenInfo.new(0.35), {
                         Size = UDim2.fromOffset(207, 39)
                     }):Play()
@@ -1932,6 +1954,7 @@ function Azure:create_tab(title)
                         Size = UDim2.fromOffset(207, 22)
                     }):Play()
                 end
+                refresh_size() -- ★
             end)
 
             return DM
@@ -1968,23 +1991,15 @@ local autoparry_module = MainTab:create_module({
 autoparry_module:create_slider({
     title = "Parry Accuracy",
     flag = "ParryAccuracy",
-    maximum_value = 100,
+    maximum_value = 50,
     minimum_value = 1,
-    value = 100,
+    value = 50,
     round_number = true,
     callback = function(value)
-        if not System.__properties.__humanizer_enabled then
+        if System and not System.__properties.__humanizer_enabled then
             System.__properties.__accuracy = value
-            update_divisor()
+            if update_divisor then pcall(update_divisor) end
         end
-    end,
-})
-
-autoparry_module:create_checkbox({
-    title = "Randomize Accuracy",
-    flag = "ParryRandomizeAccuracy",
-    callback = function(value)
-        System.__properties.__humanizer_enabled = value
     end,
 })
 
@@ -2031,6 +2046,37 @@ autoparry_module:create_checkbox({
     flag = "AutoParryNotify",
     callback = function(value)
         getgenv().AutoParryNotify = value
+    end,
+})
+
+-- Humanizer module — تاب Main، قسم right
+local humanizer_module = MainTab:create_module({
+    title = "Humanizer",
+    description = "Choose a random parry accuracy range.",
+    flag = "HumanizerModule",
+    section = "right",
+    callback = function(state)
+        if System then
+            System.__properties.__humanizer_enabled = state
+            if state and update_randomized_accuracy then
+                pcall(update_randomized_accuracy)
+            end
+        end
+    end,
+})
+
+humanizer_module:create_range_slider({
+    title = "Humanizer Accuracy",
+    flag = "HumanizerAccuracyRange",
+    maximum_value = 50,
+    minimum_value = 1,
+    value = { min = 1, max = 50 },
+    round_number = true,
+    callback = function(min_value, max_value)
+        if System then
+            System.__properties.__humanizer_min_accuracy = min_value
+            System.__properties.__humanizer_max_accuracy = max_value
+        end
     end,
 })
 
@@ -2176,7 +2222,7 @@ System.auto_spam.start()
 System.manual_spam.stop()
 update_divisor()
 
--- ★ يفتح الـ module بعد ما تنضاف كل العناصر
+-- ★ يفتح الموديولات بعد ما تنضاف كل العناصر
 task.defer(function()
     task.wait(0.1)
     autoparry_module:change_state(true)
