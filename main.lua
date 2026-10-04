@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════
--- BLABLA Hub FINAL v2 — Blade Ball Script
--- Auto Parry + Auto Spam (Target Switch + Detection) + Keypress + Curve
--- Font: LuckiestGuy + FredokaOne + DenkOne (Bubble Theme)
+-- BLABLA Hub v5 PREMIUM — Blade Ball Script
+-- Glass Morphism + Depth + Parallax + Particles + Spring
+-- Font: LuckiestGuy + FredokaOne + DenkOne
 -- ═══════════════════════════════════════════════════════════
 
 local cloneref = cloneref or function(o) return o end
@@ -19,11 +19,90 @@ local FONT = {
     reg   = Font.new(FONT_FAMILY_SOFT,   Enum.FontWeight.Regular,  Enum.FontStyle.Normal),
 }
 
+-- ─── COLOR PALETTE ───
+local PALETTE = {
+    bgDeep     = Color3.fromRGB(18, 12, 32),
+    bgMain     = Color3.fromRGB(28, 20, 48),
+    bgSoft     = Color3.fromRGB(38, 28, 62),
+    card       = Color3.fromRGB(32, 24, 54),
+    cardHover  = Color3.fromRGB(44, 32, 72),
+    border     = Color3.fromRGB(120, 80, 200),
+    borderSoft = Color3.fromRGB(80, 55, 140),
+    accent     = Color3.fromRGB(180, 130, 255),
+    accentHot  = Color3.fromRGB(220, 180, 255),
+    text       = Color3.fromRGB(255, 255, 255),
+    textDim    = Color3.fromRGB(220, 210, 240),
+    textFaint  = Color3.fromRGB(160, 145, 200),
+    success    = Color3.fromRGB(120, 255, 170),
+    danger     = Color3.fromRGB(255, 130, 160),
+    glow       = Color3.fromRGB(200, 150, 255),
+}
+
 -- ═══════════════════════════════════════════════════════════
--- 0. ANIMATION HELPERS
+-- ADVANCED ANIMATION ENGINE
 -- ═══════════════════════════════════════════════════════════
+
 local Animation = {}
 
+-- Spring config
+Animation.springOut   = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+Animation.springIn    = TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+Animation.smoothOut   = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+Animation.smoothIn    = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+Animation.elastic     = TweenInfo.new(0.55, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+Animation.expoOut     = TweenInfo.new(0.45, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+
+-- ★ Shadow factory — 3 layers
+function Animation.applyShadow(ui, baseTransparency)
+    baseTransparency = baseTransparency or 0.85
+    local layer1 = Instance.new("UIStroke")
+    layer1.Color = Color3.new(0, 0, 0)
+    layer1.Transparency = baseTransparency
+    layer1.Thickness = 3
+    layer1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    layer1.Parent = ui
+
+    local layer2 = Instance.new("UIStroke")
+    layer2.Color = Color3.new(0, 0, 0)
+    layer2.Transparency = baseTransparency + 0.05
+    layer2.Thickness = 2
+    layer2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    layer2.Parent = ui
+
+    return layer1
+end
+
+-- ★ Shimmer effect
+function Animation.shimmer(gradient, duration, waitBetween)
+    duration = duration or 1.6
+    waitBetween = waitBetween or 3.5
+    task.spawn(function()
+        while gradient.Parent do
+            gradient.Offset = Vector2.new(-1.2, 0)
+            task.wait(waitBetween)
+            TweenService:Create(gradient, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+                Offset = Vector2.new(1.2, 0)
+            }):Play()
+            task.wait(duration + 0.3)
+        end
+    end)
+end
+
+-- ★ Glow pulse
+function Animation.glowPulse(stroke, base, peak, speed)
+    task.spawn(function()
+        local up = true
+        while stroke.Parent do
+            TweenService:Create(stroke, TweenInfo.new(speed or 1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                Transparency = up and peak or base
+            }):Play()
+            up = not up
+            task.wait(speed or 1.5)
+        end
+    end)
+end
+
+-- ★ Stagger
 function Animation.stagger(items, baseDelay, perIndex, fn)
     for i, item in ipairs(items) do
         task.delay((baseDelay or 0) + (perIndex or 0.025) * i, function()
@@ -32,45 +111,153 @@ function Animation.stagger(items, baseDelay, perIndex, fn)
     end
 end
 
-function Animation.glowPulse(stroke, base, peak, speed)
+-- ★ Hover scale + glow
+function Animation.hoverCard(card, stroke, uiScale)
+    uiScale = uiScale or Instance.new("UIScale", card)
+
+    card.MouseEnter:Connect(function()
+        TweenService:Create(uiScale, Animation.smoothOut, { Scale = 1.015 }):Play()
+        TweenService:Create(stroke, Animation.smoothOut, {
+            Transparency = 0.25,
+            Color = PALETTE.accentHot,
+            Thickness = 1.5,
+        }):Play()
+    end)
+
+    card.MouseLeave:Connect(function()
+        TweenService:Create(uiScale, Animation.smoothOut, { Scale = 1 }):Play()
+        TweenService:Create(stroke, Animation.smoothOut, {
+            Transparency = 0.55,
+            Color = PALETTE.border,
+            Thickness = 1,
+        }):Play()
+    end)
+end
+
+-- ★ Parallax tilt
+function Animation.parallaxTilt(card, maxAngle)
+    maxAngle = maxAngle or 4
+    local conn
+    conn = UserInputService.InputChanged:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement
+        and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        if not card.Parent then conn:Disconnect() return end
+
+        local mouse = UserInputService:GetMouseLocation()
+        local pos = card.AbsolutePosition
+        local size = card.AbsoluteSize
+        local centerX = pos.X + size.X / 2
+        local centerY = pos.Y + size.Y / 2
+
+        local dist = (mouse - Vector2.new(centerX, centerY)).Magnitude
+        if dist > size.X * 1.5 then
+            TweenService:Create(card, Animation.smoothOut, { Rotation = 0 }):Play()
+            return
+        end
+
+        local relX = (mouse.X - centerX) / size.X
+        local relY = (mouse.Y - centerY) / size.Y
+        local tiltX = math.clamp(-relY * maxAngle, -maxAngle, maxAngle)
+        local tiltY = math.clamp(relX * maxAngle, -maxAngle, maxAngle)
+
+        TweenService:Create(card, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Rotation = tiltX * 0.6 + tiltY * 0.4
+        }):Play()
+    end)
+    return conn
+end
+
+-- ★ Floating particles
+function Animation.spawnParticles(parent)
     task.spawn(function()
-        local up = true
-        while stroke.Parent do
-            local target = up and peak or base
-            TweenService:Create(stroke, TweenInfo.new(speed or 1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                Transparency = target
+        while parent.Parent do
+            local particle = Instance.new("Frame")
+            particle.Size = UDim2.fromOffset(math.random(2, 5), math.random(2, 5))
+            particle.Position = UDim2.new(math.random(), 0, 1.2, 0)
+            particle.BackgroundColor3 = PALETTE.accent
+            particle.BackgroundTransparency = math.random(50, 80) / 100
+            particle.BorderSizePixel = 0
+            particle.ZIndex = 1
+            particle.Parent = parent
+            Instance.new("UICorner", particle).CornerRadius = UDim.new(1, 0)
+
+            local duration = math.random(80, 150) / 10
+            local drift = math.random(-50, 50) / 10
+
+            TweenService:Create(particle, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+                Position = UDim2.new(particle.Position.X.Scale + drift / 100, 0, -0.2, 0),
+                BackgroundTransparency = 1,
             }):Play()
-            up = not up
-            task.wait(speed or 1.2)
+
+            task.delay(duration + 0.5, function()
+                if particle and particle.Parent then particle:Destroy() end
+            end)
+
+            task.wait(math.random(4, 10) / 10)
         end
     end)
 end
 
-function Animation.shimmer(gradient, duration, waitBetween)
-    duration = duration or 1.4
-    waitBetween = waitBetween or 2.2
-    task.spawn(function()
-        while gradient.Parent do
-            gradient.Offset = Vector2.new(-1, 0)
-            task.wait(waitBetween)
-            TweenService:Create(gradient, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
-                Offset = Vector2.new(1, 0)
-            }):Play()
-            task.wait(duration + 0.2)
-        end
+-- ★ Inner highlight — glass effect
+function Animation.glassHighlight(parent)
+    local top = Instance.new("Frame")
+    top.Name = "GlassTop"
+    top.AnchorPoint = Vector2.new(0.5, 0)
+    top.Position = UDim2.new(0.5, 0, 0, 0)
+    top.Size = UDim2.new(1, -2, 0, 1)
+    top.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    top.BackgroundTransparency = 0.75
+    top.BorderSizePixel = 0
+    top.ZIndex = parent.ZIndex + 1
+    top.Parent = parent
+
+    local gradient = Instance.new("UIGradient")
+    gradient.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1),
+        NumberSequenceKeypoint.new(0.5, 0.2),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    gradient.Parent = top
+end
+
+-- ★ Ripple on click
+function Animation.ripple(button, color)
+    button.MouseButton1Down:Connect(function(x, y)
+        local relX = (x - button.AbsolutePosition.X) / button.AbsoluteSize.X
+        local relY = (y - button.AbsolutePosition.Y) / button.AbsoluteSize.Y
+
+        local rip = Instance.new("Frame")
+        rip.AnchorPoint = Vector2.new(0.5, 0.5)
+        rip.Position = UDim2.new(relX, 0, relY, 0)
+        rip.Size = UDim2.fromOffset(0, 0)
+        rip.BackgroundColor3 = color or PALETTE.accent
+        rip.BackgroundTransparency = 0.5
+        rip.BorderSizePixel = 0
+        rip.ZIndex = button.ZIndex + 5
+        rip.Parent = button
+        Instance.new("UICorner", rip).CornerRadius = UDim.new(1, 0)
+
+        local maxSize = math.max(button.AbsoluteSize.X, button.AbsoluteSize.Y) * 2.5
+        TweenService:Create(rip, TweenInfo.new(0.65, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            Size = UDim2.fromOffset(maxSize, maxSize),
+            BackgroundTransparency = 1,
+        }):Play()
+
+        task.delay(0.7, function()
+            if rip and rip.Parent then rip:Destroy() end
+        end)
     end)
 end
 
 -- ═══════════════════════════════════════════════════════════
--- 1. PARRY PATCH
+-- PARRY PATCH + IMPORTS + STATE
+-- (نفس النسخة السابقة — بدون تغيير)
 -- ═══════════════════════════════════════════════════════════
-local _PARRY_PATCH = {
-    keyTable = nil, transformFn = nil, parryHash = nil,
-    parryRemote = nil, ready = false,
-}
+
+local _PARRY_PATCH = { keyTable = nil, transformFn = nil, parryHash = nil, parryRemote = nil, ready = false }
 
 task.spawn(function()
-    local ok, err = pcall(function()
+    pcall(function()
         local RS = game:GetService("ReplicatedStorage")
         local Controllers = RS:WaitForChild("Controllers", 15)
         if not Controllers then return end
@@ -78,19 +265,18 @@ task.spawn(function()
         for _, child in ipairs(Controllers:GetChildren()) do
             if child.Name:sub(1, 16) == "SwordsController" then SC = child; break end
         end
-        if not SC then warn("[PARRY] SwordsController not found"); return end
+        if not SC then return end
         local PRY = SC:WaitForChild("PRY", 15)
-        if not PRY then warn("[PARRY] PRY module not found"); return end
+        if not PRY then return end
         local Parry_Function = require(PRY)
         local getupvals = debug.getupvalues or getupvalues
-        if not getupvals then warn("[PARRY] executor missing getupvalues"); return end
+        if not getupvals then return end
         local ups = getupvals(Parry_Function)
-        if not ups or #ups < 8 then warn("[PARRY] unexpected upvalue count"); return end
+        if not ups or #ups < 8 then return end
         _PARRY_PATCH.keyTable = ups[3]
         _PARRY_PATCH.transformFn = ups[4]
         _PARRY_PATCH.parryHash = ups[8]
     end)
-    if not ok then warn("[PARRY] init error:", tostring(err)) end
 end)
 
 local replicated_storage = cloneref(game:GetService("ReplicatedStorage"))
@@ -168,9 +354,6 @@ function _PARRY_PATCH.fire(curveCFrame, screenPositions, mouseLocation)
     end)
 end
 
--- ═══════════════════════════════════════════════════════════
--- 2. IMPORTS
--- ═══════════════════════════════════════════════════════════
 local Players          = cloneref(game:GetService("Players"))
 local RunService       = cloneref(game:GetService("RunService"))
 local UserInputService = cloneref(game:GetService("UserInputService"))
@@ -194,51 +377,28 @@ getgenv().Connections_Manager = Connections_Manager
 
 getgenv().AutoParryMode = getgenv().AutoParryMode or "Remote"
 
--- ═══════════════════════════════════════════════════════════
--- 3. STATE
--- ═══════════════════════════════════════════════════════════
+-- ─── STATE (نفس السابق) ───
 local System = {
     __properties = {
-        __autoparry_enabled = false,
-        __auto_spam_enabled = false,
-        __manual_spam_enabled = false,
-        __curve_mode = 1,
-        __accuracy = 50,
-        __divisor_multiplier = 1.1,
-        __parried = false,
-        __training_parried = false,
-        __parries = 0,
-        __spam_threshold = 1.5,
-        __spam_accumulator = 0,
-        __spam_rate = 1000,
-        __distance_multiplier = 1,
-        __humanizer_enabled = false,
-        __humanizer_min_accuracy = 1,
-        __humanizer_max_accuracy = 50,
-        __humanizer_last_update = 0,
-        __humanizer_next_change = 0.8,
-        __tornado_time = tick(),
-        __connections = {},
-        __infinity_active = false,
-        __deathslash_active = false,
-        __timehole_active = false,
-        __slashesoffury_active = false,
-        __slashesoffury_count = 0,
-        __no_render_enabled = false,
-        __fps_boost_enabled = false,
+        __autoparry_enabled = false, __auto_spam_enabled = false, __manual_spam_enabled = false,
+        __curve_mode = 1, __accuracy = 50, __divisor_multiplier = 1.1, __parried = false,
+        __training_parried = false, __parries = 0, __spam_threshold = 1.5,
+        __spam_accumulator = 0, __spam_rate = 1000, __distance_multiplier = 1,
+        __humanizer_enabled = false, __humanizer_min_accuracy = 1, __humanizer_max_accuracy = 50,
+        __humanizer_last_update = 0, __humanizer_next_change = 0.8,
+        __tornado_time = tick(), __connections = {}, __infinity_active = false,
+        __deathslash_active = false, __timehole_active = false,
+        __slashesoffury_active = false, __slashesoffury_count = 0,
+        __no_render_enabled = false, __fps_boost_enabled = false,
     },
     __config = {
         __curve_names = {"Camera", "Random", "Accelerated", "Backwards", "Slow", "High", "Left", "Right"},
-        __detections = {
-            __infinity = true, __deathslash = true,
-            __timehole = true, __slashesoffury = true,
-        },
+        __detections = { __infinity = true, __deathslash = true, __timehole = true, __slashesoffury = true },
     },
 }
 
 local function update_divisor()
-    System.__properties.__divisor_multiplier =
-        0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
+    System.__properties.__divisor_multiplier = 0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
 end
 
 local function update_randomized_accuracy()
@@ -257,17 +417,13 @@ local function update_randomized_accuracy()
     local ping_factor = ping >= 90 and 0.75 or (ping <= 50 and 1.25 or 1)
     local roll = math.random(1, 100)
     local new_acc
-    if ping >= 90 then
-        new_acc = math.clamp(current + math.random(-1, 1), min_h, max_h)
-    elseif roll <= 45 then
-        new_acc = math.clamp(current + math.random(-2, 2), min_h, max_h)
+    if ping >= 90 then new_acc = math.clamp(current + math.random(-1, 1), min_h, max_h)
+    elseif roll <= 45 then new_acc = math.clamp(current + math.random(-2, 2), min_h, max_h)
     elseif roll <= 80 then
         local drift = math.random(2, math.max(3, math.floor(span * 0.2)))
         local dir = math.random() < 0.5 and -drift or drift
         new_acc = math.clamp(current + dir, min_h, max_h)
-    else
-        new_acc = math.random(min_h, max_h)
-    end
+    else new_acc = math.random(min_h, max_h) end
     props.__accuracy = new_acc
     props.__humanizer_next_change = math.random(0.7, 1.4) / ping_factor
     update_divisor()
@@ -276,18 +432,14 @@ end
 task.spawn(function()
     while true do
         task.wait(0.1)
-        if System.__properties.__humanizer_enabled then
-            pcall(update_randomized_accuracy)
-        end
+        if System.__properties.__humanizer_enabled then pcall(update_randomized_accuracy) end
     end
 end)
 
 local maxParryCount = 36
 local parryDelay = 0.05
 
--- ═══════════════════════════════════════════════════════════
--- 4. BALL / PLAYER / CURVE / PARRY / DETECTION
--- ═══════════════════════════════════════════════════════════
+-- ─── BALL / PLAYER / CURVE / PARRY / DETECTION (نفس السابق) ───
 System.ball = {}
 function System.ball.get()
     local balls = workspace:FindFirstChild("Balls")
@@ -297,7 +449,6 @@ function System.ball.get()
     end
     return nil
 end
-
 function System.ball.get_all()
     local out = {}
     local balls = workspace:FindFirstChild("Balls")
@@ -310,7 +461,6 @@ end
 
 System.player = {}
 local Closest_Entity = nil
-
 function System.player.get_closest()
     local max_d = math.huge
     local closest = nil
@@ -324,7 +474,6 @@ function System.player.get_closest()
     Closest_Entity = closest
     return closest
 end
-
 function System.player.get_closest_to_cursor()
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return nil end
     local camera = workspace.CurrentCamera
@@ -378,21 +527,15 @@ function System.curve.get_cframe()
 end
 
 System.parry = {}
-
 local function fireKeypress()
     pcall(function()
-        if keypress then
-            keypress(0x46)
-        elseif syn and syn.keypress then
-            syn.keypress(0x46)
-        end
+        if keypress then keypress(0x46)
+        elseif syn and syn.keypress then syn.keypress(0x46) end
     end)
 end
-
 function System.parry.execute()
     if System.__properties.__parries > 10000 or not LocalPlayer.Character then return end
     local mode = getgenv().AutoParryMode or "Remote"
-
     if mode == "Keypress" then
         fireKeypress()
         System.__properties.__parries += 1
@@ -401,9 +544,7 @@ function System.parry.execute()
         end)
         return
     end
-
     if not _PARRY_PATCH or not _PARRY_PATCH.ready then return end
-
     local camera = workspace.CurrentCamera
     local vp = camera.ViewportSize
     local screenPositions = {}
@@ -425,14 +566,7 @@ function System.parry.execute()
 end
 
 local function linear_predict(a, b, t) return a + (b - a) * t end
-
-System.detection = {
-    __ball_properties = {
-        __aerodynamic_time = tick(), __last_warping = tick(),
-        __lerp_radians = 0, __curving = tick(),
-    },
-}
-
+System.detection = { __ball_properties = { __aerodynamic_time = tick(), __last_warping = tick(), __lerp_radians = 0, __curving = tick() } }
 function System.detection.is_curved()
     local bp = System.detection.__ball_properties
     local ball = System.ball.get()
@@ -470,32 +604,19 @@ function System.detection.is_curved()
     return dot < dot_thr
 end
 
--- ═══════════════════════════════════════════════════════════
--- 5. DETECTION HOOKS
--- ═══════════════════════════════════════════════════════════
+-- ─── DETECTION HOOKS ───
 local RS = replicated_storage
-
-RS.Remotes.DeathBall.OnClientEvent:Connect(function(_, d)
-    System.__properties.__deathslash_active = d or false
-end)
-RS.Remotes.InfinityBall.OnClientEvent:Connect(function(_, b)
-    System.__properties.__infinity_active = b or false
-end)
-
+RS.Remotes.DeathBall.OnClientEvent:Connect(function(_, d) System.__properties.__deathslash_active = d or false end)
+RS.Remotes.InfinityBall.OnClientEvent:Connect(function(_, b) System.__properties.__infinity_active = b or false end)
 local netFolder = RS.Packages._Index["sleitnick_net@0.1.0"].net
-
 netFolder["RE/TimeHoleActivate"].OnClientEvent:Connect(function(...)
-    local player = ({...})[1]
-    if player == LocalPlayer or player == LocalPlayer.Name or (player and player.Name == LocalPlayer.Name) then
-        System.__properties.__timehole_active = true
-    end
+    local p = ({...})[1]
+    if p == LocalPlayer or p == LocalPlayer.Name or (p and p.Name == LocalPlayer.Name) then System.__properties.__timehole_active = true end
 end)
-netFolder["RE/TimeHoleDeactivate"].OnClientEvent:Connect(function()
-    System.__properties.__timehole_active = false
-end)
+netFolder["RE/TimeHoleDeactivate"].OnClientEvent:Connect(function() System.__properties.__timehole_active = false end)
 netFolder["RE/SlashesOfFuryActivate"].OnClientEvent:Connect(function(...)
-    local player = ({...})[1]
-    if player == LocalPlayer or player == LocalPlayer.Name or (player and player.Name == LocalPlayer.Name) then
+    local p = ({...})[1]
+    if p == LocalPlayer or p == LocalPlayer.Name or (p and p.Name == LocalPlayer.Name) then
         System.__properties.__slashesoffury_active = true
         System.__properties.__slashesoffury_count = 0
     end
@@ -509,8 +630,7 @@ netFolder["RE/SlashesOfFuryParry"].OnClientEvent:Connect(function()
 end)
 netFolder["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(function()
     spawn(function()
-        while System.__properties.__slashesoffury_active and
-              System.__properties.__slashesoffury_count < maxParryCount do
+        while System.__properties.__slashesoffury_active and System.__properties.__slashesoffury_count < maxParryCount do
             if System.__config.__detections.__slashesoffury then
                 System.parry.execute()
                 task.wait(parryDelay)
@@ -519,18 +639,12 @@ netFolder["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(function()
     end)
 end)
 
--- ═══════════════════════════════════════════════════════════
--- 6. AUTOPARRY
--- ═══════════════════════════════════════════════════════════
+-- ─── AUTOPARRY ───
 System.autoparry = {}
-
 function System.autoparry.start()
-    if System.__properties.__connections.__autoparry then
-        System.__properties.__connections.__autoparry:Disconnect()
-    end
+    if System.__properties.__connections.__autoparry then System.__properties.__connections.__autoparry:Disconnect() end
     System.__properties.__connections.__autoparry = RunService.PreSimulation:Connect(function()
-        if not System.__properties.__autoparry_enabled or not LocalPlayer.Character or
-           not LocalPlayer.Character.PrimaryPart then return end
+        if not System.__properties.__autoparry_enabled or not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
         local balls = System.ball.get_all()
         local one_ball = System.ball.get()
         local training_ball = nil
@@ -543,9 +657,7 @@ function System.autoparry.start()
             if not ball then continue end
             local zoomies = ball:FindFirstChild('zoomies')
             if not zoomies then continue end
-            ball:GetAttributeChangedSignal('target'):Once(function()
-                System.__properties.__parried = false
-            end)
+            ball:GetAttributeChangedSignal('target'):Once(function() System.__properties.__parried = false end)
             if System.__properties.__parried then continue end
             local ball_target = ball:GetAttribute('target')
             local velocity = zoomies.VectorVelocity
@@ -562,8 +674,7 @@ function System.autoparry.start()
                 System.__properties.__tornado_time = tick()
             end
             if Runtime:FindFirstChild('Tornado') then
-                if (tick() - System.__properties.__tornado_time) <
-                   (Runtime.Tornado:GetAttribute('TornadoTime') or 1) + 0.314159 then continue end
+                if (tick() - System.__properties.__tornado_time) < (Runtime.Tornado:GetAttribute('TornadoTime') or 1) + 0.314159 then continue end
             end
             if one_ball and one_ball:GetAttribute('target') == LocalPlayer.Name and curved then continue end
             if ball:FindFirstChild('ComboCounter') then continue end
@@ -573,7 +684,6 @@ function System.autoparry.start()
             if System.__config.__detections.__timehole and System.__properties.__timehole_active then continue end
             if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then continue end
             if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
-
                 if getgenv().CooldownProtection then
                     local hotbar = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
                     local block = hotbar and hotbar:FindFirstChild("Block")
@@ -583,7 +693,6 @@ function System.autoparry.start()
                         continue
                     end
                 end
-
                 if getgenv().AutoAbility then
                     local hotbar = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
                     local ability = hotbar and hotbar:FindFirstChild("Ability")
@@ -599,13 +708,10 @@ function System.autoparry.start()
                             (abilities:FindFirstChild("Fracture") and abilities["Fracture"].Enabled) or
                             (abilities:FindFirstChild("Death Slash") and abilities["Death Slash"].Enabled)
                         ) then
-                            pcall(function()
-                                RS.Remotes.AbilityButtonPress:FireServer()
-                            end)
+                            pcall(function() RS.Remotes.AbilityButtonPress:FireServer() end)
                         end
                     end
                 end
-
                 System.parry.execute()
                 System.__properties.__parried = true
             end
@@ -616,9 +722,7 @@ function System.autoparry.start()
         if training_ball then
             local zoomies = training_ball:FindFirstChild('zoomies')
             if zoomies then
-                training_ball:GetAttributeChangedSignal('target'):Once(function()
-                    System.__properties.__training_parried = false
-                end)
+                training_ball:GetAttributeChangedSignal('target'):Once(function() System.__properties.__training_parried = false end)
                 if not System.__properties.__training_parried then
                     local ball_target = training_ball:GetAttribute('target')
                     local velocity = zoomies.VectorVelocity
@@ -641,7 +745,6 @@ function System.autoparry.start()
         end
     end)
 end
-
 function System.autoparry.stop()
     if System.__properties.__connections.__autoparry then
         System.__properties.__connections.__autoparry:Disconnect()
@@ -649,39 +752,33 @@ function System.autoparry.stop()
     end
 end
 
--- ═══════════════════════════════════════════════════════════
--- 7. AUTO SPAM (Target Switch + Detection Skip)
--- ═══════════════════════════════════════════════════════════
+-- ─── AUTO SPAM (Target Switch) ───
 System.auto_spam = {}
-
 function System.auto_spam:get_entity_properties()
     System.player.get_closest()
     if not Closest_Entity or not Closest_Entity.PrimaryPart then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-    local entity_velocity = Closest_Entity.PrimaryPart.Velocity
-    local entity_direction = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Unit
-    local entity_distance = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Magnitude
-    return { Velocity = entity_velocity, Direction = entity_direction, Distance = entity_distance }
+    return {
+        Velocity = Closest_Entity.PrimaryPart.Velocity,
+        Direction = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Unit,
+        Distance = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Magnitude,
+    }
 end
-
 function System.auto_spam:get_ball_properties()
     local ball = System.ball.get()
     if not ball then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-    local ball_velocity = ball.AssemblyLinearVelocity or Vector3.new()
-    local ball_direction_vector = LocalPlayer.Character.PrimaryPart.Position - ball.Position
-    local ball_distance = ball_direction_vector.Magnitude
-    local ball_direction = Vector3.new()
-    local ball_dot = 0
-    if ball_distance > 0 then
-        ball_direction = ball_direction_vector.Unit
-        if ball_velocity.Magnitude > 0 then
-            ball_dot = ball_direction:Dot(ball_velocity.Unit)
-        end
+    local bv = ball.AssemblyLinearVelocity or Vector3.new()
+    local dv = LocalPlayer.Character.PrimaryPart.Position - ball.Position
+    local bd = dv.Magnitude
+    local bdir = Vector3.new()
+    local bdot = 0
+    if bd > 0 then
+        bdir = dv.Unit
+        if bv.Magnitude > 0 then bdot = bdir:Dot(bv.Unit) end
     end
-    return { Velocity = ball_velocity, Direction = ball_direction, Distance = ball_distance, Dot = ball_dot }
+    return { Velocity = bv, Direction = bdir, Distance = bd, Dot = bdot }
 end
-
 function System.auto_spam.spam_service(self)
     local ball = System.ball.get()
     local entity = System.player.get_closest()
@@ -700,16 +797,14 @@ function System.auto_spam.spam_service(self)
     local X = LocalPlayer:DistanceFromCharacter(target_pos)
     local E = 1
     local Fmove = Vector3.new()
-    local success, humanoid = pcall(function()
-        return LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    end)
-    if success and humanoid and humanoid.MoveDirection then Fmove = humanoid.MoveDirection end
+    local s, h = pcall(function() return LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") end)
+    if s and h and h.MoveDirection then Fmove = h.MoveDirection end
     local N = (target_pos - LocalPlayer.Character.PrimaryPart.Position)
     if N.Magnitude > 0 then N = N.Unit else N = Vector3.new() end
     local lmove = Vector3.new()
     if entity then
-        local ehum = entity:FindFirstChildOfClass("Humanoid")
-        if ehum and ehum.MoveDirection then lmove = ehum.MoveDirection end
+        local eh = entity:FindFirstChildOfClass("Humanoid")
+        if eh and eh.MoveDirection then lmove = eh.MoveDirection end
     end
     _G.Last_Close_Contact = _G.Last_Close_Contact or 0
     _G.In_Close_Contact = _G.In_Close_Contact or false
@@ -731,131 +826,72 @@ function System.auto_spam.spam_service(self)
     D = B - q
     return D
 end
-
 function System.auto_spam.start()
-    if System.__properties.__connections.__auto_spam then
-        System.__properties.__connections.__auto_spam:Disconnect()
-    end
-
-    -- ★ Target tracking
+    if System.__properties.__connections.__auto_spam then System.__properties.__connections.__auto_spam:Disconnect() end
     local locked_target = nil
     local locked_target_distance = math.huge
-    local locked_target_time = 0
-
     System.__properties.__connections.__auto_spam = RunService.PreSimulation:Connect(function()
         if not System.__properties.__auto_spam_enabled then return end
         if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
-
-        -- ★ DETECTION SKIP
-        if System.__config.__detections.__infinity and System.__properties.__infinity_active then
-            locked_target = nil; return
-        end
-        if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then
-            locked_target = nil; return
-        end
-        if System.__config.__detections.__timehole and System.__properties.__timehole_active then
-            locked_target = nil; return
-        end
-        if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then
-            locked_target = nil; return
-        end
-
+        if System.__config.__detections.__infinity and System.__properties.__infinity_active then locked_target = nil; return end
+        if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then locked_target = nil; return end
+        if System.__config.__detections.__timehole and System.__properties.__timehole_active then locked_target = nil; return end
+        if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then locked_target = nil; return end
         local ball = System.ball.get()
-        if not ball then
-            locked_target = nil
-            return
-        end
-
+        if not ball then locked_target = nil; return end
         local zoomies = ball:FindFirstChild("zoomies")
         if not zoomies then return end
         if zoomies.VectorVelocity.Magnitude == 0 then return end
-
-        -- ★ اجلب أقرب خصم
         System.player.get_closest()
-        if not Closest_Entity or not Closest_Entity.PrimaryPart then
-            locked_target = nil
-            return
-        end
-
+        if not Closest_Entity or not Closest_Entity.PrimaryPart then locked_target = nil; return end
         local my_pos = LocalPlayer.Character.PrimaryPart.Position
         local closest_distance = (my_pos - Closest_Entity.PrimaryPart.Position).Magnitude
         local ball_target = ball:GetAttribute("target")
-
-        -- ★ Target Switch Logic
         if not locked_target or not locked_target.Parent then
-            -- أول مرة
             locked_target = Closest_Entity
             locked_target_distance = closest_distance
-            locked_target_time = tick()
         elseif locked_target ~= Closest_Entity then
-            -- خصم جديد أقرب
             if closest_distance < locked_target_distance * 0.65 then
-                -- ★ الجديد أقرب بـ 35% على الأقل → بدّل
                 locked_target = Closest_Entity
                 locked_target_distance = closest_distance
-                locked_target_time = tick()
             end
         else
-            -- نفس الخصم — حدّث المسافة
             locked_target_distance = closest_distance
         end
-
-        -- ★ لو انقفل على خصم ابتعد كثير → فك
         if locked_target and locked_target.PrimaryPart then
             local cur_dist = (my_pos - locked_target.PrimaryPart.Position).Magnitude
             if cur_dist > locked_target_distance * 1.5 then
-                -- ★ الهدف ابتعد 50% عن آخر مسافة → فك القفل
                 locked_target = Closest_Entity
                 locked_target_distance = (my_pos - Closest_Entity.PrimaryPart.Position).Magnitude
-                locked_target_time = tick()
             end
         end
-
         if not locked_target or not locked_target.PrimaryPart then return end
-
-        -- ★ استخدم الخصم المقفول
         Closest_Entity = locked_target
-
         local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
         local ping_threshold = math.clamp(ping / 10, 1, 16)
-
         local ball_properties = System.auto_spam:get_ball_properties()
         local entity_properties = System.auto_spam:get_entity_properties()
         if not ball_properties or not entity_properties then return end
-
         local spam_accuracy = System.auto_spam.spam_service({
             Ball_Properties = ball_properties,
             Entity_Properties = entity_properties,
             Ping = ping_threshold,
         })
-
-        local target_position = locked_target.PrimaryPart.Position
-        local target_distance = LocalPlayer:DistanceFromCharacter(target_position)
+        local target_distance = LocalPlayer:DistanceFromCharacter(locked_target.PrimaryPart.Position)
         if zoomies.VectorVelocity.Magnitude == 0 then return end
-
-        local direction = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Unit
-        local ball_direction = zoomies.VectorVelocity.Unit
-        local dot = direction:Dot(ball_direction)
         local distance = LocalPlayer:DistanceFromCharacter(ball.Position)
-
         if not ball_target then return end
-
         local dist_mult = System.__properties.__distance_multiplier or 1
         spam_accuracy = spam_accuracy * dist_mult
-
         if target_distance > spam_accuracy or distance > spam_accuracy then return end
-
         local pulsed = LocalPlayer.Character:GetAttribute("Pulsed")
         if pulsed then return end
-
         if ball_target == LocalPlayer.Name and target_distance > 30 and distance > 30 then return end
-
         if distance <= spam_accuracy and System.__properties.__parries > System.__properties.__spam_threshold then
             System.parry.execute()
         end
     end)
 end
-
 function System.auto_spam.stop()
     System.__properties.__auto_spam_enabled = false
     if System.__properties.__connections.__auto_spam then
@@ -864,37 +900,27 @@ function System.auto_spam.stop()
     end
 end
 
--- ═══════════════════════════════════════════════════════════
--- 7.5 MANUAL SPAM (Detection Skip)
--- ═══════════════════════════════════════════════════════════
+-- ─── MANUAL SPAM ───
 System.manual_spam = {}
-
 function System.manual_spam.loop(delta)
     if not System.__properties.__manual_spam_enabled then return end
     if not LocalPlayer.Character or LocalPlayer.Character.Parent ~= Alive then return end
     if getgenv().spamui then return end
-
-    -- ★ DETECTION SKIP
     if System.__config.__detections.__infinity and System.__properties.__infinity_active then return end
     if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then return end
     if System.__config.__detections.__timehole and System.__properties.__timehole_active then return end
     if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then return end
-
     System.__properties.__spam_accumulator = (System.__properties.__spam_accumulator or 0) + delta
     local interval = 1 / math.max(1, System.__properties.__spam_rate or 100)
     if (System.__properties.__spam_accumulator or 0) < interval then return end
     System.__properties.__spam_accumulator = 0
     System.parry.execute()
 end
-
 function System.manual_spam.start()
-    if System.__properties.__connections.__manual_spam then
-        System.__properties.__connections.__manual_spam:Disconnect()
-    end
+    if System.__properties.__connections.__manual_spam then System.__properties.__connections.__manual_spam:Disconnect() end
     System.__properties.__manual_spam_enabled = true
     System.__properties.__connections.__manual_spam = RunService.Heartbeat:Connect(System.manual_spam.loop)
 end
-
 function System.manual_spam.stop()
     System.__properties.__manual_spam_enabled = false
     if System.__properties.__connections.__manual_spam then
@@ -903,22 +929,18 @@ function System.manual_spam.stop()
     end
 end
 
--- ═══════════════════════════════════════════════════════════
--- 7.6 NO RENDER
--- ═══════════════════════════════════════════════════════════
+-- ─── NO RENDER ───
 function System.no_render_set(state)
     System.__properties.__no_render_enabled = state
-    local playerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
-    local effectScripts = playerScripts and playerScripts:FindFirstChild("EffectScripts")
-    local clientFX = effectScripts and effectScripts:FindFirstChild("ClientFX")
-    if clientFX then clientFX.Disabled = state end
+    local ps = LocalPlayer:FindFirstChild("PlayerScripts")
+    local es = ps and ps:FindFirstChild("EffectScripts")
+    local cf = es and es:FindFirstChild("ClientFX")
+    if cf then cf.Disabled = state end
     if state then
         if not Connections_Manager["No Render"] then
             local runtime = workspace:FindFirstChild("Runtime")
             if runtime then
-                Connections_Manager["No Render"] = runtime.ChildAdded:Connect(function(value)
-                    Debris:AddItem(value, 0)
-                end)
+                Connections_Manager["No Render"] = runtime.ChildAdded:Connect(function(v) Debris:AddItem(v, 0) end)
             end
         end
     else
@@ -929,9 +951,7 @@ function System.no_render_set(state)
     end
 end
 
--- ═══════════════════════════════════════════════════════════
--- 7.7 FPS BOOST
--- ═══════════════════════════════════════════════════════════
+-- ─── FPS BOOST ───
 local original_fog_end = Lighting.FogEnd
 local original_fog_start = Lighting.FogStart
 local postprocessing_backup = {}
@@ -944,19 +964,13 @@ local fps_boost_loop = nil
 local fps_boost_enabled = false
 
 local function apply_disable_fog(state)
-    if state then
-        Lighting.FogEnd = math.huge; Lighting.FogStart = math.huge
-    else
-        Lighting.FogEnd = original_fog_end; Lighting.FogStart = original_fog_start
-    end
+    if state then Lighting.FogEnd = math.huge; Lighting.FogStart = math.huge
+    else Lighting.FogEnd = original_fog_end; Lighting.FogStart = original_fog_start end
 end
-
 local function apply_disable_postprocessing(state)
     if state then
         for _, v in pairs(Lighting:GetDescendants()) do
-            pcall(function()
-                if v.Enabled ~= nil then postprocessing_backup[v] = v.Enabled; v.Enabled = false end
-            end)
+            pcall(function() if v.Enabled ~= nil then postprocessing_backup[v] = v.Enabled; v.Enabled = false end end)
         end
         fog_backup = { FogEnd = Lighting.FogEnd, FogStart = Lighting.FogStart, FogColor = Lighting.FogColor }
         pcall(function()
@@ -978,7 +992,6 @@ local function apply_disable_postprocessing(state)
         end
     end
 end
-
 local function apply_remove_decals(state)
     if state then
         for _, v in pairs(workspace:GetDescendants()) do
@@ -1002,7 +1015,6 @@ local function apply_remove_decals(state)
         decals_backup = {}
     end
 end
-
 local function is_character_object(obj)
     if not obj then return false end
     local lc = LocalPlayer and LocalPlayer.Character
@@ -1012,7 +1024,6 @@ local function is_character_object(obj)
     end
     return false
 end
-
 function System.fps_boost_set(state)
     fps_boost_enabled = state
     System.__properties.__fps_boost_enabled = state
@@ -1096,11 +1107,8 @@ function System.fps_boost_set(state)
     end)
 end
 
--- ═══════════════════════════════════════════════════════════
--- 7.8 HOTKEYS
--- ═══════════════════════════════════════════════════════════
+-- ─── HOTKEYS ───
 System.hotkeys = { __enabled = true, __conn = nil }
-
 local HOTKEY_MAP = {
     [Enum.KeyCode.T] = function()
         System.__properties.__autoparry_enabled = not System.__properties.__autoparry_enabled
@@ -1115,7 +1123,6 @@ local HOTKEY_MAP = {
         if System.__properties.__manual_spam_enabled then System.manual_spam.start() else System.manual_spam.stop() end
     end,
 }
-
 function System.hotkeys.start()
     if System.hotkeys.__conn then System.hotkeys.__conn:Disconnect(); System.hotkeys.__conn = nil end
     System.hotkeys.__conn = UserInputService.InputBegan:Connect(function(input, gp)
@@ -1128,7 +1135,7 @@ end
 System.hotkeys.start()
 
 -- ═══════════════════════════════════════════════════════════
--- 8. AZURE UI
+-- ★ PREMIUM UI ENGINE
 -- ═══════════════════════════════════════════════════════════
 local Config = setmetatable({
     save = function(self, file_name, config)
@@ -1168,36 +1175,83 @@ function Azure.new()
     ScreenGui.DisplayOrder = 1000
     ScreenGui.Parent = CoreGui
 
+    -- ★ Ambient glow behind container
+    local backGlow = Instance.new("Frame", ScreenGui)
+    backGlow.Name = "BackGlow"
+    backGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+    backGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+    backGlow.Size = UDim2.fromOffset(820, 600)
+    backGlow.BackgroundColor3 = PALETTE.accent
+    backGlow.BackgroundTransparency = 0.92
+    backGlow.BorderSizePixel = 0
+    backGlow.ZIndex = 1
+    Instance.new("UICorner", backGlow).CornerRadius = UDim.new(0, 40)
+
+    local backGlowGradient = Instance.new("UIGradient", backGlow)
+    backGlowGradient.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1),
+        NumberSequenceKeypoint.new(0.5, 0.85),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    backGlowGradient.Rotation = 90
+
+    task.spawn(function()
+        while backGlow.Parent do
+            TweenService:Create(backGlow, TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                BackgroundTransparency = 0.85
+            }):Play()
+            task.wait(3)
+            TweenService:Create(backGlow, TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                BackgroundTransparency = 0.92
+            }):Play()
+            task.wait(3)
+        end
+    end)
+
+    -- ★ Main container
     local Container = Instance.new("Frame")
     Container.Name = "Container"
     Container.AnchorPoint = Vector2.new(0.5, 0.5)
     Container.Position = UDim2.new(0.5, 0, 0.5, 0)
-    Container.Size = UDim2.new(0, 0, 0, 0)
-    Container.BackgroundColor3 = Color3.fromRGB(30, 22, 50)
-    Container.BackgroundTransparency = 0
+    Container.Size = UDim2.fromOffset(0, 0)
+    Container.BackgroundColor3 = PALETTE.bgMain
+    Container.BackgroundTransparency = 0.05
     Container.BorderSizePixel = 0
     Container.ClipsDescendants = true
     Container.Active = true
-    Container.ZIndex = 2
+    Container.ZIndex = 5
     Container.Parent = ScreenGui
-    Instance.new("UICorner", Container).CornerRadius = UDim.new(0, 12)
+    Instance.new("UICorner", Container).CornerRadius = UDim.new(0, 16)
 
-    local bgGradient = Instance.new("UIGradient", Container)
-    bgGradient.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0.00, Color3.fromRGB(42, 25, 82)),
-        ColorSequenceKeypoint.new(0.35, Color3.fromRGB(75, 45, 150)),
-        ColorSequenceKeypoint.new(0.55, Color3.fromRGB(120, 70, 200)),
-        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(75, 45, 150)),
-        ColorSequenceKeypoint.new(1.00, Color3.fromRGB(42, 25, 82)),
+    -- ★ Outer glow stroke
+    local outerGlow = Instance.new("UIStroke", Container)
+    outerGlow.Color = PALETTE.accent
+    outerGlow.Thickness = 2
+    outerGlow.Transparency = 0.55
+    outerGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    Animation.glowPulse(outerGlow, 0.55, 0.35, 2.5)
+
+    -- ★ Inner subtle stroke
+    local innerStroke = Instance.new("UIStroke", Container)
+    innerStroke.Color = Color3.fromRGB(255, 255, 255)
+    innerStroke.Thickness = 1
+    innerStroke.Transparency = 0.85
+    innerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    -- ★ Background gradient (3-layer radial)
+    local bgGrad = Instance.new("UIGradient", Container)
+    bgGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0.00, Color3.fromRGB(48, 32, 88)),
+        ColorSequenceKeypoint.new(0.30, Color3.fromRGB(38, 24, 68)),
+        ColorSequenceKeypoint.new(0.65, Color3.fromRGB(28, 18, 52)),
+        ColorSequenceKeypoint.new(1.00, Color3.fromRGB(20, 12, 38)),
     }
-    bgGradient.Rotation = 135
+    bgGrad.Rotation = 135
 
-    local containerStroke = Instance.new("UIStroke", Container)
-    containerStroke.Color = Color3.fromRGB(180, 130, 255)
-    containerStroke.Thickness = 1.5
-    containerStroke.Transparency = 0.2
-    containerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    -- ★ Glass top highlight
+    Animation.glassHighlight(Container)
 
+    -- ★ Chromatic shimmer
     local Shimmer = Instance.new("Frame", Container)
     Shimmer.Name = "Shimmer"
     Shimmer.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1208,69 +1262,118 @@ function Azure.new()
     Shimmer.BorderSizePixel = 0
     Shimmer.ZIndex = 100
     Shimmer.Active = false
-    Instance.new("UICorner", Shimmer).CornerRadius = UDim.new(0, 12)
+    Instance.new("UICorner", Shimmer).CornerRadius = UDim.new(0, 16)
 
     local shimmerGradient = Instance.new("UIGradient", Shimmer)
-    shimmerGradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+    shimmerGradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(200, 150, 255)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 200, 255)),
+    }
     shimmerGradient.Transparency = NumberSequence.new({
         NumberSequenceKeypoint.new(0.00, 1),
-        NumberSequenceKeypoint.new(0.42, 1),
-        NumberSequenceKeypoint.new(0.48, 0.15),
-        NumberSequenceKeypoint.new(0.50, 0.05),
-        NumberSequenceKeypoint.new(0.52, 0.15),
-        NumberSequenceKeypoint.new(0.58, 1),
+        NumberSequenceKeypoint.new(0.40, 1),
+        NumberSequenceKeypoint.new(0.46, 0.12),
+        NumberSequenceKeypoint.new(0.50, 0.04),
+        NumberSequenceKeypoint.new(0.54, 0.12),
+        NumberSequenceKeypoint.new(0.60, 1),
         NumberSequenceKeypoint.new(1.00, 1),
     })
     shimmerGradient.Rotation = 45
-    shimmerGradient.Offset = Vector2.new(-1, 0)
+    shimmerGradient.Offset = Vector2.new(-1.2, 0)
     shimmerGradient.Parent = Shimmer
-    Animation.shimmer(shimmerGradient, 1.4, 2.2)
+    Animation.shimmer(shimmerGradient, 1.8, 3.5)
 
+    -- ★ Floating particles layer
+    local particlesLayer = Instance.new("Frame", Container)
+    particlesLayer.Name = "Particles"
+    particlesLayer.BackgroundTransparency = 1
+    particlesLayer.Size = UDim2.new(1, 0, 1, 0)
+    particlesLayer.ClipsDescendants = true
+    particlesLayer.ZIndex = 3
+    particlesLayer.Parent = Container
+    Animation.spawnParticles(particlesLayer)
+
+    -- ★ Handler
     local Handler = Instance.new("Frame", Container)
     Handler.Name = "Handler"
     Handler.BackgroundTransparency = 1
     Handler.Size = UDim2.new(0, 750, 0, 530)
-    Handler.ZIndex = 3
+    Handler.ZIndex = 10
+
+    -- ★ Title glow behind title
+    local titleGlow = Instance.new("Frame", Handler)
+    titleGlow.AnchorPoint = Vector2.new(0, 0.5)
+    titleGlow.Position = UDim2.new(0.05, 0, 0.05, 0)
+    titleGlow.Size = UDim2.fromOffset(180, 40)
+    titleGlow.BackgroundColor3 = PALETTE.accent
+    titleGlow.BackgroundTransparency = 0.88
+    titleGlow.BorderSizePixel = 0
+    titleGlow.ZIndex = 4
+    Instance.new("UICorner", titleGlow).CornerRadius = UDim.new(0, 12)
 
     local Title = Instance.new("TextLabel", Handler)
     Title.FontFace = FONT.black
     Title.Text = "BLABLA"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.BackgroundTransparency = 1
-    Title.Size = UDim2.new(0, 200, 0, 26)
+    Title.Size = UDim2.new(0, 200, 0, 30)
     Title.AnchorPoint = Vector2.new(0, 0.5)
     Title.Position = UDim2.new(0.05, 0, 0.05, 0)
     Title.TextXAlignment = Enum.TextXAlignment.Left
-    Title.TextSize = 26
-    Title.ZIndex = 4
+    Title.TextSize = 30
+    Title.ZIndex = 6
 
     local titleStroke = Instance.new("UIStroke", Title)
-    titleStroke.Color = Color3.fromRGB(180, 130, 255)
-    titleStroke.Thickness = 1.5
-    titleStroke.Transparency = 0.4
+    titleStroke.Color = PALETTE.accent
+    titleStroke.Thickness = 2
+    titleStroke.Transparency = 0.35
     titleStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-    Animation.glowPulse(titleStroke, 0.4, 0.1, 1.8)
+    Animation.glowPulse(titleStroke, 0.35, 0.08, 1.8)
 
     local SubTitle = Instance.new("TextLabel", Handler)
     SubTitle.FontFace = FONT.semi
-    SubTitle.Text = "blade ball hub"
-    SubTitle.TextColor3 = Color3.fromRGB(200, 180, 255)
+    SubTitle.Text = "blade ball hub  ·  premium"
+    SubTitle.TextColor3 = PALETTE.textFaint
     SubTitle.BackgroundTransparency = 1
     SubTitle.Size = UDim2.new(0, 200, 0, 14)
     SubTitle.AnchorPoint = Vector2.new(0, 0.5)
-    SubTitle.Position = UDim2.new(0.05, 0, 0.09, 2)
+    SubTitle.Position = UDim2.new(0.05, 0, 0.095, 0)
     SubTitle.TextXAlignment = Enum.TextXAlignment.Left
-    SubTitle.TextSize = 12
-    SubTitle.ZIndex = 4
+    SubTitle.TextSize = 11
+    SubTitle.ZIndex = 6
 
+    -- ★ Divider with gradient
     local Divider = Instance.new("Frame", Handler)
-    Divider.BackgroundTransparency = 0.5
-    Divider.Position = UDim2.new(0.225, 0, 0, 68)
+    Divider.BackgroundTransparency = 1
+    Divider.Position = UDim2.new(0.225, 0, 0.06, 0)
     Divider.Size = UDim2.new(0, 1, 0, 440)
     Divider.BorderSizePixel = 0
-    Divider.BackgroundColor3 = Color3.fromRGB(200, 160, 255)
-    Divider.ZIndex = 4
+    Divider.ZIndex = 5
 
+    local divGrad = Instance.new("UIGradient", Divider)
+    divGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, PALETTE.accent),
+        ColorSequenceKeypoint.new(1, PALETTE.accent),
+    }
+    divGrad.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1),
+        NumberSequenceKeypoint.new(0.15, 0.3),
+        NumberSequenceKeypoint.new(0.5, 0.1),
+        NumberSequenceKeypoint.new(0.85, 0.3),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    divGrad.Rotation = 90
+    divGrad.Parent = Divider
+
+    local divFrame = Instance.new("Frame", Divider)
+    divFrame.BackgroundColor3 = PALETTE.accent
+    divFrame.BackgroundTransparency = 0.2
+    divFrame.Size = UDim2.new(1, 0, 1, 0)
+    divFrame.BorderSizePixel = 0
+    divFrame.ZIndex = 5
+
+    -- ★ Tabs container
     local TabsFrame = Instance.new("ScrollingFrame", Handler)
     TabsFrame.Name = "Tabs"
     TabsFrame.Size = UDim2.new(0, 140, 0, 445)
@@ -1280,11 +1383,11 @@ function Azure.new()
     TabsFrame.ScrollBarThickness = 0
     TabsFrame.Selectable = true
     TabsFrame.Active = true
-    TabsFrame.ZIndex = 10
+    TabsFrame.ZIndex = 11
     TabsFrame.AutomaticCanvasSize = Enum.AutomaticSize.XY
     TabsFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     local tabsLayout = Instance.new("UIListLayout", TabsFrame)
-    tabsLayout.Padding = UDim.new(0, 4)
+    tabsLayout.Padding = UDim.new(0, 5)
     tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
     local SectionsFrame = Instance.new("Frame", Handler)
@@ -1292,11 +1395,12 @@ function Azure.new()
     SectionsFrame.BackgroundTransparency = 1
     SectionsFrame.Position = UDim2.new(0.22, 0, 0, 0)
     SectionsFrame.Size = UDim2.new(0.78, 0, 1, 0)
-    SectionsFrame.ZIndex = 5
+    SectionsFrame.ZIndex = 6
     SectionsFrame.Active = false
 
     local UIScale = Instance.new("UIScale", Container)
 
+    -- ★ Drag
     local dragging, dragStart, startPos
     Container.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -1327,18 +1431,26 @@ function Azure.new()
     self._sections = SectionsFrame
     self._ui = ScreenGui
 
+    -- ★ Open animation — cinematic scale
     local vp_x = workspace.CurrentCamera.ViewportSize.X
     local baseScale = (UserInputService.TouchEnabled and (vp_x / 1400) or 1)
-    UIScale.Scale = baseScale * 0.7
+    UIScale.Scale = baseScale * 0.6
+    Container.Rotation = -3
     task.spawn(function()
         task.wait(0.02)
-        TweenService:Create(Container, TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Size = UDim2.fromOffset(750, 530)
+        TweenService:Create(Container, TweenInfo.new(0.75, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = UDim2.fromOffset(750, 530),
+            Rotation = 0,
         }):Play()
-        TweenService:Create(UIScale, TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        TweenService:Create(UIScale, TweenInfo.new(0.75, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
             Scale = baseScale
         }):Play()
     end)
+
+    -- ★ Parallax tilt (only on PC)
+    if not UserInputService.TouchEnabled then
+        Animation.parallaxTilt(Container, 2)
+    end
 
     return self
 end
@@ -1351,42 +1463,61 @@ function Azure:create_tab(title)
     Tab.Name = "Tab"
     Tab.FontFace = FONT.bold
     Tab.Text = title
-    Tab.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Tab.TextTransparency = 0.6
+    Tab.TextColor3 = PALETTE.text
+    Tab.TextTransparency = 0.55
     Tab.TextSize = 15
     Tab.AutoButtonColor = false
     Tab.BackgroundTransparency = 1
-    Tab.BackgroundColor3 = Color3.fromRGB(60, 40, 120)
-    Tab.Size = UDim2.new(0, 129, 0, 38)
+    Tab.BackgroundColor3 = PALETTE.bgSoft
+    Tab.Size = UDim2.new(0, 129, 0, 40)
     Tab.BorderSizePixel = 0
     Tab.LayoutOrder = tabIndex
     Tab.TextXAlignment = Enum.TextXAlignment.Left
     Tab.ZIndex = 11
     Tab.Active = true
     Tab.Parent = self._tabsFrame
-    Instance.new("UICorner", Tab).CornerRadius = UDim.new(0, 8)
+    Instance.new("UICorner", Tab).CornerRadius = UDim.new(0, 10)
     local tabPad = Instance.new("UIPadding", Tab)
-    tabPad.PaddingLeft = UDim.new(0, 32)
+    tabPad.PaddingLeft = UDim.new(0, 34)
 
     local tabScale = Instance.new("UIScale", Tab)
     tabScale.Scale = 1
 
+    -- ★ Active indicator bar
     local activeBar = Instance.new("Frame", Tab)
     activeBar.Name = "ActiveBar"
     activeBar.AnchorPoint = Vector2.new(0, 0.5)
     activeBar.Position = UDim2.new(0, 0, 0.5, 0)
-    activeBar.Size = UDim2.new(0, 3, 0.6, 0)
-    activeBar.BackgroundColor3 = Color3.fromRGB(200, 160, 255)
+    activeBar.Size = UDim2.new(0, 4, 0.65, 0)
+    activeBar.BackgroundColor3 = PALETTE.accentHot
     activeBar.BorderSizePixel = 0
     activeBar.ZIndex = 12
     activeBar.BackgroundTransparency = 1
     Instance.new("UICorner", activeBar).CornerRadius = UDim.new(1, 0)
 
+    -- ★ Glow behind active tab
+    local tabGlow = Instance.new("Frame", Tab)
+    tabGlow.Name = "TabGlow"
+    tabGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+    tabGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+    tabGlow.Size = UDim2.new(1, -8, 1, -6)
+    tabGlow.BackgroundColor3 = PALETTE.accent
+    tabGlow.BackgroundTransparency = 1
+    tabGlow.BorderSizePixel = 0
+    tabGlow.ZIndex = 10
+    Instance.new("UICorner", tabGlow).CornerRadius = UDim.new(0, 8)
+
     Tab.MouseEnter:Connect(function()
-        TweenService:Create(tabScale, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Scale = 1.04 }):Play()
+        TweenService:Create(tabScale, Animation.smoothOut, { Scale = 1.05 }):Play()
+        if Tab.BackgroundTransparency == 1 then
+            TweenService:Create(Tab, Animation.smoothOut, { BackgroundTransparency = 0.85 }):Play()
+        end
     end)
     Tab.MouseLeave:Connect(function()
-        TweenService:Create(tabScale, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+        TweenService:Create(tabScale, Animation.smoothOut, { Scale = 1 }):Play()
+        if Tab.BackgroundTransparency ~= 0.7 then
+            TweenService:Create(Tab, Animation.smoothOut, { BackgroundTransparency = 1 }):Play()
+        end
     end)
 
     local LeftSection = Instance.new("ScrollingFrame")
@@ -1400,10 +1531,10 @@ function Azure:create_tab(title)
     LeftSection.AutomaticCanvasSize = Enum.AutomaticSize.XY
     LeftSection.CanvasSize = UDim2.new(0, 0, 0, 0)
     LeftSection.Visible = false
-    LeftSection.ZIndex = 6
+    LeftSection.ZIndex = 7
     LeftSection.Parent = self._sections
     local leftList = Instance.new("UIListLayout", LeftSection)
-    leftList.Padding = UDim.new(0, 18)
+    leftList.Padding = UDim.new(0, 20)
     leftList.HorizontalAlignment = Enum.HorizontalAlignment.Center
     leftList.SortOrder = Enum.SortOrder.LayoutOrder
 
@@ -1418,14 +1549,14 @@ function Azure:create_tab(title)
     RightSection.AutomaticCanvasSize = Enum.AutomaticSize.XY
     RightSection.CanvasSize = UDim2.new(0, 0, 0, 0)
     RightSection.Visible = false
-    RightSection.ZIndex = 6
+    RightSection.ZIndex = 7
     RightSection.Parent = self._sections
     local rightList = Instance.new("UIListLayout", RightSection)
-    rightList.Padding = UDim.new(0, 18)
+    rightList.Padding = UDim.new(0, 20)
     rightList.HorizontalAlignment = Enum.HorizontalAlignment.Center
     rightList.SortOrder = Enum.SortOrder.LayoutOrder
 
-    local record = { Tab = Tab, Left = LeftSection, Right = RightSection, ActiveBar = activeBar }
+    local record = { Tab = Tab, Left = LeftSection, Right = RightSection, ActiveBar = activeBar, Glow = tabGlow }
     table.insert(self._tabs, record)
 
     local function activate()
@@ -1435,36 +1566,50 @@ function Azure:create_tab(title)
         end
         LeftSection.Visible = true
         RightSection.Visible = true
+
+        -- ★ Stagger fade-in
         local function staggerIn(container)
             local children = {}
             for _, c in ipairs(container:GetChildren()) do
                 if c:IsA("Frame") and c.Name == "Module" then table.insert(children, c) end
             end
-            Animation.stagger(children, 0, 0.04, function(mod)
-                local startPos = UDim2.new(mod.Position.X.Scale, mod.Position.X.Offset, mod.Position.Y.Scale, mod.Position.Y.Offset - 12)
+            Animation.stagger(children, 0, 0.05, function(mod)
+                local startPos = UDim2.new(mod.Position.X.Scale, mod.Position.X.Offset, mod.Position.Y.Scale, mod.Position.Y.Offset - 20)
                 mod.Position = startPos
                 mod.BackgroundTransparency = 1
-                TweenService:Create(mod, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                    Position = UDim2.new(mod.Position.X.Scale, mod.Position.X.Offset, mod.Position.Y.Scale, mod.Position.Y.Offset + 12),
-                    BackgroundTransparency = 0.05
+                mod.Rotation = -1.5
+                TweenService:Create(mod, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                    Position = UDim2.new(mod.Position.X.Scale, mod.Position.X.Offset, mod.Position.Y.Scale, mod.Position.Y.Offset + 20),
+                    BackgroundTransparency = 0.03,
+                    Rotation = 0,
                 }):Play()
             end)
         end
+
         for _, rec in pairs(self._tabs) do
             local isActive = (rec.Tab == Tab)
-            TweenService:Create(rec.Tab, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+            TweenService:Create(rec.Tab, Animation.smoothOut, {
                 BackgroundTransparency = isActive and 0.7 or 1,
-                BackgroundColor3 = isActive and Color3.fromRGB(140, 90, 220) or Color3.fromRGB(60, 40, 120),
+                BackgroundColor3 = isActive and PALETTE.borderSoft or PALETTE.bgSoft,
             }):Play()
-            TweenService:Create(rec.Tab, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                TextTransparency = isActive and 0.1 or 0.6,
+            TweenService:Create(rec.Tab, Animation.smoothOut, {
+                TextTransparency = isActive and 0.05 or 0.55,
+            }):Play()
+            TweenService:Create(rec.Tab, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                TextSize = isActive and 16 or 15,
             }):Play()
             if rec.ActiveBar then
-                TweenService:Create(rec.ActiveBar, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                TweenService:Create(rec.ActiveBar, Animation.smoothOut, {
                     BackgroundTransparency = isActive and 0 or 1,
                 }):Play()
             end
+            if rec.Glow then
+                TweenService:Create(rec.Glow, Animation.smoothOut, {
+                    BackgroundTransparency = isActive and 0.85 or 1,
+                }):Play()
+            end
         end
+
         if LeftSection.Visible then staggerIn(LeftSection) end
         if RightSection.Visible then staggerIn(RightSection) end
     end
@@ -1484,31 +1629,85 @@ function Azure:create_tab(title)
     function TabManager:create_module(settings)
         local section = (settings.section == "right") and RightSection or LeftSection
 
-        local Module = Instance.new("Frame", section)
+        -- ★ Shadow wrapper
+        local wrapper = Instance.new("Frame", section)
+        wrapper.Name = "ModuleWrapper"
+        wrapper.Size = UDim2.new(0, 241, 0, 93)
+        wrapper.Position = UDim2.new(0.004, 0, 0, -5)
+        wrapper.BackgroundTransparency = 1
+        wrapper.ZIndex = 7
+
+        -- ★ Shadow (behind card)
+        local shadowFrame = Instance.new("Frame", wrapper)
+        shadowFrame.Name = "Shadow"
+        shadowFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+        shadowFrame.Position = UDim2.new(0.5, 0, 0.5, 5)
+        shadowFrame.Size = UDim2.new(1, -4, 1, -4)
+        shadowFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+        shadowFrame.BackgroundTransparency = 0.75
+        shadowFrame.BorderSizePixel = 0
+        shadowFrame.ZIndex = 6
+        Instance.new("UICorner", shadowFrame).CornerRadius = UDim.new(0, 12)
+
+        local Module = Instance.new("Frame", wrapper)
         Module.Name = "Module"
-        Module.Size = UDim2.new(0, 241, 0, 93)
-        Module.Position = UDim2.new(0.004, 0, 0, -5)
-        Module.BackgroundColor3 = Color3.fromRGB(24, 18, 42)
-        Module.BackgroundTransparency = 0.05
+        Module.Size = UDim2.new(1, 0, 1, 0)
+        Module.Position = UDim2.new(0, 0, 0, 0)
+        Module.BackgroundColor3 = PALETTE.card
+        Module.BackgroundTransparency = 0.03
         Module.BorderSizePixel = 0
         Module.ClipsDescendants = false
         Module.AutomaticSize = Enum.AutomaticSize.Y
         Module.ZIndex = 7
-        Instance.new("UICorner", Module).CornerRadius = UDim.new(0, 8)
+        Instance.new("UICorner", Module).CornerRadius = UDim.new(0, 12)
+
+        -- ★ Glass inner highlight
+        Animation.glassHighlight(Module)
+
+        -- ★ Card gradient
+        local cardGrad = Instance.new("UIGradient", Module)
+        cardGrad.Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 28, 68)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 18, 46)),
+        }
+        cardGrad.Rotation = 135
+
+        -- ★ Border stroke
         local ms = Instance.new("UIStroke", Module)
-        ms.Color = Color3.fromRGB(180, 130, 255)
+        ms.Color = PALETTE.border
         ms.Transparency = 0.55
-        ms.Thickness = 1
+        ms.Thickness = 1.2
         ms.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
+        -- ★ Inner glow stroke
+        local innerGlow = Instance.new("UIStroke", Module)
+        innerGlow.Color = PALETTE.accentHot
+        innerGlow.Transparency = 0.92
+        innerGlow.Thickness = 1
+        innerGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+        local moduleScale = Instance.new("UIScale", Module)
+        moduleScale.Scale = 1
+
+        -- ★ Hover effect
         Module.MouseEnter:Connect(function()
-            TweenService:Create(ms, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                Transparency = 0.15, Thickness = 1.3,
+            TweenService:Create(ms, Animation.smoothOut, {
+                Transparency = 0.15, Thickness = 1.6, Color = PALETTE.accentHot,
+            }):Play()
+            TweenService:Create(innerGlow, Animation.smoothOut, { Transparency = 0.7 }):Play()
+            TweenService:Create(moduleScale, Animation.smoothOut, { Scale = 1.012 }):Play()
+            TweenService:Create(shadowFrame, Animation.smoothOut, {
+                BackgroundTransparency = 0.6, Position = UDim2.new(0.5, 0, 0.5, 6)
             }):Play()
         end)
         Module.MouseLeave:Connect(function()
-            TweenService:Create(ms, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                Transparency = 0.55, Thickness = 1,
+            TweenService:Create(ms, Animation.smoothOut, {
+                Transparency = 0.55, Thickness = 1.2, Color = PALETTE.border,
+            }):Play()
+            TweenService:Create(innerGlow, Animation.smoothOut, { Transparency = 0.92 }):Play()
+            TweenService:Create(moduleScale, Animation.smoothOut, { Scale = 1 }):Play()
+            TweenService:Create(shadowFrame, Animation.smoothOut, {
+                BackgroundTransparency = 0.75, Position = UDim2.new(0.5, 0, 0.5, 5)
             }):Play()
         end)
 
@@ -1519,64 +1718,91 @@ function Azure:create_tab(title)
         Header.BackgroundTransparency = 1
         Header.Size = UDim2.new(0, 241, 0, 93)
         Header.BorderSizePixel = 0
-        Header.ZIndex = 8
+        Header.ZIndex = 9
+
+        -- ★ Header icon dot
+        local iconDot = Instance.new("Frame", Header)
+        iconDot.AnchorPoint = Vector2.new(0, 0.5)
+        iconDot.Position = UDim2.new(0.055, 0, 0.27, 0)
+        iconDot.Size = UDim2.fromOffset(6, 6)
+        iconDot.BackgroundColor3 = PALETTE.accent
+        iconDot.BorderSizePixel = 0
+        iconDot.ZIndex = 10
+        Instance.new("UICorner", iconDot).CornerRadius = UDim.new(1, 0)
 
         local ModuleName = Instance.new("TextLabel", Header)
         ModuleName.FontFace = FONT.bold
         ModuleName.Text = settings.title or "Module"
-        ModuleName.TextColor3 = Color3.fromRGB(255, 255, 255)
-        ModuleName.TextTransparency = 0.15
+        ModuleName.TextColor3 = PALETTE.text
+        ModuleName.TextTransparency = 0.1
         ModuleName.BackgroundTransparency = 1
-        ModuleName.Size = UDim2.new(0, 205, 0, 16)
+        ModuleName.Size = UDim2.new(0, 200, 0, 16)
         ModuleName.AnchorPoint = Vector2.new(0, 0.5)
-        ModuleName.Position = UDim2.new(0.073, 0, 0.24, 0)
+        ModuleName.Position = UDim2.new(0.088, 0, 0.24, 0)
         ModuleName.TextXAlignment = Enum.TextXAlignment.Left
         ModuleName.TextSize = 15
-        ModuleName.ZIndex = 9
+        ModuleName.ZIndex = 10
 
         local Description = Instance.new("TextLabel", Header)
         Description.FontFace = FONT.reg
         Description.Text = settings.description or ""
-        Description.TextColor3 = Color3.fromRGB(220, 210, 240)
-        Description.TextTransparency = 0.6
+        Description.TextColor3 = PALETTE.textFaint
+        Description.TextTransparency = 0.35
         Description.BackgroundTransparency = 1
-        Description.Size = UDim2.new(0, 205, 0, 13)
+        Description.Size = UDim2.new(0, 200, 0, 13)
         Description.AnchorPoint = Vector2.new(0, 0.5)
-        Description.Position = UDim2.new(0.073, 0, 0.44, 0)
+        Description.Position = UDim2.new(0.088, 0, 0.44, 0)
         Description.TextXAlignment = Enum.TextXAlignment.Left
         Description.TextSize = 10
-        Description.ZIndex = 9
+        Description.ZIndex = 10
 
+        -- ★ Toggle
         local Toggle = Instance.new("Frame", Header)
         Toggle.Name = "Toggle"
-        Toggle.BackgroundTransparency = 0.7
-        Toggle.BackgroundColor3 = Color3.fromRGB(60, 45, 90)
-        Toggle.Size = UDim2.new(0, 25, 0, 12)
-        Toggle.Position = UDim2.new(0.82, 0, 0.757, 0)
+        Toggle.AnchorPoint = Vector2.new(1, 0.5)
+        Toggle.BackgroundTransparency = 0.6
+        Toggle.BackgroundColor3 = Color3.fromRGB(50, 38, 82)
+        Toggle.Size = UDim2.fromOffset(28, 14)
+        Toggle.Position = UDim2.new(1, -18, 0.757, 0)
         Toggle.BorderSizePixel = 0
-        Toggle.ZIndex = 9
+        Toggle.ZIndex = 10
         Instance.new("UICorner", Toggle).CornerRadius = UDim.new(1, 0)
+
+        local toggleStroke = Instance.new("UIStroke", Toggle)
+        toggleStroke.Color = PALETTE.borderSoft
+        toggleStroke.Thickness = 1
+        toggleStroke.Transparency = 0.5
+        toggleStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
         local Circle = Instance.new("Frame", Toggle)
         Circle.Name = "Circle"
         Circle.AnchorPoint = Vector2.new(0, 0.5)
-        Circle.Position = UDim2.new(0, 0, 0.5, 0)
-        Circle.BackgroundColor3 = Color3.fromRGB(140, 120, 180)
-        Circle.BackgroundTransparency = 0.2
+        Circle.Position = UDim2.new(0, 1, 0.5, 0)
+        Circle.BackgroundColor3 = Color3.fromRGB(130, 110, 175)
+        Circle.BackgroundTransparency = 0.15
         Circle.Size = UDim2.new(0, 12, 0, 12)
         Circle.BorderSizePixel = 0
-        Circle.ZIndex = 10
+        Circle.ZIndex = 11
         Instance.new("UICorner", Circle).CornerRadius = UDim.new(1, 0)
 
+        -- ★ Divider gradient
         local Divider = Instance.new("Frame", Header)
         Divider.Name = "Divider"
         Divider.AnchorPoint = Vector2.new(0.5, 0)
         Divider.Position = UDim2.new(0.5, 0, 0.62, 0)
-        Divider.BackgroundColor3 = Color3.fromRGB(200, 160, 255)
-        Divider.BackgroundTransparency = 0.7
-        Divider.Size = UDim2.new(0, 241, 0, 1)
+        Divider.BackgroundColor3 = PALETTE.accent
+        Divider.BackgroundTransparency = 0.6
+        Divider.Size = UDim2.new(0, 225, 0, 1)
         Divider.BorderSizePixel = 0
         Divider.ZIndex = 9
+
+        local divGrad2 = Instance.new("UIGradient", Divider)
+        divGrad2.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.5, 0.2),
+            NumberSequenceKeypoint.new(1, 1),
+        })
+        divGrad2.Parent = Divider
 
         local Options = Instance.new("Frame", Module)
         Options.Name = "Options"
@@ -1586,9 +1812,9 @@ function Azure:create_tab(title)
         Options.ZIndex = 8
         Options.ClipsDescendants = false
         local opPad = Instance.new("UIPadding", Options)
-        opPad.PaddingTop = UDim.new(0, 8)
+        opPad.PaddingTop = UDim.new(0, 10)
         local opList = Instance.new("UIListLayout", Options)
-        opList.Padding = UDim.new(0, 5)
+        opList.Padding = UDim.new(0, 6)
         opList.HorizontalAlignment = Enum.HorizontalAlignment.Center
         opList.SortOrder = Enum.SortOrder.LayoutOrder
 
@@ -1598,34 +1824,42 @@ function Azure:create_tab(title)
             local contentHeight = (ModuleManager._size or 0) + (ModuleManager._multiplier or 0)
             local total = 93 + contentHeight
             Module.Size = UDim2.fromOffset(241, total)
+            wrapper.Size = UDim2.fromOffset(241, total)
+            shadowFrame.Size = UDim2.new(1, -4, 1, -4)
             Options.Size = UDim2.fromOffset(241, contentHeight)
         end
 
         function ModuleManager:change_state(state)
             self._state = state
             if self._state then
-                TweenService:Create(Toggle, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                    BackgroundColor3 = Color3.fromRGB(180, 140, 255)
+                TweenService:Create(Toggle, Animation.springOut, {
+                    BackgroundColor3 = PALETTE.accent
                 }):Play()
-                TweenService:Create(Circle, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                TweenService:Create(toggleStroke, Animation.springOut, {
+                    Color = PALETTE.accentHot, Transparency = 0.15
+                }):Play()
+                TweenService:Create(Circle, Animation.springOut, {
                     BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-                    Position = UDim2.fromScale(0.53, 0.5)
+                    Position = UDim2.new(1, -13, 0.5, 0)
                 }):Play()
-                TweenService:Create(ms, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                    Color = Color3.fromRGB(200, 160, 255), Transparency = 0.3,
+                TweenService:Create(ms, Animation.smoothOut, {
+                    Color = PALETTE.accentHot, Transparency = 0.25, Thickness = 1.6,
                 }):Play()
-                task.delay(0.5, function()
-                    TweenService:Create(ms, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                        Color = Color3.fromRGB(180, 130, 255), Transparency = 0.55,
+                task.delay(0.6, function()
+                    TweenService:Create(ms, Animation.smoothOut, {
+                        Color = PALETTE.border, Transparency = 0.55, Thickness = 1.2,
                     }):Play()
                 end)
             else
-                TweenService:Create(Toggle, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                    BackgroundColor3 = Color3.fromRGB(60, 45, 90)
+                TweenService:Create(Toggle, Animation.smoothOut, {
+                    BackgroundColor3 = Color3.fromRGB(50, 38, 82)
                 }):Play()
-                TweenService:Create(Circle, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                    BackgroundColor3 = Color3.fromRGB(140, 120, 180),
-                    Position = UDim2.fromScale(0, 0.5)
+                TweenService:Create(toggleStroke, Animation.smoothOut, {
+                    Color = PALETTE.borderSoft, Transparency = 0.5
+                }):Play()
+                TweenService:Create(Circle, Animation.smoothOut, {
+                    BackgroundColor3 = Color3.fromRGB(130, 110, 175),
+                    Position = UDim2.new(0, 1, 0.5, 0)
                 }):Play()
             end
             refresh_size()
@@ -1636,9 +1870,11 @@ function Azure:create_tab(title)
 
         if Azure._config._flags[settings.flag] then
             ModuleManager._state = true
-            Toggle.BackgroundColor3 = Color3.fromRGB(180, 140, 255)
+            Toggle.BackgroundColor3 = PALETTE.accent
+            toggleStroke.Color = PALETTE.accentHot
+            toggleStroke.Transparency = 0.15
             Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-            Circle.Position = UDim2.fromScale(0.53, 0.5)
+            Circle.Position = UDim2.new(1, -13, 0.5, 0)
             pcall(function() if settings.callback then settings.callback(true) end end)
         end
 
@@ -1646,10 +1882,10 @@ function Azure:create_tab(title)
             ModuleManager:change_state(not ModuleManager._state)
         end)
 
-        -- CHECKBOX
+        -- ★ CHECKBOX
         function ModuleManager:create_checkbox(s)
             if self._size == 0 then self._size = 11 end
-            self._size += 20
+            self._size += 22
             refresh_size()
 
             local CM = { _state = false }
@@ -1658,17 +1894,17 @@ function Azure:create_tab(title)
             Checkbox.Text = ""
             Checkbox.AutoButtonColor = false
             Checkbox.BackgroundTransparency = 1
-            Checkbox.Size = UDim2.new(0, 207, 0, 15)
+            Checkbox.Size = UDim2.new(0, 207, 0, 18)
             Checkbox.BorderSizePixel = 0
             Checkbox.ZIndex = 9
 
             local TitleLabel = Instance.new("TextLabel", Checkbox)
             TitleLabel.FontFace = FONT.semi
             TitleLabel.Text = s.title
-            TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            TitleLabel.TextTransparency = 0.2
+            TitleLabel.TextColor3 = PALETTE.text
+            TitleLabel.TextTransparency = 0.15
             TitleLabel.BackgroundTransparency = 1
-            TitleLabel.Size = UDim2.new(0, 142, 0, 14)
+            TitleLabel.Size = UDim2.new(0, 142, 0, 15)
             TitleLabel.AnchorPoint = Vector2.new(0, 0.5)
             TitleLabel.Position = UDim2.new(0, 0, 0.5, 0)
             TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1678,40 +1914,73 @@ function Azure:create_tab(title)
             local Box = Instance.new("Frame", Checkbox)
             Box.Name = "Box"
             Box.AnchorPoint = Vector2.new(1, 0.5)
-            Box.Position = UDim2.new(1, 0, 0.5, 0)
-            Box.Size = UDim2.new(0, 15, 0, 15)
-            Box.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
-            Box.BackgroundTransparency = 0.9
+            Box.Position = UDim2.new(1, -2, 0.5, 0)
+            Box.Size = UDim2.fromOffset(16, 16)
+            Box.BackgroundColor3 = Color3.fromRGB(50, 38, 82)
+            Box.BackgroundTransparency = 0.6
             Box.BorderSizePixel = 0
             Box.ZIndex = 10
-            Instance.new("UICorner", Box).CornerRadius = UDim.new(0, 7)
+            Instance.new("UICorner", Box).CornerRadius = UDim.new(0, 6)
+
+            local boxStroke = Instance.new("UIStroke", Box)
+            boxStroke.Color = PALETTE.borderSoft
+            boxStroke.Transparency = 0.4
+            boxStroke.Thickness = 1
+            boxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
             local Fill = Instance.new("Frame", Box)
             Fill.Name = "Fill"
             Fill.AnchorPoint = Vector2.new(0.5, 0.5)
             Fill.Position = UDim2.new(0.5, 0, 0.5, 0)
             Fill.Size = UDim2.fromOffset(0, 0)
-            Fill.BackgroundColor3 = Color3.fromRGB(180, 140, 255)
-            Fill.BackgroundTransparency = 0.2
+            Fill.BackgroundColor3 = PALETTE.accent
+            Fill.BackgroundTransparency = 0.15
             Fill.BorderSizePixel = 0
             Fill.ZIndex = 11
-            Instance.new("UICorner", Fill).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", Fill).CornerRadius = UDim.new(0, 5)
+
+            local checkMark = Instance.new("TextLabel", Box)
+            checkMark.Name = "Check"
+            checkMark.FontFace = FONT.bold
+            checkMark.Text = "✓"
+            checkMark.TextColor3 = Color3.new(1, 1, 1)
+            checkMark.TextTransparency = 1
+            checkMark.BackgroundTransparency = 1
+            checkMark.Size = UDim2.new(1, 0, 1, 0)
+            checkMark.TextSize = 12
+            checkMark.ZIndex = 12
 
             Checkbox.MouseEnter:Connect(function()
-                TweenService:Create(TitleLabel, TweenInfo.new(0.2), { TextTransparency = 0 }):Play()
+                TweenService:Create(TitleLabel, Animation.smoothOut, { TextTransparency = 0 }):Play()
+                TweenService:Create(boxStroke, Animation.smoothOut, {
+                    Color = PALETTE.accentHot, Transparency = 0.15
+                }):Play()
             end)
             Checkbox.MouseLeave:Connect(function()
-                TweenService:Create(TitleLabel, TweenInfo.new(0.2), { TextTransparency = 0.2 }):Play()
+                TweenService:Create(TitleLabel, Animation.smoothOut, { TextTransparency = 0.15 }):Play()
+                if not CM._state then
+                    TweenService:Create(boxStroke, Animation.smoothOut, {
+                        Color = PALETTE.borderSoft, Transparency = 0.4
+                    }):Play()
+                end
             end)
 
             function CM:change_state(state)
                 self._state = state
                 if state then
-                    TweenService:Create(Box, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { BackgroundTransparency = 0.7 }):Play()
-                    TweenService:Create(Fill, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(9, 9) }):Play()
+                    TweenService:Create(Box, Animation.springOut, { BackgroundTransparency = 0.75 }):Play()
+                    TweenService:Create(Fill, Animation.springOut, { Size = UDim2.fromOffset(10, 10) }):Play()
+                    TweenService:Create(checkMark, Animation.smoothOut, { TextTransparency = 0.3 }):Play()
+                    TweenService:Create(boxStroke, Animation.springOut, {
+                        Color = PALETTE.accentHot, Transparency = 0.1
+                    }):Play()
                 else
-                    TweenService:Create(Box, TweenInfo.new(0.25), { BackgroundTransparency = 0.9 }):Play()
-                    TweenService:Create(Fill, TweenInfo.new(0.25), { Size = UDim2.fromOffset(0, 0) }):Play()
+                    TweenService:Create(Box, Animation.smoothOut, { BackgroundTransparency = 0.6 }):Play()
+                    TweenService:Create(Fill, Animation.smoothOut, { Size = UDim2.fromOffset(0, 0) }):Play()
+                    TweenService:Create(checkMark, Animation.smoothOut, { TextTransparency = 1 }):Play()
+                    TweenService:Create(boxStroke, Animation.smoothOut, {
+                        Color = PALETTE.borderSoft, Transparency = 0.4
+                    }):Play()
                 end
                 Azure._config._flags[s.flag] = self._state
                 Config:save(game.GameId, Azure._config)
@@ -1730,10 +1999,10 @@ function Azure:create_tab(title)
             return CM
         end
 
-        -- SLIDER
+        -- ★ SLIDER
         function ModuleManager:create_slider(s)
             if self._size == 0 then self._size = 11 end
-            self._size += 27
+            self._size += 30
             refresh_size()
 
             local Slider = Instance.new("TextButton", Options)
@@ -1741,67 +2010,86 @@ function Azure:create_tab(title)
             Slider.Text = ""
             Slider.AutoButtonColor = false
             Slider.BackgroundTransparency = 1
-            Slider.Size = UDim2.new(0, 207, 0, 22)
+            Slider.Size = UDim2.new(0, 207, 0, 25)
             Slider.BorderSizePixel = 0
             Slider.ZIndex = 9
 
             local TitleLabel = Instance.new("TextLabel", Slider)
             TitleLabel.FontFace = FONT.semi
             TitleLabel.Text = s.title
-            TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            TitleLabel.TextTransparency = 0.2
+            TitleLabel.TextColor3 = PALETTE.text
+            TitleLabel.TextTransparency = 0.15
             TitleLabel.BackgroundTransparency = 1
-            TitleLabel.Size = UDim2.new(0, 153, 0, 14)
-            TitleLabel.Position = UDim2.new(0, 0, 0.02, 0)
+            TitleLabel.Size = UDim2.new(0, 153, 0, 15)
+            TitleLabel.Position = UDim2.new(0, 0, 0, 0)
             TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
             TitleLabel.TextSize = 12
             TitleLabel.ZIndex = 10
 
+            local Value = Instance.new("TextLabel", Slider)
+            Value.Name = "Value"
+            Value.FontFace = FONT.bold
+            Value.TextColor3 = PALETTE.accentHot
+            Value.TextTransparency = 0.05
+            Value.Text = "0"
+            Value.BackgroundTransparency = 1
+            Value.Size = UDim2.new(0, 42, 0, 15)
+            Value.AnchorPoint = Vector2.new(1, 0)
+            Value.Position = UDim2.new(1, -2, 0, 0)
+            Value.TextXAlignment = Enum.TextXAlignment.Right
+            Value.TextSize = 12
+            Value.ZIndex = 10
+
             local Drag = Instance.new("Frame", Slider)
             Drag.Name = "Drag"
             Drag.AnchorPoint = Vector2.new(0.5, 1)
-            Drag.Position = UDim2.new(0.5, 0, 0.95, 0)
-            Drag.Size = UDim2.new(0, 207, 0, 4)
-            Drag.BackgroundColor3 = Color3.fromRGB(45, 35, 70)
-            Drag.BackgroundTransparency = 0.7
+            Drag.Position = UDim2.new(0.5, 0, 0.98, 0)
+            Drag.Size = UDim2.new(0, 207, 0, 5)
+            Drag.BackgroundColor3 = Color3.fromRGB(35, 26, 58)
+            Drag.BackgroundTransparency = 0.5
             Drag.BorderSizePixel = 0
             Drag.ZIndex = 10
             Instance.new("UICorner", Drag).CornerRadius = UDim.new(1, 0)
+
+            local dragStroke = Instance.new("UIStroke", Drag)
+            dragStroke.Color = PALETTE.borderSoft
+            dragStroke.Transparency = 0.7
+            dragStroke.Thickness = 1
+            dragStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
             local Fill = Instance.new("Frame", Drag)
             Fill.Name = "Fill"
             Fill.AnchorPoint = Vector2.new(0, 0.5)
             Fill.Position = UDim2.new(0, 0, 0.5, 0)
-            Fill.Size = UDim2.new(0, 0, 0, 4)
-            Fill.BackgroundColor3 = Color3.fromRGB(180, 140, 255)
-            Fill.BackgroundTransparency = 0.15
+            Fill.Size = UDim2.new(0, 0, 0, 5)
+            Fill.BackgroundColor3 = PALETTE.accent
+            Fill.BackgroundTransparency = 0.05
             Fill.BorderSizePixel = 0
             Fill.ZIndex = 11
-            Instance.new("UICorner", Fill).CornerRadius = UDim.new(0, 3)
+            Instance.new("UICorner", Fill).CornerRadius = UDim.new(1, 0)
+
+            local fillGrad = Instance.new("UIGradient", Fill)
+            fillGrad.Color = ColorSequence.new{
+                ColorSequenceKeypoint.new(0, PALETTE.accent),
+                ColorSequenceKeypoint.new(1, PALETTE.accentHot),
+            }
+            fillGrad.Parent = Fill
 
             local Circle2 = Instance.new("Frame", Fill)
             Circle2.Name = "Circle"
             Circle2.AnchorPoint = Vector2.new(1, 0.5)
             Circle2.Position = UDim2.new(1, 0, 0.5, 0)
-            Circle2.Size = UDim2.new(0, 6, 0, 6)
+            Circle2.Size = UDim2.fromOffset(9, 9)
             Circle2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             Circle2.BorderSizePixel = 0
             Circle2.ZIndex = 12
             Instance.new("UICorner", Circle2).CornerRadius = UDim.new(1, 0)
 
-            local Value = Instance.new("TextLabel", Slider)
-            Value.Name = "Value"
-            Value.FontFace = FONT.bold
-            Value.TextColor3 = Color3.fromRGB(255, 255, 255)
-            Value.TextTransparency = 0.2
-            Value.Text = "0"
-            Value.BackgroundTransparency = 1
-            Value.Size = UDim2.new(0, 42, 0, 14)
-            Value.AnchorPoint = Vector2.new(1, 0)
-            Value.Position = UDim2.new(1, 0, 0.02, 0)
-            Value.TextXAlignment = Enum.TextXAlignment.Right
-            Value.TextSize = 12
-            Value.ZIndex = 10
+            local circleGlow = Instance.new("UIStroke", Circle2)
+            circleGlow.Color = PALETTE.accentHot
+            circleGlow.Thickness = 2
+            circleGlow.Transparency = 0.4
+            circleGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
             local SM = {}
             local min_v = s.minimum_value or 0
@@ -1813,10 +2101,10 @@ function Azure:create_tab(title)
                 if s.round_number then cur = math.floor(cur + 0.5) end
                 local pct = (cur - min_v) / (max_v - min_v)
                 Value.Text = tostring(cur)
-                TweenService:Create(Fill, TweenInfo.new(0.15), { Size = UDim2.new(pct, 0, 0, 4) }):Play()
+                TweenService:Create(Fill, Animation.smoothOut, { Size = UDim2.new(pct, 0, 0, 5) }):Play()
                 local scale = Circle2:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", Circle2)
-                scale.Scale = 1.3
-                TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+                scale.Scale = 1.35
+                TweenService:Create(scale, Animation.springOut, { Scale = 1 }):Play()
                 Azure._config._flags[s.flag] = cur
                 if s.callback then pcall(s.callback, cur) end
             end
@@ -1857,10 +2145,10 @@ function Azure:create_tab(title)
             return SM
         end
 
-        -- RANGE SLIDER
+        -- ★ RANGE SLIDER
         function ModuleManager:create_range_slider(s)
             if self._size == 0 then self._size = 11 end
-            self._size += 27
+            self._size += 30
             refresh_size()
 
             local Slider = Instance.new("TextButton", Options)
@@ -1868,18 +2156,18 @@ function Azure:create_tab(title)
             Slider.Text = ""
             Slider.AutoButtonColor = false
             Slider.BackgroundTransparency = 1
-            Slider.Size = UDim2.new(0, 207, 0, 22)
+            Slider.Size = UDim2.new(0, 207, 0, 25)
             Slider.BorderSizePixel = 0
             Slider.ZIndex = 9
 
             local TitleLabel = Instance.new("TextLabel", Slider)
             TitleLabel.FontFace = FONT.semi
             TitleLabel.Text = s.title
-            TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            TitleLabel.TextTransparency = 0.2
+            TitleLabel.TextColor3 = PALETTE.text
+            TitleLabel.TextTransparency = 0.15
             TitleLabel.BackgroundTransparency = 1
-            TitleLabel.Size = UDim2.new(0, 130, 0, 14)
-            TitleLabel.Position = UDim2.new(0, 0, 0.02, 0)
+            TitleLabel.Size = UDim2.new(0, 130, 0, 15)
+            TitleLabel.Position = UDim2.new(0, 0, 0, 0)
             TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
             TitleLabel.TextSize = 12
             TitleLabel.ZIndex = 10
@@ -1887,13 +2175,13 @@ function Azure:create_tab(title)
             local Value = Instance.new("TextLabel", Slider)
             Value.Name = "Value"
             Value.FontFace = FONT.bold
-            Value.TextColor3 = Color3.fromRGB(255, 255, 255)
-            Value.TextTransparency = 0.2
+            Value.TextColor3 = PALETTE.accentHot
+            Value.TextTransparency = 0.05
             Value.Text = "0 - 0"
             Value.BackgroundTransparency = 1
-            Value.Size = UDim2.new(0, 80, 0, 14)
+            Value.Size = UDim2.new(0, 80, 0, 15)
             Value.AnchorPoint = Vector2.new(1, 0)
-            Value.Position = UDim2.new(1, 0, 0.02, 0)
+            Value.Position = UDim2.new(1, -2, 0, 0)
             Value.TextXAlignment = Enum.TextXAlignment.Right
             Value.TextSize = 12
             Value.ZIndex = 10
@@ -1901,10 +2189,10 @@ function Azure:create_tab(title)
             local Drag = Instance.new("Frame", Slider)
             Drag.Name = "Drag"
             Drag.AnchorPoint = Vector2.new(0.5, 1)
-            Drag.Position = UDim2.new(0.5, 0, 0.95, 0)
-            Drag.Size = UDim2.new(0, 207, 0, 4)
-            Drag.BackgroundColor3 = Color3.fromRGB(45, 35, 70)
-            Drag.BackgroundTransparency = 0.7
+            Drag.Position = UDim2.new(0.5, 0, 0.98, 0)
+            Drag.Size = UDim2.new(0, 207, 0, 5)
+            Drag.BackgroundColor3 = Color3.fromRGB(35, 26, 58)
+            Drag.BackgroundTransparency = 0.5
             Drag.BorderSizePixel = 0
             Drag.ZIndex = 10
             Instance.new("UICorner", Drag).CornerRadius = UDim.new(1, 0)
@@ -1913,30 +2201,47 @@ function Azure:create_tab(title)
             RangeFill.Name = "RangeFill"
             RangeFill.AnchorPoint = Vector2.new(0, 0.5)
             RangeFill.Position = UDim2.new(0, 0, 0.5, 0)
-            RangeFill.Size = UDim2.new(0, 0, 0, 4)
-            RangeFill.BackgroundColor3 = Color3.fromRGB(180, 140, 255)
-            RangeFill.BackgroundTransparency = 0.15
+            RangeFill.Size = UDim2.new(0, 0, 0, 5)
+            RangeFill.BackgroundColor3 = PALETTE.accent
+            RangeFill.BackgroundTransparency = 0.05
             RangeFill.BorderSizePixel = 0
             RangeFill.ZIndex = 11
-            Instance.new("UICorner", RangeFill).CornerRadius = UDim.new(0, 3)
+            Instance.new("UICorner", RangeFill).CornerRadius = UDim.new(1, 0)
+
+            local rangeGrad = Instance.new("UIGradient", RangeFill)
+            rangeGrad.Color = ColorSequence.new{
+                ColorSequenceKeypoint.new(0, PALETTE.accent),
+                ColorSequenceKeypoint.new(1, PALETTE.accentHot),
+            }
+            rangeGrad.Parent = RangeFill
 
             local MinHandle = Instance.new("Frame", Drag)
             MinHandle.Name = "MinHandle"
             MinHandle.AnchorPoint = Vector2.new(0.5, 0.5)
-            MinHandle.Size = UDim2.new(0, 8, 0, 8)
+            MinHandle.Size = UDim2.fromOffset(11, 11)
             MinHandle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             MinHandle.BorderSizePixel = 0
             MinHandle.ZIndex = 12
             Instance.new("UICorner", MinHandle).CornerRadius = UDim.new(1, 0)
+            local mhGlow = Instance.new("UIStroke", MinHandle)
+            mhGlow.Color = PALETTE.accentHot
+            mhGlow.Thickness = 2
+            mhGlow.Transparency = 0.4
+            mhGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
             local MaxHandle = Instance.new("Frame", Drag)
             MaxHandle.Name = "MaxHandle"
             MaxHandle.AnchorPoint = Vector2.new(0.5, 0.5)
-            MaxHandle.Size = UDim2.new(0, 8, 0, 8)
+            MaxHandle.Size = UDim2.fromOffset(11, 11)
             MaxHandle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             MaxHandle.BorderSizePixel = 0
             MaxHandle.ZIndex = 12
             Instance.new("UICorner", MaxHandle).CornerRadius = UDim.new(1, 0)
+            local xhGlow = Instance.new("UIStroke", MaxHandle)
+            xhGlow.Color = PALETTE.accentHot
+            xhGlow.Thickness = 2
+            xhGlow.Transparency = 0.4
+            xhGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
             local SM = {}
             local min_v = s.minimum_value or 0
@@ -1949,7 +2254,7 @@ function Azure:create_tab(title)
                 local pmin = span > 0 and (cur_min - min_v) / span or 0
                 local pmax = span > 0 and (cur_max - min_v) / span or 1
                 RangeFill.Position = UDim2.new(pmin, 0, 0.5, 0)
-                RangeFill.Size = UDim2.new(math.max(pmax - pmin, 0.01), 0, 0, 4)
+                RangeFill.Size = UDim2.new(math.max(pmax - pmin, 0.01), 0, 0, 5)
                 MinHandle.Position = UDim2.new(pmin, 0, 0.5, 0)
                 MaxHandle.Position = UDim2.new(pmax, 0, 0.5, 0)
                 Value.Text = tostring(math.floor(cur_min)) .. " - " .. tostring(math.floor(cur_max))
@@ -2006,10 +2311,10 @@ function Azure:create_tab(title)
             return SM
         end
 
-        -- DROPDOWN
+        -- ★ DROPDOWN
         function ModuleManager:create_dropdown(s)
             if self._size == 0 then self._size = 11 end
-            self._size += 44
+            self._size += 46
             refresh_size()
 
             local DM = { _state = false, _size = 0 }
@@ -2018,17 +2323,17 @@ function Azure:create_tab(title)
             Dropdown.Text = ""
             Dropdown.AutoButtonColor = false
             Dropdown.BackgroundTransparency = 1
-            Dropdown.Size = UDim2.new(0, 207, 0, 39)
+            Dropdown.Size = UDim2.new(0, 207, 0, 42)
             Dropdown.BorderSizePixel = 0
             Dropdown.ZIndex = 9
 
             local TitleLabel = Instance.new("TextLabel", Dropdown)
             TitleLabel.FontFace = FONT.semi
             TitleLabel.Text = s.title
-            TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            TitleLabel.TextTransparency = 0.2
+            TitleLabel.TextColor3 = PALETTE.text
+            TitleLabel.TextTransparency = 0.15
             TitleLabel.BackgroundTransparency = 1
-            TitleLabel.Size = UDim2.new(0, 207, 0, 14)
+            TitleLabel.Size = UDim2.new(0, 207, 0, 15)
             TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
             TitleLabel.TextSize = 12
             TitleLabel.ZIndex = 10
@@ -2037,23 +2342,42 @@ function Azure:create_tab(title)
             Box.Name = "Box"
             Box.ClipsDescendants = true
             Box.AnchorPoint = Vector2.new(0.5, 0)
-            Box.Position = UDim2.new(0.5, 0, 1.2, 0)
-            Box.Size = UDim2.new(0, 207, 0, 22)
-            Box.BackgroundColor3 = Color3.fromRGB(35, 28, 55)
-            Box.BackgroundTransparency = 0.4
+            Box.Position = UDim2.new(0.5, 0, 1.15, 0)
+            Box.Size = UDim2.new(0, 207, 0, 24)
+            Box.BackgroundColor3 = Color3.fromRGB(32, 24, 52)
+            Box.BackgroundTransparency = 0.25
             Box.BorderSizePixel = 0
             Box.ZIndex = 11
-            Instance.new("UICorner", Box).CornerRadius = UDim.new(0, 4)
+            Instance.new("UICorner", Box).CornerRadius = UDim.new(0, 6)
+
+            local boxStroke2 = Instance.new("UIStroke", Box)
+            boxStroke2.Color = PALETTE.borderSoft
+            boxStroke2.Transparency = 0.55
+            boxStroke2.Thickness = 1
+            boxStroke2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+            local arrow = Instance.new("TextLabel", Box)
+            arrow.Name = "Arrow"
+            arrow.FontFace = FONT.bold
+            arrow.Text = "▾"
+            arrow.TextColor3 = PALETTE.accentHot
+            arrow.TextTransparency = 0.15
+            arrow.BackgroundTransparency = 1
+            arrow.AnchorPoint = Vector2.new(1, 0.5)
+            arrow.Position = UDim2.new(1, -6, 0.5, 0)
+            arrow.Size = UDim2.fromOffset(12, 12)
+            arrow.TextSize = 11
+            arrow.ZIndex = 12
 
             local CurrentOption = Instance.new("TextLabel", Box)
             CurrentOption.Name = "CurrentOption"
             CurrentOption.FontFace = FONT.bold
-            CurrentOption.TextColor3 = Color3.fromRGB(255, 255, 255)
-            CurrentOption.TextTransparency = 0.15
+            CurrentOption.TextColor3 = PALETTE.text
+            CurrentOption.TextTransparency = 0.05
             CurrentOption.BackgroundTransparency = 1
-            CurrentOption.Size = UDim2.new(0, 161, 0, 14)
+            CurrentOption.Size = UDim2.new(0, 165, 0, 15)
             CurrentOption.AnchorPoint = Vector2.new(0, 0.5)
-            CurrentOption.Position = UDim2.new(0.05, 0, 0.5, 0)
+            CurrentOption.Position = UDim2.new(0.04, 0, 0.5, 0)
             CurrentOption.TextXAlignment = Enum.TextXAlignment.Left
             CurrentOption.TextSize = 12
             CurrentOption.ZIndex = 12
@@ -2079,29 +2403,31 @@ function Azure:create_tab(title)
             end
 
             if s.options and #s.options > 0 then
-                DM._size = 3
+                DM._size = 5
                 for index, value in ipairs(s.options) do
                     local Option = Instance.new("TextButton", OptionsFrame)
                     Option.Name = "Option"
                     Option.FontFace = FONT.med
                     Option.Text = (typeof(value) == "string" and value) or value.Name
-                    Option.TextColor3 = Color3.fromRGB(255, 255, 255)
-                    Option.TextTransparency = 0.6
+                    Option.TextColor3 = PALETTE.textDim
+                    Option.TextTransparency = 0.5
                     Option.TextSize = 11
                     Option.BackgroundTransparency = 1
                     Option.TextXAlignment = Enum.TextXAlignment.Left
                     Option.AutoButtonColor = false
-                    Option.Size = UDim2.new(0, 186, 0, 18)
+                    Option.Size = UDim2.new(0, 186, 0, 19)
                     Option.ZIndex = 13
+                    local optPad = Instance.new("UIPadding", Option)
+                    optPad.PaddingLeft = UDim.new(0, 8)
 
                     Option.MouseEnter:Connect(function()
                         if Option.Text ~= CurrentOption.Text then
-                            TweenService:Create(Option, TweenInfo.new(0.15), { TextTransparency = 0.2 }):Play()
+                            TweenService:Create(Option, Animation.smoothOut, { TextTransparency = 0.1, TextColor3 = PALETTE.accentHot }):Play()
                         end
                     end)
                     Option.MouseLeave:Connect(function()
                         if Option.Text ~= CurrentOption.Text then
-                            TweenService:Create(Option, TweenInfo.new(0.15), { TextTransparency = 0.6 }):Play()
+                            TweenService:Create(Option, Animation.smoothOut, { TextTransparency = 0.5, TextColor3 = PALETTE.textDim }):Play()
                         end
                     end)
 
@@ -2109,12 +2435,13 @@ function Azure:create_tab(title)
                         DM:update(value)
                         for _, child in OptionsFrame:GetChildren() do
                             if child.Name == "Option" then
-                                child.TextTransparency = (child.Text == CurrentOption.Text) and 0.2 or 0.6
+                                child.TextTransparency = (child.Text == CurrentOption.Text) and 0.05 or 0.5
+                                child.TextColor3 = (child.Text == CurrentOption.Text) and PALETTE.accentHot or PALETTE.textDim
                             end
                         end
                     end)
                     if index > (s.maximum_options or 10) then continue end
-                    DM._size += 18
+                    DM._size += 19
                 end
                 OptionsFrame.Size = UDim2.fromOffset(207, DM._size)
             end
@@ -2126,20 +2453,22 @@ function Azure:create_tab(title)
                 self._state = not self._state
                 if self._state then
                     ModuleManager._multiplier += self._size
-                    TweenService:Create(Dropdown, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                        Size = UDim2.fromOffset(207, 39 + self._size)
+                    TweenService:Create(Dropdown, Animation.springOut, {
+                        Size = UDim2.fromOffset(207, 42 + self._size)
                     }):Play()
-                    TweenService:Create(Box, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                        Size = UDim2.fromOffset(207, 22 + self._size)
+                    TweenService:Create(Box, Animation.springOut, {
+                        Size = UDim2.fromOffset(207, 24 + self._size)
                     }):Play()
+                    TweenService:Create(arrow, Animation.smoothOut, { Rotation = 180 }):Play()
                 else
                     ModuleManager._multiplier -= self._size
-                    TweenService:Create(Dropdown, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                        Size = UDim2.fromOffset(207, 39)
+                    TweenService:Create(Dropdown, Animation.smoothOut, {
+                        Size = UDim2.fromOffset(207, 42)
                     }):Play()
-                    TweenService:Create(Box, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                        Size = UDim2.fromOffset(207, 22)
+                    TweenService:Create(Box, Animation.smoothOut, {
+                        Size = UDim2.fromOffset(207, 24)
                     }):Play()
+                    TweenService:Create(arrow, Animation.smoothOut, { Rotation = 0 }):Play()
                 end
                 refresh_size()
             end)
@@ -2165,7 +2494,6 @@ local SpamTab   = AzureWindow:create_tab("Spam")
 local DetTab    = AzureWindow:create_tab("Detection")
 local VisualTab = AzureWindow:create_tab("Visual")
 
--- MAIN — Auto Parry
 local autoparry_module = MainTab:create_module({
     title = "Auto Parry",
     description = "Auto Parry Settings",
@@ -2178,12 +2506,8 @@ local autoparry_module = MainTab:create_module({
 })
 
 autoparry_module:create_slider({
-    title = "Parry Accuracy",
-    flag = "ParryAccuracy",
-    maximum_value = 50,
-    minimum_value = 1,
-    value = 50,
-    round_number = true,
+    title = "Parry Accuracy", flag = "ParryAccuracy",
+    maximum_value = 50, minimum_value = 1, value = 50, round_number = true,
     callback = function(value)
         if System and not System.__properties.__humanizer_enabled then
             System.__properties.__accuracy = value
@@ -2193,20 +2517,14 @@ autoparry_module:create_slider({
 })
 
 autoparry_module:create_dropdown({
-    title = "Parry Mode",
-    flag = "AutoParryMode",
-    options = {"Remote", "Keypress"},
-    maximum_options = 10,
-    callback = function(value)
-        getgenv().AutoParryMode = value
-    end,
+    title = "Parry Mode", flag = "AutoParryMode",
+    options = {"Remote", "Keypress"}, maximum_options = 10,
+    callback = function(value) getgenv().AutoParryMode = value end,
 })
 
 autoparry_module:create_dropdown({
-    title = "Mode curve",
-    flag = "ModeCurve",
-    options = System.__config.__curve_names,
-    maximum_options = 10,
+    title = "Mode curve", flag = "ModeCurve",
+    options = System.__config.__curve_names, maximum_options = 10,
     callback = function(value)
         for i, name in ipairs(System.__config.__curve_names) do
             if name == value then System.__properties.__curve_mode = i; break end
@@ -2215,52 +2533,36 @@ autoparry_module:create_dropdown({
 })
 
 autoparry_module:create_checkbox({
-    title = "Cooldown Protection",
-    flag = "CooldownProtection",
-    callback = function(value)
-        getgenv().CooldownProtection = value
-    end,
+    title = "Cooldown Protection", flag = "CooldownProtection",
+    callback = function(value) getgenv().CooldownProtection = value end,
 })
 
 autoparry_module:create_checkbox({
-    title = "Auto Ability",
-    flag = "AutoAbility",
-    callback = function(value)
-        getgenv().AutoAbility = value
-    end,
+    title = "Auto Ability", flag = "AutoAbility",
+    callback = function(value) getgenv().AutoAbility = value end,
 })
 
 autoparry_module:create_checkbox({
-    title = "Notify",
-    flag = "AutoParryNotify",
-    callback = function(value)
-        getgenv().AutoParryNotify = value
-    end,
+    title = "Notify", flag = "AutoParryNotify",
+    callback = function(value) getgenv().AutoParryNotify = value end,
 })
 
--- MAIN — Humanizer
 local humanizer_module = MainTab:create_module({
     title = "Humanizer",
     description = "Choose a random parry accuracy range.",
-    flag = "HumanizerModule",
-    section = "right",
+    flag = "HumanizerModule", section = "right",
     callback = function(state)
         if System then
             System.__properties.__humanizer_enabled = state
-            if state and update_randomized_accuracy then
-                pcall(update_randomized_accuracy)
-            end
+            if state and update_randomized_accuracy then pcall(update_randomized_accuracy) end
         end
     end,
 })
 
 humanizer_module:create_range_slider({
-    title = "Humanizer Accuracy",
-    flag = "HumanizerAccuracyRange",
-    maximum_value = 50,
-    minimum_value = 1,
-    value = { min = 1, max = 50 },
-    round_number = true,
+    title = "Humanizer Accuracy", flag = "HumanizerAccuracyRange",
+    maximum_value = 50, minimum_value = 1,
+    value = { min = 1, max = 50 }, round_number = true,
     callback = function(min_value, max_value)
         if System then
             System.__properties.__humanizer_min_accuracy = min_value
@@ -2269,12 +2571,9 @@ humanizer_module:create_range_slider({
     end,
 })
 
--- SPAM — Manual Spam
 local manual_spam_module = SpamTab:create_module({
-    title = "Manual Spam",
-    description = "Spam parries continuously",
-    flag = "ManualSpamModule",
-    section = "left",
+    title = "Manual Spam", description = "Spam parries continuously",
+    flag = "ManualSpamModule", section = "left",
     callback = function(state)
         System.__properties.__manual_spam_enabled = state
         if state then System.manual_spam.start() else System.manual_spam.stop() end
@@ -2282,23 +2581,14 @@ local manual_spam_module = SpamTab:create_module({
 })
 
 manual_spam_module:create_slider({
-    title = "CPS",
-    flag = "ManualSpamCPS",
-    maximum_value = 200,
-    minimum_value = 1,
-    value = 100,
-    round_number = true,
-    callback = function(value)
-        System.__properties.__spam_rate = value
-    end,
+    title = "CPS", flag = "ManualSpamCPS",
+    maximum_value = 200, minimum_value = 1, value = 100, round_number = true,
+    callback = function(value) System.__properties.__spam_rate = value end,
 })
 
--- SPAM — Auto Spam
 local auto_spam_module = SpamTab:create_module({
-    title = "Auto Spam",
-    description = "Automatically spam parries ball",
-    flag = "AutoSpamModule",
-    section = "right",
+    title = "Auto Spam", description = "Automatically spam parries ball",
+    flag = "AutoSpamModule", section = "right",
     callback = function(state)
         System.__properties.__auto_spam_enabled = state
         if state then System.auto_spam.start() else System.auto_spam.stop() end
@@ -2306,48 +2596,28 @@ local auto_spam_module = SpamTab:create_module({
 })
 
 auto_spam_module:create_slider({
-    title = "Parry Threshold",
-    flag = "ParryThreshold",
-    maximum_value = 3,
-    minimum_value = 1,
-    value = 1,
-    round_number = true,
-    callback = function(value)
-        System.__properties.__spam_threshold = value
-    end,
+    title = "Parry Threshold", flag = "ParryThreshold",
+    maximum_value = 3, minimum_value = 1, value = 1, round_number = true,
+    callback = function(value) System.__properties.__spam_threshold = value end,
 })
 
 auto_spam_module:create_slider({
-    title = "Distance Multiplier",
-    flag = "DistanceMultiplier",
-    maximum_value = 3,
-    minimum_value = 0.3,
-    value = 1,
-    round_number = false,
-    callback = function(value)
-        System.__properties.__distance_multiplier = value
-    end,
+    title = "Distance Multiplier", flag = "DistanceMultiplier",
+    maximum_value = 3, minimum_value = 0.3, value = 1, round_number = false,
+    callback = function(value) System.__properties.__distance_multiplier = value end,
 })
 
 auto_spam_module:create_dropdown({
-    title = "Mode",
-    flag = "AutoSpamMode",
-    options = {"Remote", "Keypress"},
-    maximum_options = 10,
-    callback = function(value)
-        getgenv().AutoSpamMode = value
-    end,
+    title = "Mode", flag = "AutoSpamMode",
+    options = {"Remote", "Keypress"}, maximum_options = 10,
+    callback = function(value) getgenv().AutoSpamMode = value end,
 })
 
 auto_spam_module:create_checkbox({
-    title = "Animation Fix",
-    flag = "AutoSpamAnimationFix",
-    callback = function(value)
-        getgenv().AutoSpamAnimationFix = value
-    end,
+    title = "Animation Fix", flag = "AutoSpamAnimationFix",
+    callback = function(value) getgenv().AutoSpamAnimationFix = value end,
 })
 
--- DETECTION
 local inf_mod = DetTab:create_module({
     title = "Infinity Ball", description = "skip parry while active",
     flag = "InfModule", section = "left",
@@ -2376,7 +2646,6 @@ local sof_mod = DetTab:create_module({
 })
 sof_mod:change_state(true)
 
--- VISUAL
 local nr_mod = VisualTab:create_module({
     title = "No Render", description = "disable effects completely",
     flag = "NRModule", section = "left",
@@ -2400,7 +2669,7 @@ System.manual_spam.stop()
 update_divisor()
 
 task.defer(function()
-    task.wait(0.25)
+    task.wait(0.3)
     autoparry_module:change_state(true)
     auto_spam_module:change_state(true)
 end)
