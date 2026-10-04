@@ -1,12 +1,12 @@
 -- ═══════════════════════════════════════════════════════════
--- BLABLA Hub v5 PREMIUM — Blade Ball Script
--- Glass Morphism + Depth + Parallax + Particles + Spring
+-- BLABLA Hub v5 PREMIUM — Blade Ball Script (FULL)
+-- Fix: Slider values مقربة (0.99 بدل 0.9866...)
 -- Font: LuckiestGuy + FredokaOne + DenkOne
+-- Auto Parry + Auto Spam (Target Switch + Detection) + Manual
 -- ═══════════════════════════════════════════════════════════
 
 local cloneref = cloneref or function(o) return o end
 
--- ─── FONTS ───
 local FONT_FAMILY_BUBBLE = "rbxasset://fonts/families/LuckiestGuy.json"
 local FONT_FAMILY_ROUND  = "rbxasset://fonts/families/FredokaOne.json"
 local FONT_FAMILY_SOFT   = "rbxasset://fonts/families/DenkOne.json"
@@ -19,60 +19,26 @@ local FONT = {
     reg   = Font.new(FONT_FAMILY_SOFT,   Enum.FontWeight.Regular,  Enum.FontStyle.Normal),
 }
 
--- ─── COLOR PALETTE ───
 local PALETTE = {
-    bgDeep     = Color3.fromRGB(18, 12, 32),
-    bgMain     = Color3.fromRGB(28, 20, 48),
-    bgSoft     = Color3.fromRGB(38, 28, 62),
-    card       = Color3.fromRGB(32, 24, 54),
-    cardHover  = Color3.fromRGB(44, 32, 72),
-    border     = Color3.fromRGB(120, 80, 200),
-    borderSoft = Color3.fromRGB(80, 55, 140),
-    accent     = Color3.fromRGB(180, 130, 255),
-    accentHot  = Color3.fromRGB(220, 180, 255),
-    text       = Color3.fromRGB(255, 255, 255),
-    textDim    = Color3.fromRGB(220, 210, 240),
-    textFaint  = Color3.fromRGB(160, 145, 200),
-    success    = Color3.fromRGB(120, 255, 170),
-    danger     = Color3.fromRGB(255, 130, 160),
-    glow       = Color3.fromRGB(200, 150, 255),
+    bgDeep = Color3.fromRGB(18, 12, 32), bgMain = Color3.fromRGB(28, 20, 48),
+    bgSoft = Color3.fromRGB(38, 28, 62), card = Color3.fromRGB(32, 24, 54),
+    border = Color3.fromRGB(120, 80, 200), borderSoft = Color3.fromRGB(80, 55, 140),
+    accent = Color3.fromRGB(180, 130, 255), accentHot = Color3.fromRGB(220, 180, 255),
+    text = Color3.fromRGB(255, 255, 255), textDim = Color3.fromRGB(220, 210, 240),
+    textFaint = Color3.fromRGB(160, 145, 200),
 }
 
 -- ═══════════════════════════════════════════════════════════
--- ADVANCED ANIMATION ENGINE
+-- ANIMATION ENGINE
 -- ═══════════════════════════════════════════════════════════
-
 local Animation = {}
 
--- Spring config
-Animation.springOut   = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-Animation.springIn    = TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-Animation.smoothOut   = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-Animation.smoothIn    = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-Animation.elastic     = TweenInfo.new(0.55, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
-Animation.expoOut     = TweenInfo.new(0.45, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+Animation.springOut = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+Animation.springIn  = TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+Animation.smoothOut = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+Animation.smoothIn  = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+Animation.elastic   = TweenInfo.new(0.55, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
 
--- ★ Shadow factory — 3 layers
-function Animation.applyShadow(ui, baseTransparency)
-    baseTransparency = baseTransparency or 0.85
-    local layer1 = Instance.new("UIStroke")
-    layer1.Color = Color3.new(0, 0, 0)
-    layer1.Transparency = baseTransparency
-    layer1.Thickness = 3
-    layer1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    layer1.Parent = ui
-
-    local layer2 = Instance.new("UIStroke")
-    layer2.Color = Color3.new(0, 0, 0)
-    layer2.Transparency = baseTransparency + 0.05
-    layer2.Thickness = 2
-    layer2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    layer2.Parent = ui
-
-    return layer1
-end
-
--- ★ Shimmer effect
 function Animation.shimmer(gradient, duration, waitBetween)
     duration = duration or 1.6
     waitBetween = waitBetween or 3.5
@@ -88,7 +54,6 @@ function Animation.shimmer(gradient, duration, waitBetween)
     end)
 end
 
--- ★ Glow pulse
 function Animation.glowPulse(stroke, base, peak, speed)
     task.spawn(function()
         local up = true
@@ -102,7 +67,6 @@ function Animation.glowPulse(stroke, base, peak, speed)
     end)
 end
 
--- ★ Stagger
 function Animation.stagger(items, baseDelay, perIndex, fn)
     for i, item in ipairs(items) do
         task.delay((baseDelay or 0) + (perIndex or 0.025) * i, function()
@@ -111,30 +75,6 @@ function Animation.stagger(items, baseDelay, perIndex, fn)
     end
 end
 
--- ★ Hover scale + glow
-function Animation.hoverCard(card, stroke, uiScale)
-    uiScale = uiScale or Instance.new("UIScale", card)
-
-    card.MouseEnter:Connect(function()
-        TweenService:Create(uiScale, Animation.smoothOut, { Scale = 1.015 }):Play()
-        TweenService:Create(stroke, Animation.smoothOut, {
-            Transparency = 0.25,
-            Color = PALETTE.accentHot,
-            Thickness = 1.5,
-        }):Play()
-    end)
-
-    card.MouseLeave:Connect(function()
-        TweenService:Create(uiScale, Animation.smoothOut, { Scale = 1 }):Play()
-        TweenService:Create(stroke, Animation.smoothOut, {
-            Transparency = 0.55,
-            Color = PALETTE.border,
-            Thickness = 1,
-        }):Play()
-    end)
-end
-
--- ★ Parallax tilt
 function Animation.parallaxTilt(card, maxAngle)
     maxAngle = maxAngle or 4
     local conn
@@ -142,24 +82,20 @@ function Animation.parallaxTilt(card, maxAngle)
         if input.UserInputType ~= Enum.UserInputType.MouseMovement
         and input.UserInputType ~= Enum.UserInputType.Touch then return end
         if not card.Parent then conn:Disconnect() return end
-
         local mouse = UserInputService:GetMouseLocation()
         local pos = card.AbsolutePosition
         local size = card.AbsoluteSize
-        local centerX = pos.X + size.X / 2
-        local centerY = pos.Y + size.Y / 2
-
-        local dist = (mouse - Vector2.new(centerX, centerY)).Magnitude
+        local cx = pos.X + size.X / 2
+        local cy = pos.Y + size.Y / 2
+        local dist = (mouse - Vector2.new(cx, cy)).Magnitude
         if dist > size.X * 1.5 then
             TweenService:Create(card, Animation.smoothOut, { Rotation = 0 }):Play()
             return
         end
-
-        local relX = (mouse.X - centerX) / size.X
-        local relY = (mouse.Y - centerY) / size.Y
+        local relX = (mouse.X - cx) / size.X
+        local relY = (mouse.Y - cy) / size.Y
         local tiltX = math.clamp(-relY * maxAngle, -maxAngle, maxAngle)
         local tiltY = math.clamp(relX * maxAngle, -maxAngle, maxAngle)
-
         TweenService:Create(card, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Rotation = tiltX * 0.6 + tiltY * 0.4
         }):Play()
@@ -167,7 +103,6 @@ function Animation.parallaxTilt(card, maxAngle)
     return conn
 end
 
--- ★ Floating particles
 function Animation.spawnParticles(parent)
     task.spawn(function()
         while parent.Parent do
@@ -180,25 +115,20 @@ function Animation.spawnParticles(parent)
             particle.ZIndex = 1
             particle.Parent = parent
             Instance.new("UICorner", particle).CornerRadius = UDim.new(1, 0)
-
             local duration = math.random(80, 150) / 10
             local drift = math.random(-50, 50) / 10
-
             TweenService:Create(particle, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
                 Position = UDim2.new(particle.Position.X.Scale + drift / 100, 0, -0.2, 0),
                 BackgroundTransparency = 1,
             }):Play()
-
             task.delay(duration + 0.5, function()
                 if particle and particle.Parent then particle:Destroy() end
             end)
-
             task.wait(math.random(4, 10) / 10)
         end
     end)
 end
 
--- ★ Inner highlight — glass effect
 function Animation.glassHighlight(parent)
     local top = Instance.new("Frame")
     top.Name = "GlassTop"
@@ -210,7 +140,6 @@ function Animation.glassHighlight(parent)
     top.BorderSizePixel = 0
     top.ZIndex = parent.ZIndex + 1
     top.Parent = parent
-
     local gradient = Instance.new("UIGradient")
     gradient.Transparency = NumberSequence.new({
         NumberSequenceKeypoint.new(0, 1),
@@ -220,40 +149,9 @@ function Animation.glassHighlight(parent)
     gradient.Parent = top
 end
 
--- ★ Ripple on click
-function Animation.ripple(button, color)
-    button.MouseButton1Down:Connect(function(x, y)
-        local relX = (x - button.AbsolutePosition.X) / button.AbsoluteSize.X
-        local relY = (y - button.AbsolutePosition.Y) / button.AbsoluteSize.Y
-
-        local rip = Instance.new("Frame")
-        rip.AnchorPoint = Vector2.new(0.5, 0.5)
-        rip.Position = UDim2.new(relX, 0, relY, 0)
-        rip.Size = UDim2.fromOffset(0, 0)
-        rip.BackgroundColor3 = color or PALETTE.accent
-        rip.BackgroundTransparency = 0.5
-        rip.BorderSizePixel = 0
-        rip.ZIndex = button.ZIndex + 5
-        rip.Parent = button
-        Instance.new("UICorner", rip).CornerRadius = UDim.new(1, 0)
-
-        local maxSize = math.max(button.AbsoluteSize.X, button.AbsoluteSize.Y) * 2.5
-        TweenService:Create(rip, TweenInfo.new(0.65, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-            Size = UDim2.fromOffset(maxSize, maxSize),
-            BackgroundTransparency = 1,
-        }):Play()
-
-        task.delay(0.7, function()
-            if rip and rip.Parent then rip:Destroy() end
-        end)
-    end)
-end
-
 -- ═══════════════════════════════════════════════════════════
--- PARRY PATCH + IMPORTS + STATE
--- (نفس النسخة السابقة — بدون تغيير)
+-- PARRY PATCH
 -- ═══════════════════════════════════════════════════════════
-
 local _PARRY_PATCH = { keyTable = nil, transformFn = nil, parryHash = nil, parryRemote = nil, ready = false }
 
 task.spawn(function()
@@ -354,6 +252,9 @@ function _PARRY_PATCH.fire(curveCFrame, screenPositions, mouseLocation)
     end)
 end
 
+-- ═══════════════════════════════════════════════════════════
+-- IMPORTS
+-- ═══════════════════════════════════════════════════════════
 local Players          = cloneref(game:GetService("Players"))
 local RunService       = cloneref(game:GetService("RunService"))
 local UserInputService = cloneref(game:GetService("UserInputService"))
@@ -377,13 +278,15 @@ getgenv().Connections_Manager = Connections_Manager
 
 getgenv().AutoParryMode = getgenv().AutoParryMode or "Remote"
 
--- ─── STATE (نفس السابق) ───
+-- ═══════════════════════════════════════════════════════════
+-- STATE
+-- ═══════════════════════════════════════════════════════════
 local System = {
     __properties = {
         __autoparry_enabled = false, __auto_spam_enabled = false, __manual_spam_enabled = false,
         __curve_mode = 1, __accuracy = 50, __divisor_multiplier = 1.1, __parried = false,
         __training_parried = false, __parries = 0, __spam_threshold = 1.5,
-        __spam_accumulator = 0, __spam_rate = 1000, __distance_multiplier = 1,
+        __spam_accumulator = 0, __spam_rate = 1000, __distance_multiplier = 2,
         __humanizer_enabled = false, __humanizer_min_accuracy = 1, __humanizer_max_accuracy = 50,
         __humanizer_last_update = 0, __humanizer_next_change = 0.8,
         __tornado_time = tick(), __connections = {}, __infinity_active = false,
@@ -439,7 +342,9 @@ end)
 local maxParryCount = 36
 local parryDelay = 0.05
 
--- ─── BALL / PLAYER / CURVE / PARRY / DETECTION (نفس السابق) ───
+-- ═══════════════════════════════════════════════════════════
+-- BALL / PLAYER / CURVE / PARRY / DETECTION
+-- ═══════════════════════════════════════════════════════════
 System.ball = {}
 function System.ball.get()
     local balls = workspace:FindFirstChild("Balls")
@@ -604,7 +509,6 @@ function System.detection.is_curved()
     return dot < dot_thr
 end
 
--- ─── DETECTION HOOKS ───
 local RS = replicated_storage
 RS.Remotes.DeathBall.OnClientEvent:Connect(function(_, d) System.__properties.__deathslash_active = d or false end)
 RS.Remotes.InfinityBall.OnClientEvent:Connect(function(_, b) System.__properties.__infinity_active = b or false end)
@@ -639,7 +543,9 @@ netFolder["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(function()
     end)
 end)
 
--- ─── AUTOPARRY ───
+-- ═══════════════════════════════════════════════════════════
+-- AUTOPARRY
+-- ═══════════════════════════════════════════════════════════
 System.autoparry = {}
 function System.autoparry.start()
     if System.__properties.__connections.__autoparry then System.__properties.__connections.__autoparry:Disconnect() end
@@ -752,7 +658,9 @@ function System.autoparry.stop()
     end
 end
 
--- ─── AUTO SPAM (Target Switch) ───
+-- ═══════════════════════════════════════════════════════════
+-- AUTO SPAM
+-- ═══════════════════════════════════════════════════════════
 System.auto_spam = {}
 function System.auto_spam:get_entity_properties()
     System.player.get_closest()
@@ -784,7 +692,7 @@ function System.auto_spam.spam_service(self)
     local entity = System.player.get_closest()
     if not ball or not entity or not entity.PrimaryPart then return false end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-    local D = 5
+    local D = 15
     local velocity = ball.AssemblyLinearVelocity or Vector3.new()
     local n = velocity.Magnitude
     if n == 0 then return D end
@@ -817,7 +725,7 @@ function System.auto_spam.spam_service(self)
     local u = (not _G.In_Close_Contact) and (now - (_G.Last_Close_Contact or 0) >= 1.5)
     if u and (Fmove.Magnitude > 0.2 and Fmove:Dot(N) < -0.4) then E = 10 end
     if u and (lmove.Magnitude > 0.2 and lmove:Dot(-N) < -0.4) then E = 10 end
-    local B = (self.Ping or 50) * 0.7 + math.min(n / (E * 1.2), 80)
+    local B = math.max(20, (self.Ping or 50) * 0.7 + math.min(n / (E * 1.2), 80))
     if (self.Entity_Properties and self.Entity_Properties.Distance or math.huge) > B then return D end
     if (self.Ball_Properties and self.Ball_Properties.Distance or math.huge) > B then return D end
     if X > B then return D end
@@ -883,6 +791,7 @@ function System.auto_spam.start()
         if not ball_target then return end
         local dist_mult = System.__properties.__distance_multiplier or 1
         spam_accuracy = spam_accuracy * dist_mult
+        spam_accuracy = math.max(spam_accuracy, 18)
         if target_distance > spam_accuracy or distance > spam_accuracy then return end
         local pulsed = LocalPlayer.Character:GetAttribute("Pulsed")
         if pulsed then return end
@@ -900,7 +809,9 @@ function System.auto_spam.stop()
     end
 end
 
--- ─── MANUAL SPAM ───
+-- ═══════════════════════════════════════════════════════════
+-- MANUAL SPAM
+-- ═══════════════════════════════════════════════════════════
 System.manual_spam = {}
 function System.manual_spam.loop(delta)
     if not System.__properties.__manual_spam_enabled then return end
@@ -929,7 +840,9 @@ function System.manual_spam.stop()
     end
 end
 
--- ─── NO RENDER ───
+-- ═══════════════════════════════════════════════════════════
+-- NO RENDER
+-- ═══════════════════════════════════════════════════════════
 function System.no_render_set(state)
     System.__properties.__no_render_enabled = state
     local ps = LocalPlayer:FindFirstChild("PlayerScripts")
@@ -951,7 +864,9 @@ function System.no_render_set(state)
     end
 end
 
--- ─── FPS BOOST ───
+-- ═══════════════════════════════════════════════════════════
+-- FPS BOOST
+-- ═══════════════════════════════════════════════════════════
 local original_fog_end = Lighting.FogEnd
 local original_fog_start = Lighting.FogStart
 local postprocessing_backup = {}
@@ -1107,7 +1022,9 @@ function System.fps_boost_set(state)
     end)
 end
 
--- ─── HOTKEYS ───
+-- ═══════════════════════════════════════════════════════════
+-- HOTKEYS
+-- ═══════════════════════════════════════════════════════════
 System.hotkeys = { __enabled = true, __conn = nil }
 local HOTKEY_MAP = {
     [Enum.KeyCode.T] = function()
@@ -1135,7 +1052,7 @@ end
 System.hotkeys.start()
 
 -- ═══════════════════════════════════════════════════════════
--- ★ PREMIUM UI ENGINE
+-- ★ PREMIUM UI
 -- ═══════════════════════════════════════════════════════════
 local Config = setmetatable({
     save = function(self, file_name, config)
@@ -1175,7 +1092,7 @@ function Azure.new()
     ScreenGui.DisplayOrder = 1000
     ScreenGui.Parent = CoreGui
 
-    -- ★ Ambient glow behind container
+    -- Ambient back glow
     local backGlow = Instance.new("Frame", ScreenGui)
     backGlow.Name = "BackGlow"
     backGlow.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1186,29 +1103,16 @@ function Azure.new()
     backGlow.BorderSizePixel = 0
     backGlow.ZIndex = 1
     Instance.new("UICorner", backGlow).CornerRadius = UDim.new(0, 40)
-
-    local backGlowGradient = Instance.new("UIGradient", backGlow)
-    backGlowGradient.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 1),
-        NumberSequenceKeypoint.new(0.5, 0.85),
-        NumberSequenceKeypoint.new(1, 1),
-    })
-    backGlowGradient.Rotation = 90
-
     task.spawn(function()
         while backGlow.Parent do
-            TweenService:Create(backGlow, TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                BackgroundTransparency = 0.85
-            }):Play()
+            TweenService:Create(backGlow, TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { BackgroundTransparency = 0.85 }):Play()
             task.wait(3)
-            TweenService:Create(backGlow, TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                BackgroundTransparency = 0.92
-            }):Play()
+            TweenService:Create(backGlow, TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { BackgroundTransparency = 0.92 }):Play()
             task.wait(3)
         end
     end)
 
-    -- ★ Main container
+    -- Container
     local Container = Instance.new("Frame")
     Container.Name = "Container"
     Container.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1223,7 +1127,6 @@ function Azure.new()
     Container.Parent = ScreenGui
     Instance.new("UICorner", Container).CornerRadius = UDim.new(0, 16)
 
-    -- ★ Outer glow stroke
     local outerGlow = Instance.new("UIStroke", Container)
     outerGlow.Color = PALETTE.accent
     outerGlow.Thickness = 2
@@ -1231,14 +1134,12 @@ function Azure.new()
     outerGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     Animation.glowPulse(outerGlow, 0.55, 0.35, 2.5)
 
-    -- ★ Inner subtle stroke
     local innerStroke = Instance.new("UIStroke", Container)
     innerStroke.Color = Color3.fromRGB(255, 255, 255)
     innerStroke.Thickness = 1
     innerStroke.Transparency = 0.85
     innerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    -- ★ Background gradient (3-layer radial)
     local bgGrad = Instance.new("UIGradient", Container)
     bgGrad.Color = ColorSequence.new{
         ColorSequenceKeypoint.new(0.00, Color3.fromRGB(48, 32, 88)),
@@ -1248,17 +1149,14 @@ function Azure.new()
     }
     bgGrad.Rotation = 135
 
-    -- ★ Glass top highlight
     Animation.glassHighlight(Container)
 
-    -- ★ Chromatic shimmer
     local Shimmer = Instance.new("Frame", Container)
     Shimmer.Name = "Shimmer"
     Shimmer.AnchorPoint = Vector2.new(0.5, 0.5)
     Shimmer.Position = UDim2.new(0.5, 0, 0.5, 0)
     Shimmer.Size = UDim2.new(1, 0, 1, 0)
     Shimmer.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    Shimmer.BackgroundTransparency = 0
     Shimmer.BorderSizePixel = 0
     Shimmer.ZIndex = 100
     Shimmer.Active = false
@@ -1271,12 +1169,9 @@ function Azure.new()
         ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 200, 255)),
     }
     shimmerGradient.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0.00, 1),
-        NumberSequenceKeypoint.new(0.40, 1),
-        NumberSequenceKeypoint.new(0.46, 0.12),
-        NumberSequenceKeypoint.new(0.50, 0.04),
-        NumberSequenceKeypoint.new(0.54, 0.12),
-        NumberSequenceKeypoint.new(0.60, 1),
+        NumberSequenceKeypoint.new(0.00, 1), NumberSequenceKeypoint.new(0.40, 1),
+        NumberSequenceKeypoint.new(0.46, 0.12), NumberSequenceKeypoint.new(0.50, 0.04),
+        NumberSequenceKeypoint.new(0.54, 0.12), NumberSequenceKeypoint.new(0.60, 1),
         NumberSequenceKeypoint.new(1.00, 1),
     })
     shimmerGradient.Rotation = 45
@@ -1284,9 +1179,7 @@ function Azure.new()
     shimmerGradient.Parent = Shimmer
     Animation.shimmer(shimmerGradient, 1.8, 3.5)
 
-    -- ★ Floating particles layer
     local particlesLayer = Instance.new("Frame", Container)
-    particlesLayer.Name = "Particles"
     particlesLayer.BackgroundTransparency = 1
     particlesLayer.Size = UDim2.new(1, 0, 1, 0)
     particlesLayer.ClipsDescendants = true
@@ -1294,14 +1187,12 @@ function Azure.new()
     particlesLayer.Parent = Container
     Animation.spawnParticles(particlesLayer)
 
-    -- ★ Handler
     local Handler = Instance.new("Frame", Container)
-    Handler.Name = "Handler"
     Handler.BackgroundTransparency = 1
     Handler.Size = UDim2.new(0, 750, 0, 530)
     Handler.ZIndex = 10
 
-    -- ★ Title glow behind title
+    -- Title glow
     local titleGlow = Instance.new("Frame", Handler)
     titleGlow.AnchorPoint = Vector2.new(0, 0.5)
     titleGlow.Position = UDim2.new(0.05, 0, 0.05, 0)
@@ -1343,37 +1234,23 @@ function Azure.new()
     SubTitle.TextSize = 11
     SubTitle.ZIndex = 6
 
-    -- ★ Divider with gradient
     local Divider = Instance.new("Frame", Handler)
-    Divider.BackgroundTransparency = 1
+    Divider.BackgroundColor3 = PALETTE.accent
+    Divider.BackgroundTransparency = 0.2
     Divider.Position = UDim2.new(0.225, 0, 0.06, 0)
     Divider.Size = UDim2.new(0, 1, 0, 440)
     Divider.BorderSizePixel = 0
     Divider.ZIndex = 5
 
     local divGrad = Instance.new("UIGradient", Divider)
-    divGrad.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, PALETTE.accent),
-        ColorSequenceKeypoint.new(1, PALETTE.accent),
-    }
     divGrad.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 1),
-        NumberSequenceKeypoint.new(0.15, 0.3),
-        NumberSequenceKeypoint.new(0.5, 0.1),
-        NumberSequenceKeypoint.new(0.85, 0.3),
+        NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.15, 0.3),
+        NumberSequenceKeypoint.new(0.5, 0.1), NumberSequenceKeypoint.new(0.85, 0.3),
         NumberSequenceKeypoint.new(1, 1),
     })
     divGrad.Rotation = 90
     divGrad.Parent = Divider
 
-    local divFrame = Instance.new("Frame", Divider)
-    divFrame.BackgroundColor3 = PALETTE.accent
-    divFrame.BackgroundTransparency = 0.2
-    divFrame.Size = UDim2.new(1, 0, 1, 0)
-    divFrame.BorderSizePixel = 0
-    divFrame.ZIndex = 5
-
-    -- ★ Tabs container
     local TabsFrame = Instance.new("ScrollingFrame", Handler)
     TabsFrame.Name = "Tabs"
     TabsFrame.Size = UDim2.new(0, 140, 0, 445)
@@ -1391,20 +1268,16 @@ function Azure.new()
     tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
     local SectionsFrame = Instance.new("Frame", Handler)
-    SectionsFrame.Name = "Sections"
     SectionsFrame.BackgroundTransparency = 1
     SectionsFrame.Position = UDim2.new(0.22, 0, 0, 0)
     SectionsFrame.Size = UDim2.new(0.78, 0, 1, 0)
     SectionsFrame.ZIndex = 6
-    SectionsFrame.Active = false
 
     local UIScale = Instance.new("UIScale", Container)
 
-    -- ★ Drag
     local dragging, dragStart, startPos
     Container.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
             startPos = Container.Position
@@ -1415,13 +1288,9 @@ function Azure.new()
     end)
     UserInputService.InputChanged:Connect(function(input)
         if not dragging then return end
-        if input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
             local d = input.Position - dragStart
-            Container.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + d.X,
-                startPos.Y.Scale, startPos.Y.Offset + d.Y
-            )
+            Container.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
         end
     end)
 
@@ -1431,7 +1300,6 @@ function Azure.new()
     self._sections = SectionsFrame
     self._ui = ScreenGui
 
-    -- ★ Open animation — cinematic scale
     local vp_x = workspace.CurrentCamera.ViewportSize.X
     local baseScale = (UserInputService.TouchEnabled and (vp_x / 1400) or 1)
     UIScale.Scale = baseScale * 0.6
@@ -1439,15 +1307,11 @@ function Azure.new()
     task.spawn(function()
         task.wait(0.02)
         TweenService:Create(Container, TweenInfo.new(0.75, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Size = UDim2.fromOffset(750, 530),
-            Rotation = 0,
+            Size = UDim2.fromOffset(750, 530), Rotation = 0,
         }):Play()
-        TweenService:Create(UIScale, TweenInfo.new(0.75, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-            Scale = baseScale
-        }):Play()
+        TweenService:Create(UIScale, TweenInfo.new(0.75, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = baseScale }):Play()
     end)
 
-    -- ★ Parallax tilt (only on PC)
     if not UserInputService.TouchEnabled then
         Animation.parallaxTilt(Container, 2)
     end
@@ -1483,7 +1347,6 @@ function Azure:create_tab(title)
     local tabScale = Instance.new("UIScale", Tab)
     tabScale.Scale = 1
 
-    -- ★ Active indicator bar
     local activeBar = Instance.new("Frame", Tab)
     activeBar.Name = "ActiveBar"
     activeBar.AnchorPoint = Vector2.new(0, 0.5)
@@ -1495,7 +1358,6 @@ function Azure:create_tab(title)
     activeBar.BackgroundTransparency = 1
     Instance.new("UICorner", activeBar).CornerRadius = UDim.new(1, 0)
 
-    -- ★ Glow behind active tab
     local tabGlow = Instance.new("Frame", Tab)
     tabGlow.Name = "TabGlow"
     tabGlow.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1566,12 +1428,10 @@ function Azure:create_tab(title)
         end
         LeftSection.Visible = true
         RightSection.Visible = true
-
-        -- ★ Stagger fade-in
         local function staggerIn(container)
             local children = {}
             for _, c in ipairs(container:GetChildren()) do
-                if c:IsA("Frame") and c.Name == "Module" then table.insert(children, c) end
+                if c:IsA("Frame") and c.Name == "ModuleWrapper" then table.insert(children, c) end
             end
             Animation.stagger(children, 0, 0.05, function(mod)
                 local startPos = UDim2.new(mod.Position.X.Scale, mod.Position.X.Offset, mod.Position.Y.Scale, mod.Position.Y.Offset - 20)
@@ -1580,36 +1440,25 @@ function Azure:create_tab(title)
                 mod.Rotation = -1.5
                 TweenService:Create(mod, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
                     Position = UDim2.new(mod.Position.X.Scale, mod.Position.X.Offset, mod.Position.Y.Scale, mod.Position.Y.Offset + 20),
-                    BackgroundTransparency = 0.03,
-                    Rotation = 0,
+                    BackgroundTransparency = 0.03, Rotation = 0,
                 }):Play()
             end)
         end
-
         for _, rec in pairs(self._tabs) do
             local isActive = (rec.Tab == Tab)
             TweenService:Create(rec.Tab, Animation.smoothOut, {
                 BackgroundTransparency = isActive and 0.7 or 1,
                 BackgroundColor3 = isActive and PALETTE.borderSoft or PALETTE.bgSoft,
             }):Play()
-            TweenService:Create(rec.Tab, Animation.smoothOut, {
-                TextTransparency = isActive and 0.05 or 0.55,
-            }):Play()
-            TweenService:Create(rec.Tab, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                TextSize = isActive and 16 or 15,
-            }):Play()
+            TweenService:Create(rec.Tab, Animation.smoothOut, { TextTransparency = isActive and 0.05 or 0.55 }):Play()
+            TweenService:Create(rec.Tab, Animation.smoothOut, { TextSize = isActive and 16 or 15 }):Play()
             if rec.ActiveBar then
-                TweenService:Create(rec.ActiveBar, Animation.smoothOut, {
-                    BackgroundTransparency = isActive and 0 or 1,
-                }):Play()
+                TweenService:Create(rec.ActiveBar, Animation.smoothOut, { BackgroundTransparency = isActive and 0 or 1 }):Play()
             end
             if rec.Glow then
-                TweenService:Create(rec.Glow, Animation.smoothOut, {
-                    BackgroundTransparency = isActive and 0.85 or 1,
-                }):Play()
+                TweenService:Create(rec.Glow, Animation.smoothOut, { BackgroundTransparency = isActive and 0.85 or 1 }):Play()
             end
         end
-
         if LeftSection.Visible then staggerIn(LeftSection) end
         if RightSection.Visible then staggerIn(RightSection) end
     end
@@ -1618,8 +1467,7 @@ function Azure:create_tab(title)
 
     Tab.MouseButton1Click:Connect(function() task.defer(activate) end)
     Tab.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
             task.defer(activate)
         end
     end)
@@ -1629,7 +1477,6 @@ function Azure:create_tab(title)
     function TabManager:create_module(settings)
         local section = (settings.section == "right") and RightSection or LeftSection
 
-        -- ★ Shadow wrapper
         local wrapper = Instance.new("Frame", section)
         wrapper.Name = "ModuleWrapper"
         wrapper.Size = UDim2.new(0, 241, 0, 93)
@@ -1637,9 +1484,7 @@ function Azure:create_tab(title)
         wrapper.BackgroundTransparency = 1
         wrapper.ZIndex = 7
 
-        -- ★ Shadow (behind card)
         local shadowFrame = Instance.new("Frame", wrapper)
-        shadowFrame.Name = "Shadow"
         shadowFrame.AnchorPoint = Vector2.new(0.5, 0.5)
         shadowFrame.Position = UDim2.new(0.5, 0, 0.5, 5)
         shadowFrame.Size = UDim2.new(1, -4, 1, -4)
@@ -1652,7 +1497,6 @@ function Azure:create_tab(title)
         local Module = Instance.new("Frame", wrapper)
         Module.Name = "Module"
         Module.Size = UDim2.new(1, 0, 1, 0)
-        Module.Position = UDim2.new(0, 0, 0, 0)
         Module.BackgroundColor3 = PALETTE.card
         Module.BackgroundTransparency = 0.03
         Module.BorderSizePixel = 0
@@ -1661,10 +1505,8 @@ function Azure:create_tab(title)
         Module.ZIndex = 7
         Instance.new("UICorner", Module).CornerRadius = UDim.new(0, 12)
 
-        -- ★ Glass inner highlight
         Animation.glassHighlight(Module)
 
-        -- ★ Card gradient
         local cardGrad = Instance.new("UIGradient", Module)
         cardGrad.Color = ColorSequence.new{
             ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 28, 68)),
@@ -1672,14 +1514,12 @@ function Azure:create_tab(title)
         }
         cardGrad.Rotation = 135
 
-        -- ★ Border stroke
         local ms = Instance.new("UIStroke", Module)
         ms.Color = PALETTE.border
         ms.Transparency = 0.55
         ms.Thickness = 1.2
         ms.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-        -- ★ Inner glow stroke
         local innerGlow = Instance.new("UIStroke", Module)
         innerGlow.Color = PALETTE.accentHot
         innerGlow.Transparency = 0.92
@@ -1687,28 +1527,18 @@ function Azure:create_tab(title)
         innerGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
         local moduleScale = Instance.new("UIScale", Module)
-        moduleScale.Scale = 1
 
-        -- ★ Hover effect
         Module.MouseEnter:Connect(function()
-            TweenService:Create(ms, Animation.smoothOut, {
-                Transparency = 0.15, Thickness = 1.6, Color = PALETTE.accentHot,
-            }):Play()
+            TweenService:Create(ms, Animation.smoothOut, { Transparency = 0.15, Thickness = 1.6, Color = PALETTE.accentHot }):Play()
             TweenService:Create(innerGlow, Animation.smoothOut, { Transparency = 0.7 }):Play()
             TweenService:Create(moduleScale, Animation.smoothOut, { Scale = 1.012 }):Play()
-            TweenService:Create(shadowFrame, Animation.smoothOut, {
-                BackgroundTransparency = 0.6, Position = UDim2.new(0.5, 0, 0.5, 6)
-            }):Play()
+            TweenService:Create(shadowFrame, Animation.smoothOut, { BackgroundTransparency = 0.6, Position = UDim2.new(0.5, 0, 0.5, 6) }):Play()
         end)
         Module.MouseLeave:Connect(function()
-            TweenService:Create(ms, Animation.smoothOut, {
-                Transparency = 0.55, Thickness = 1.2, Color = PALETTE.border,
-            }):Play()
+            TweenService:Create(ms, Animation.smoothOut, { Transparency = 0.55, Thickness = 1.2, Color = PALETTE.border }):Play()
             TweenService:Create(innerGlow, Animation.smoothOut, { Transparency = 0.92 }):Play()
             TweenService:Create(moduleScale, Animation.smoothOut, { Scale = 1 }):Play()
-            TweenService:Create(shadowFrame, Animation.smoothOut, {
-                BackgroundTransparency = 0.75, Position = UDim2.new(0.5, 0, 0.5, 5)
-            }):Play()
+            TweenService:Create(shadowFrame, Animation.smoothOut, { BackgroundTransparency = 0.75, Position = UDim2.new(0.5, 0, 0.5, 5) }):Play()
         end)
 
         local Header = Instance.new("TextButton", Module)
@@ -1720,7 +1550,6 @@ function Azure:create_tab(title)
         Header.BorderSizePixel = 0
         Header.ZIndex = 9
 
-        -- ★ Header icon dot
         local iconDot = Instance.new("Frame", Header)
         iconDot.AnchorPoint = Vector2.new(0, 0.5)
         iconDot.Position = UDim2.new(0.055, 0, 0.27, 0)
@@ -1756,9 +1585,7 @@ function Azure:create_tab(title)
         Description.TextSize = 10
         Description.ZIndex = 10
 
-        -- ★ Toggle
         local Toggle = Instance.new("Frame", Header)
-        Toggle.Name = "Toggle"
         Toggle.AnchorPoint = Vector2.new(1, 0.5)
         Toggle.BackgroundTransparency = 0.6
         Toggle.BackgroundColor3 = Color3.fromRGB(50, 38, 82)
@@ -1775,7 +1602,6 @@ function Azure:create_tab(title)
         toggleStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
         local Circle = Instance.new("Frame", Toggle)
-        Circle.Name = "Circle"
         Circle.AnchorPoint = Vector2.new(0, 0.5)
         Circle.Position = UDim2.new(0, 1, 0.5, 0)
         Circle.BackgroundColor3 = Color3.fromRGB(130, 110, 175)
@@ -1785,9 +1611,7 @@ function Azure:create_tab(title)
         Circle.ZIndex = 11
         Instance.new("UICorner", Circle).CornerRadius = UDim.new(1, 0)
 
-        -- ★ Divider gradient
         local Divider = Instance.new("Frame", Header)
-        Divider.Name = "Divider"
         Divider.AnchorPoint = Vector2.new(0.5, 0)
         Divider.Position = UDim2.new(0.5, 0, 0.62, 0)
         Divider.BackgroundColor3 = PALETTE.accent
@@ -1798,8 +1622,7 @@ function Azure:create_tab(title)
 
         local divGrad2 = Instance.new("UIGradient", Divider)
         divGrad2.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 1),
-            NumberSequenceKeypoint.new(0.5, 0.2),
+            NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.2),
             NumberSequenceKeypoint.new(1, 1),
         })
         divGrad2.Parent = Divider
@@ -1832,34 +1655,22 @@ function Azure:create_tab(title)
         function ModuleManager:change_state(state)
             self._state = state
             if self._state then
-                TweenService:Create(Toggle, Animation.springOut, {
-                    BackgroundColor3 = PALETTE.accent
-                }):Play()
-                TweenService:Create(toggleStroke, Animation.springOut, {
-                    Color = PALETTE.accentHot, Transparency = 0.15
-                }):Play()
+                TweenService:Create(Toggle, Animation.springOut, { BackgroundColor3 = PALETTE.accent }):Play()
+                TweenService:Create(toggleStroke, Animation.springOut, { Color = PALETTE.accentHot, Transparency = 0.15 }):Play()
                 TweenService:Create(Circle, Animation.springOut, {
                     BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-                    Position = UDim2.new(1, -13, 0.5, 0)
+                    Position = UDim2.new(1, -13, 0.5, 0),
                 }):Play()
-                TweenService:Create(ms, Animation.smoothOut, {
-                    Color = PALETTE.accentHot, Transparency = 0.25, Thickness = 1.6,
-                }):Play()
+                TweenService:Create(ms, Animation.smoothOut, { Color = PALETTE.accentHot, Transparency = 0.25, Thickness = 1.6 }):Play()
                 task.delay(0.6, function()
-                    TweenService:Create(ms, Animation.smoothOut, {
-                        Color = PALETTE.border, Transparency = 0.55, Thickness = 1.2,
-                    }):Play()
+                    TweenService:Create(ms, Animation.smoothOut, { Color = PALETTE.border, Transparency = 0.55, Thickness = 1.2 }):Play()
                 end)
             else
-                TweenService:Create(Toggle, Animation.smoothOut, {
-                    BackgroundColor3 = Color3.fromRGB(50, 38, 82)
-                }):Play()
-                TweenService:Create(toggleStroke, Animation.smoothOut, {
-                    Color = PALETTE.borderSoft, Transparency = 0.5
-                }):Play()
+                TweenService:Create(Toggle, Animation.smoothOut, { BackgroundColor3 = Color3.fromRGB(50, 38, 82) }):Play()
+                TweenService:Create(toggleStroke, Animation.smoothOut, { Color = PALETTE.borderSoft, Transparency = 0.5 }):Play()
                 TweenService:Create(Circle, Animation.smoothOut, {
                     BackgroundColor3 = Color3.fromRGB(130, 110, 175),
-                    Position = UDim2.new(0, 1, 0.5, 0)
+                    Position = UDim2.new(0, 1, 0.5, 0),
                 }):Play()
             end
             refresh_size()
@@ -1912,7 +1723,6 @@ function Azure:create_tab(title)
             TitleLabel.ZIndex = 10
 
             local Box = Instance.new("Frame", Checkbox)
-            Box.Name = "Box"
             Box.AnchorPoint = Vector2.new(1, 0.5)
             Box.Position = UDim2.new(1, -2, 0.5, 0)
             Box.Size = UDim2.fromOffset(16, 16)
@@ -1929,7 +1739,6 @@ function Azure:create_tab(title)
             boxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
             local Fill = Instance.new("Frame", Box)
-            Fill.Name = "Fill"
             Fill.AnchorPoint = Vector2.new(0.5, 0.5)
             Fill.Position = UDim2.new(0.5, 0, 0.5, 0)
             Fill.Size = UDim2.fromOffset(0, 0)
@@ -1940,7 +1749,6 @@ function Azure:create_tab(title)
             Instance.new("UICorner", Fill).CornerRadius = UDim.new(0, 5)
 
             local checkMark = Instance.new("TextLabel", Box)
-            checkMark.Name = "Check"
             checkMark.FontFace = FONT.bold
             checkMark.Text = "✓"
             checkMark.TextColor3 = Color3.new(1, 1, 1)
@@ -1952,16 +1760,12 @@ function Azure:create_tab(title)
 
             Checkbox.MouseEnter:Connect(function()
                 TweenService:Create(TitleLabel, Animation.smoothOut, { TextTransparency = 0 }):Play()
-                TweenService:Create(boxStroke, Animation.smoothOut, {
-                    Color = PALETTE.accentHot, Transparency = 0.15
-                }):Play()
+                TweenService:Create(boxStroke, Animation.smoothOut, { Color = PALETTE.accentHot, Transparency = 0.15 }):Play()
             end)
             Checkbox.MouseLeave:Connect(function()
                 TweenService:Create(TitleLabel, Animation.smoothOut, { TextTransparency = 0.15 }):Play()
                 if not CM._state then
-                    TweenService:Create(boxStroke, Animation.smoothOut, {
-                        Color = PALETTE.borderSoft, Transparency = 0.4
-                    }):Play()
+                    TweenService:Create(boxStroke, Animation.smoothOut, { Color = PALETTE.borderSoft, Transparency = 0.4 }):Play()
                 end
             end)
 
@@ -1971,16 +1775,12 @@ function Azure:create_tab(title)
                     TweenService:Create(Box, Animation.springOut, { BackgroundTransparency = 0.75 }):Play()
                     TweenService:Create(Fill, Animation.springOut, { Size = UDim2.fromOffset(10, 10) }):Play()
                     TweenService:Create(checkMark, Animation.smoothOut, { TextTransparency = 0.3 }):Play()
-                    TweenService:Create(boxStroke, Animation.springOut, {
-                        Color = PALETTE.accentHot, Transparency = 0.1
-                    }):Play()
+                    TweenService:Create(boxStroke, Animation.springOut, { Color = PALETTE.accentHot, Transparency = 0.1 }):Play()
                 else
                     TweenService:Create(Box, Animation.smoothOut, { BackgroundTransparency = 0.6 }):Play()
                     TweenService:Create(Fill, Animation.smoothOut, { Size = UDim2.fromOffset(0, 0) }):Play()
                     TweenService:Create(checkMark, Animation.smoothOut, { TextTransparency = 1 }):Play()
-                    TweenService:Create(boxStroke, Animation.smoothOut, {
-                        Color = PALETTE.borderSoft, Transparency = 0.4
-                    }):Play()
+                    TweenService:Create(boxStroke, Animation.smoothOut, { Color = PALETTE.borderSoft, Transparency = 0.4 }):Play()
                 end
                 Azure._config._flags[s.flag] = self._state
                 Config:save(game.GameId, Azure._config)
@@ -2051,14 +1851,7 @@ function Azure:create_tab(title)
             Drag.ZIndex = 10
             Instance.new("UICorner", Drag).CornerRadius = UDim.new(1, 0)
 
-            local dragStroke = Instance.new("UIStroke", Drag)
-            dragStroke.Color = PALETTE.borderSoft
-            dragStroke.Transparency = 0.7
-            dragStroke.Thickness = 1
-            dragStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
             local Fill = Instance.new("Frame", Drag)
-            Fill.Name = "Fill"
             Fill.AnchorPoint = Vector2.new(0, 0.5)
             Fill.Position = UDim2.new(0, 0, 0.5, 0)
             Fill.Size = UDim2.new(0, 0, 0, 5)
@@ -2076,7 +1869,6 @@ function Azure:create_tab(title)
             fillGrad.Parent = Fill
 
             local Circle2 = Instance.new("Frame", Fill)
-            Circle2.Name = "Circle"
             Circle2.AnchorPoint = Vector2.new(1, 0.5)
             Circle2.Position = UDim2.new(1, 0, 0.5, 0)
             Circle2.Size = UDim2.fromOffset(9, 9)
@@ -2085,20 +1877,20 @@ function Azure:create_tab(title)
             Circle2.ZIndex = 12
             Instance.new("UICorner", Circle2).CornerRadius = UDim.new(1, 0)
 
-            local circleGlow = Instance.new("UIStroke", Circle2)
-            circleGlow.Color = PALETTE.accentHot
-            circleGlow.Thickness = 2
-            circleGlow.Transparency = 0.4
-            circleGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
             local SM = {}
             local min_v = s.minimum_value or 0
             local max_v = s.maximum_value or 100
             local cur = s.value or min_v
 
+            -- ★ FIXED set_value — يقرّب الأرقام
             function SM:set_value(v)
                 cur = math.clamp(v, min_v, max_v)
-                if s.round_number then cur = math.floor(cur + 0.5) end
+                if s.round_number then
+                    cur = math.floor(cur + 0.5)
+                else
+                    -- ★ تقريب لـ 2 فاصلة عشرية
+                    cur = math.floor(cur * 100 + 0.5) / 100
+                end
                 local pct = (cur - min_v) / (max_v - min_v)
                 Value.Text = tostring(cur)
                 TweenService:Create(Fill, Animation.smoothOut, { Size = UDim2.new(pct, 0, 0, 5) }):Play()
@@ -2187,7 +1979,6 @@ function Azure:create_tab(title)
             Value.ZIndex = 10
 
             local Drag = Instance.new("Frame", Slider)
-            Drag.Name = "Drag"
             Drag.AnchorPoint = Vector2.new(0.5, 1)
             Drag.Position = UDim2.new(0.5, 0, 0.98, 0)
             Drag.Size = UDim2.new(0, 207, 0, 5)
@@ -2198,7 +1989,6 @@ function Azure:create_tab(title)
             Instance.new("UICorner", Drag).CornerRadius = UDim.new(1, 0)
 
             local RangeFill = Instance.new("Frame", Drag)
-            RangeFill.Name = "RangeFill"
             RangeFill.AnchorPoint = Vector2.new(0, 0.5)
             RangeFill.Position = UDim2.new(0, 0, 0.5, 0)
             RangeFill.Size = UDim2.new(0, 0, 0, 5)
@@ -2208,40 +1998,21 @@ function Azure:create_tab(title)
             RangeFill.ZIndex = 11
             Instance.new("UICorner", RangeFill).CornerRadius = UDim.new(1, 0)
 
-            local rangeGrad = Instance.new("UIGradient", RangeFill)
-            rangeGrad.Color = ColorSequence.new{
-                ColorSequenceKeypoint.new(0, PALETTE.accent),
-                ColorSequenceKeypoint.new(1, PALETTE.accentHot),
-            }
-            rangeGrad.Parent = RangeFill
-
             local MinHandle = Instance.new("Frame", Drag)
-            MinHandle.Name = "MinHandle"
             MinHandle.AnchorPoint = Vector2.new(0.5, 0.5)
             MinHandle.Size = UDim2.fromOffset(11, 11)
             MinHandle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             MinHandle.BorderSizePixel = 0
             MinHandle.ZIndex = 12
             Instance.new("UICorner", MinHandle).CornerRadius = UDim.new(1, 0)
-            local mhGlow = Instance.new("UIStroke", MinHandle)
-            mhGlow.Color = PALETTE.accentHot
-            mhGlow.Thickness = 2
-            mhGlow.Transparency = 0.4
-            mhGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
             local MaxHandle = Instance.new("Frame", Drag)
-            MaxHandle.Name = "MaxHandle"
             MaxHandle.AnchorPoint = Vector2.new(0.5, 0.5)
             MaxHandle.Size = UDim2.fromOffset(11, 11)
             MaxHandle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             MaxHandle.BorderSizePixel = 0
             MaxHandle.ZIndex = 12
             Instance.new("UICorner", MaxHandle).CornerRadius = UDim.new(1, 0)
-            local xhGlow = Instance.new("UIStroke", MaxHandle)
-            xhGlow.Color = PALETTE.accentHot
-            xhGlow.Thickness = 2
-            xhGlow.Transparency = 0.4
-            xhGlow.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
             local SM = {}
             local min_v = s.minimum_value or 0
@@ -2257,7 +2028,10 @@ function Azure:create_tab(title)
                 RangeFill.Size = UDim2.new(math.max(pmax - pmin, 0.01), 0, 0, 5)
                 MinHandle.Position = UDim2.new(pmin, 0, 0.5, 0)
                 MaxHandle.Position = UDim2.new(pmax, 0, 0.5, 0)
-                Value.Text = tostring(math.floor(cur_min)) .. " - " .. tostring(math.floor(cur_max))
+                -- ★ FIXED — أرقام مقربة
+                local a = math.floor(cur_min * 10 + 0.5) / 10
+                local b = math.floor(cur_max * 10 + 0.5) / 10
+                Value.Text = tostring(a) .. " - " .. tostring(b)
                 Azure._config._flags[s.flag] = { min = cur_min, max = cur_max }
                 if s.callback then pcall(s.callback, cur_min, cur_max) end
             end
@@ -2339,7 +2113,6 @@ function Azure:create_tab(title)
             TitleLabel.ZIndex = 10
 
             local Box = Instance.new("Frame", TitleLabel)
-            Box.Name = "Box"
             Box.ClipsDescendants = true
             Box.AnchorPoint = Vector2.new(0.5, 0)
             Box.Position = UDim2.new(0.5, 0, 1.15, 0)
@@ -2357,7 +2130,6 @@ function Azure:create_tab(title)
             boxStroke2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
             local arrow = Instance.new("TextLabel", Box)
-            arrow.Name = "Arrow"
             arrow.FontFace = FONT.bold
             arrow.Text = "▾"
             arrow.TextColor3 = PALETTE.accentHot
@@ -2370,7 +2142,6 @@ function Azure:create_tab(title)
             arrow.ZIndex = 12
 
             local CurrentOption = Instance.new("TextLabel", Box)
-            CurrentOption.Name = "CurrentOption"
             CurrentOption.FontFace = FONT.bold
             CurrentOption.TextColor3 = PALETTE.text
             CurrentOption.TextTransparency = 0.05
@@ -2383,7 +2154,6 @@ function Azure:create_tab(title)
             CurrentOption.ZIndex = 12
 
             local OptionsFrame = Instance.new("ScrollingFrame", Box)
-            OptionsFrame.Name = "Options"
             OptionsFrame.ScrollBarThickness = 0
             OptionsFrame.BackgroundTransparency = 1
             OptionsFrame.Position = UDim2.new(0, 0, 1, 0)
@@ -2453,21 +2223,13 @@ function Azure:create_tab(title)
                 self._state = not self._state
                 if self._state then
                     ModuleManager._multiplier += self._size
-                    TweenService:Create(Dropdown, Animation.springOut, {
-                        Size = UDim2.fromOffset(207, 42 + self._size)
-                    }):Play()
-                    TweenService:Create(Box, Animation.springOut, {
-                        Size = UDim2.fromOffset(207, 24 + self._size)
-                    }):Play()
+                    TweenService:Create(Dropdown, Animation.springOut, { Size = UDim2.fromOffset(207, 42 + self._size) }):Play()
+                    TweenService:Create(Box, Animation.springOut, { Size = UDim2.fromOffset(207, 24 + self._size) }):Play()
                     TweenService:Create(arrow, Animation.smoothOut, { Rotation = 180 }):Play()
                 else
                     ModuleManager._multiplier -= self._size
-                    TweenService:Create(Dropdown, Animation.smoothOut, {
-                        Size = UDim2.fromOffset(207, 42)
-                    }):Play()
-                    TweenService:Create(Box, Animation.smoothOut, {
-                        Size = UDim2.fromOffset(207, 24)
-                    }):Play()
+                    TweenService:Create(Dropdown, Animation.smoothOut, { Size = UDim2.fromOffset(207, 42) }):Play()
+                    TweenService:Create(Box, Animation.smoothOut, { Size = UDim2.fromOffset(207, 24) }):Play()
                     TweenService:Create(arrow, Animation.smoothOut, { Rotation = 0 }):Play()
                 end
                 refresh_size()
@@ -2485,7 +2247,7 @@ function Azure:create_tab(title)
 end
 
 -- ═══════════════════════════════════════════════════════════
--- 9. TABS + MODULES
+-- TABS + MODULES
 -- ═══════════════════════════════════════════════════════════
 local AzureWindow = Azure.new()
 
@@ -2495,10 +2257,8 @@ local DetTab    = AzureWindow:create_tab("Detection")
 local VisualTab = AzureWindow:create_tab("Visual")
 
 local autoparry_module = MainTab:create_module({
-    title = "Auto Parry",
-    description = "Auto Parry Settings",
-    flag = "AutoParryModule",
-    section = "left",
+    title = "Auto Parry", description = "Auto Parry Settings",
+    flag = "AutoParryModule", section = "left",
     callback = function(state)
         System.__properties.__autoparry_enabled = state
         if state then System.autoparry.start() else System.autoparry.stop() end
@@ -2603,7 +2363,7 @@ auto_spam_module:create_slider({
 
 auto_spam_module:create_slider({
     title = "Distance Multiplier", flag = "DistanceMultiplier",
-    maximum_value = 3, minimum_value = 0.3, value = 1, round_number = false,
+    maximum_value = 5, minimum_value = 0.5, value = 2, round_number = false,
     callback = function(value) System.__properties.__distance_multiplier = value end,
 })
 
@@ -2659,7 +2419,7 @@ local fps_mod = VisualTab:create_module({
 })
 
 -- ═══════════════════════════════════════════════════════════
--- 10. AUTO START
+-- AUTO START
 -- ═══════════════════════════════════════════════════════════
 System.__properties.__autoparry_enabled = true
 System.__properties.__auto_spam_enabled = true
