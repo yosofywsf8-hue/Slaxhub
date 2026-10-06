@@ -1,10 +1,8 @@
 -- ═══════════════════════════════════════════════════════════
--- BLABLA Hub FINAL v7 — Blade Ball Script
+-- BLABLA Hub FINAL v8 — Blade Ball Script
 -- Font: LuckiestGuy + FredokaOne + DenkOne
--- Tabs + Auto Parry + Auto Spam + Manual Spam + Triggerbot
--- Floating Buttons Premium (Manual Spam + Triggerbot)
--- Detection Skip + Target Switch + Slider Rounding
--- بدون Divider الأفقي داخل Modules + بدون Divider الجانبي
+-- Auto Parry + Auto Spam + Manual Spam + Triggerbot + SOF
+-- Floating Buttons Premium + Detection + Target Switch
 -- ═══════════════════════════════════════════════════════════
 
 local cloneref = cloneref or function(o) return o end
@@ -326,6 +324,51 @@ local System = {
     },
 }
 
+-- ═══════════════════════════════════════════════════════════
+-- SOF TRACKER
+-- ═══════════════════════════════════════════════════════════
+local FuryTracker = {
+    __uses = {},
+    __max_uses = 35,
+    __active_until = 0,
+    __detection_enabled = true,
+    __auto_parry_enabled = true,
+    __parry_amount = 35,
+    __parry_delay = 0.05,
+    __parry_method = "Remote",
+    __last_parry = 0,
+}
+
+function FuryTracker:getUses(playerName)
+    local data = self.__uses[playerName]
+    if not data then return 0 end
+    if workspace:GetServerTimeNow() - data.started > 4 then
+        self.__uses[playerName] = nil
+        return 0
+    end
+    return data.uses
+end
+
+function FuryTracker:record(playerName, character)
+    local now = workspace:GetServerTimeNow()
+    local data = self.__uses[playerName]
+    if not data or now - data.started > 4 then
+        data = { uses = 0, started = now, character = character }
+        self.__uses[playerName] = data
+    end
+    data.uses = math.min(data.uses + 1, self.__max_uses)
+    data.character = character
+    self.__active_until = now + 4
+end
+
+function FuryTracker:reset(playerName)
+    if playerName then
+        self.__uses[playerName] = nil
+    else
+        self.__uses = {}
+    end
+end
+
 local function update_divisor()
     System.__properties.__divisor_multiplier = 0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
 end
@@ -570,6 +613,68 @@ netFolder["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════
+-- SOF DETECTION HOOKS
+-- ═══════════════════════════════════════════════════════════
+RS.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(_, _, _, victimPlayer)
+    if not FuryTracker.__detection_enabled then return end
+    if typeof(victimPlayer) ~= "Instance" or not victimPlayer:IsA("Player") then return end
+    if victimPlayer == LocalPlayer then return end
+    local char = victimPlayer.Character
+    if not char then return end
+    local abilities = char:FindFirstChild("Abilities")
+    if not abilities then return end
+    local sof = abilities:FindFirstChild("Slashes of Fury")
+    if not sof or not sof.Enabled then return end
+    FuryTracker:record(victimPlayer.Name, char)
+end)
+
+netFolder["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(function(...)
+    if not FuryTracker.__detection_enabled then return end
+    System.__properties.__slashesoffury_active = true
+    System.__properties.__slashesoffury_count = 0
+end)
+
+task.spawn(function()
+    while task.wait(1) do
+        local now = workspace:GetServerTimeNow()
+        for name, data in pairs(FuryTracker.__uses) do
+            if now - data.started > 4 then
+                FuryTracker.__uses[name] = nil
+            end
+        end
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- SOF AUTO PARRY LOOP
+-- ═══════════════════════════════════════════════════════════
+task.spawn(function()
+    while true do
+        task.wait()
+        if not FuryTracker.__auto_parry_enabled then continue end
+        if not LocalPlayer.Character or not LocalPlayer.Character.Parent then continue end
+        if LocalPlayer.Character.Parent ~= Alive then continue end
+        if System.__config.__detections.__infinity and System.__properties.__infinity_active then continue end
+        if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then continue end
+        if System.__config.__detections.__timehole and System.__properties.__timehole_active then continue end
+        local myAbilities = LocalPlayer.Character:FindFirstChild("Abilities")
+        local mySOF = myAbilities and myAbilities:FindFirstChild("Slashes of Fury")
+        if not mySOF or not mySOF.Enabled then continue end
+        local anyActive = false
+        for name, data in pairs(FuryTracker.__uses) do
+            if workspace:GetServerTimeNow() - data.started < 4 and data.uses < FuryTracker.__max_uses then
+                anyActive = true
+                break
+            end
+        end
+        if not anyActive then continue end
+        if tick() - FuryTracker.__last_parry < FuryTracker.__parry_delay then continue end
+        FuryTracker.__last_parry = tick()
+        System.parry.execute()
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════
 -- TRIGGERBOT
 -- ═══════════════════════════════════════════════════════════
 System.triggerbot = {
@@ -577,82 +682,53 @@ System.triggerbot = {
     __is_parrying = false,
     __parries = 0,
     __max_parries = 10000,
-    __parry_delay = 0.15,
-    __cooldown = 0,
-    __stats = { total_triggers = 0, successful = 0, failed = 0 },
+    __parry_delay = 0.5,
 }
 
 function System.triggerbot.trigger(ball)
-    if not System.triggerbot.__enabled then return end
-    if System.triggerbot.__is_parrying then return end
-    if System.triggerbot.__parries >= System.triggerbot.__max_parries then return end
-    if tick() - System.triggerbot.__cooldown < System.triggerbot.__parry_delay then return end
-    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
-    if LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then return end
-    if System.__config.__detections.__infinity and System.__properties.__infinity_active then return end
-    if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then return end
-    if System.__config.__detections.__timehole and System.__properties.__timehole_active then return end
-    if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then return end
-    if getgenv().CooldownProtection then
-        local hotbar = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
-        local block = hotbar and hotbar:FindFirstChild("Block")
-        local cd = block and block:FindFirstChild("UIGradient")
-        if cd and cd.Offset.Y < 0.4 then return end
+    if System.triggerbot.__is_parrying or System.triggerbot.__parries > System.triggerbot.__max_parries then
+        return
+    end
+    if LocalPlayer.Character and LocalPlayer.Character.PrimaryPart and 
+       LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then
+        return
     end
     System.triggerbot.__is_parrying = true
-    System.triggerbot.__parries += 1
-    System.triggerbot.__cooldown = tick()
-    System.triggerbot.__stats.total_triggers += 1
-    local success = pcall(function() System.parry.execute() end)
-    if success then System.triggerbot.__stats.successful += 1
-    else System.triggerbot.__stats.failed += 1 end
+    System.triggerbot.__parries = System.triggerbot.__parries + 1
+    System.parry.execute()
     task.delay(System.triggerbot.__parry_delay, function()
-        if System.triggerbot.__parries > 0 then System.triggerbot.__parries -= 1 end
-        System.triggerbot.__is_parrying = false
+        if System.triggerbot.__parries > 0 then
+            System.triggerbot.__parries = System.triggerbot.__parries - 1
+        end
     end)
     local connection
     connection = ball:GetAttributeChangedSignal('target'):Once(function()
         System.triggerbot.__is_parrying = false
-        if connection then connection:Disconnect() end
+        if connection then
+            connection:Disconnect()
+        end
     end)
     task.spawn(function()
         local start_time = tick()
-        repeat RunService.Heartbeat:Wait()
-        until (tick() - start_time >= System.triggerbot.__parry_delay * 2 or not System.triggerbot.__is_parrying)
+        repeat
+            RunService.Heartbeat:Wait()
+        until (tick() - start_time >= 1 or not System.triggerbot.__is_parrying)
         System.triggerbot.__is_parrying = false
     end)
 end
 
 function System.triggerbot.loop()
     if not System.triggerbot.__enabled then return end
-    if System.triggerbot.__is_parrying then return end
-    if System.triggerbot.__parries >= System.triggerbot.__max_parries then return end
-    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
-    if LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then return end
-    if System.__config.__detections.__infinity and System.__properties.__infinity_active then return end
-    if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then return end
-    if System.__config.__detections.__timehole and System.__properties.__timehole_active then return end
-    if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then return end
-    if getgenv().CooldownProtection then
-        local hotbar = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
-        local block = hotbar and hotbar:FindFirstChild("Block")
-        local cd = block and block:FindFirstChild("UIGradient")
-        if cd and cd.Offset.Y < 0.4 then return end
+    if LocalPlayer.Character and LocalPlayer.Character.PrimaryPart and 
+       LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then
+        return
     end
     local balls = workspace:FindFirstChild('Balls')
     if not balls then return end
     for _, ball in pairs(balls:GetChildren()) do
         if ball:IsA('BasePart') and ball:GetAttribute('target') == LocalPlayer.Name then
-            local zoomies = ball:FindFirstChild('zoomies')
-            if zoomies then
-                local speed = zoomies.VectorVelocity.Magnitude
-                local distance = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Magnitude
-                local maxRange = getgenv().TriggerbotMaxRange or 25
-                if distance <= maxRange and speed > 0 then
-                    System.triggerbot.trigger(ball)
-                    break
-                end
-            end
+            System.triggerbot.trigger(ball)
+            break
         end
     end
 end
@@ -691,7 +767,6 @@ function System.autoparry.start()
         end
         for _, ball in pairs(balls) do
             if System.triggerbot and System.triggerbot.__enabled then return end
-            if getgenv().BallVelocityAbove800 then return end
             if not ball then continue end
             local zoomies = ball:FindFirstChild('zoomies')
             if not zoomies then continue end
@@ -1250,8 +1325,7 @@ function Azure.new()
     Container.Size = UDim2.fromOffset(0, 0)
     Container.BackgroundColor3 = PALETTE.bgMain
     Container.BackgroundTransparency = 0.05
-    Container.BorderSizePixel = 0
-    Container.ClipsDescendants = true
+    Container.BorderSizePixel = 0    Container.ClipsDescendants = true
     Container.Active = true
     Container.ZIndex = 5
     Container.Parent = ScreenGui
@@ -1722,8 +1796,6 @@ function Azure:create_tab(title)
         Circle.BorderSizePixel = 0
         Circle.ZIndex = 11
         Instance.new("UICorner", Circle).CornerRadius = UDim.new(1, 0)
-
-        -- ★ Divider الأفقي داخل Module محذوف
 
         local Options = Instance.new("Frame", Module)
         Options.Name = "Options"
@@ -2347,16 +2419,6 @@ local triggerbot_module = MainTab:create_module({
     flag = "TriggerbotModule", section = "right",
     callback = function(state) System.triggerbot.enable(state) end,
 })
-triggerbot_module:create_slider({
-    title = "Parry Delay (ms)", flag = "TriggerbotDelay",
-    maximum_value = 500, minimum_value = 50, value = 150, round_number = true,
-    callback = function(value) System.triggerbot.__parry_delay = value / 1000 end,
-})
-triggerbot_module:create_slider({
-    title = "Max Range", flag = "TriggerbotRange",
-    maximum_value = 50, minimum_value = 5, value = 25, round_number = true,
-    callback = function(value) getgenv().TriggerbotMaxRange = value end,
-})
 triggerbot_module:create_checkbox({
     title = "Notify", flag = "TriggerbotNotify",
     callback = function(value) getgenv().TriggerbotNotify = value end,
@@ -2426,24 +2488,28 @@ auto_spam_module:create_checkbox({
     callback = function(value) getgenv().AutoSpamAnimationFix = value end,
 })
 
+-- DETECTION — Modules
 local inf_mod = DetTab:create_module({
     title = "Infinity Ball", description = "skip parry while active",
     flag = "InfModule", section = "left",
     callback = function(state) System.__config.__detections.__infinity = state end,
 })
 inf_mod:change_state(true)
+
 local ds_mod = DetTab:create_module({
     title = "Death Slash", description = "skip parry while active",
     flag = "DSModule", section = "left",
     callback = function(state) System.__config.__detections.__deathslash = state end,
 })
 ds_mod:change_state(true)
+
 local th_mod = DetTab:create_module({
     title = "Time Hole", description = "skip parry while active",
     flag = "THModule", section = "right",
     callback = function(state) System.__config.__detections.__timehole = state end,
 })
 th_mod:change_state(true)
+
 local sof_mod = DetTab:create_module({
     title = "Slashes of Fury", description = "parry loop while active",
     flag = "SoFModule", section = "right",
@@ -2451,6 +2517,38 @@ local sof_mod = DetTab:create_module({
 })
 sof_mod:change_state(true)
 
+-- ★ SOF DETECTION — Module كامل
+local sof_detect_module = DetTab:create_module({
+    title = "SOF Detection",
+    description = "Track Slashes of Fury + auto parry",
+    flag = "SOFDetectModule",
+    section = "left",
+    callback = function(state)
+        FuryTracker.__detection_enabled = state
+    end,
+})
+sof_detect_module:change_state(true)
+sof_detect_module:create_checkbox({
+    title = "Auto Parry SOF", flag = "SOFAutoParry",
+    callback = function(value) FuryTracker.__auto_parry_enabled = value end,
+})
+sof_detect_module:create_slider({
+    title = "Parry Amount", flag = "SOFParryAmount",
+    maximum_value = 35, minimum_value = 1, value = 35, round_number = true,
+    callback = function(value) FuryTracker.__parry_amount = value end,
+})
+sof_detect_module:create_slider({
+    title = "Parry Delay", flag = "SOFParryDelay",
+    maximum_value = 0.25, minimum_value = 0.02, value = 0.05, round_number = false,
+    callback = function(value) FuryTracker.__parry_delay = value end,
+})
+sof_detect_module:create_dropdown({
+    title = "Parry Method", flag = "SOFParryMethod",
+    options = {"Remote", "Keypress"}, maximum_options = 2,
+    callback = function(value) FuryTracker.__parry_method = value end,
+})
+
+-- VISUAL
 local nr_mod = VisualTab:create_module({
     title = "No Render", description = "disable effects completely",
     flag = "NRModule", section = "left",
@@ -2696,6 +2794,117 @@ createFloatingButton({
         System.triggerbot.enable(not System.triggerbot.__enabled)
     end,
 })
+
+-- ═══════════════════════════════════════════════════════════
+-- SOF INDICATOR
+-- ═══════════════════════════════════════════════════════════
+local function createSOFIndicator()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "BlablaSOF"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.DisplayOrder = 996
+    gui.Parent = CoreGui
+
+    local frame = Instance.new("Frame")
+    frame.Name = "SOF"
+    frame.AnchorPoint = Vector2.new(0, 0)
+    frame.Position = UDim2.new(0, 20, 0, 240)
+    frame.Size = UDim2.fromOffset(200, 30)
+    frame.BackgroundColor3 = PALETTE.bgMain
+    frame.BackgroundTransparency = 0.15
+    frame.BorderSizePixel = 0
+    frame.Visible = false
+    frame.Parent = gui
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+
+    local stroke = Instance.new("UIStroke", frame)
+    stroke.Color = Color3.fromRGB(255, 130, 160)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.4
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    local title = Instance.new("TextLabel", frame)
+    title.BackgroundTransparency = 1
+    title.Size = UDim2.new(1, -16, 0, 12)
+    title.Position = UDim2.new(0, 8, 0, 4)
+    title.FontFace = FONT.semi
+    title.Text = "⚔ SLASHES OF FURY"
+    title.TextColor3 = Color3.fromRGB(255, 180, 200)
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.TextSize = 9
+
+    local body = Instance.new("TextLabel", frame)
+    body.Name = "Body"
+    body.BackgroundTransparency = 1
+    body.Size = UDim2.new(1, -16, 0, 14)
+    body.Position = UDim2.new(0, 8, 0, 16)
+    body.FontFace = FONT.bold
+    body.Text = "—"
+    body.TextColor3 = PALETTE.text
+    body.TextXAlignment = Enum.TextXAlignment.Left
+    body.TextSize = 12
+
+    local dragging, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            local d = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + d.X,
+                startPos.Y.Scale, startPos.Y.Offset + d.Y
+            )
+        end
+    end)
+
+    task.spawn(function()
+        local lastText = nil
+        while frame.Parent do
+            task.wait(0.2)
+            local now = workspace:GetServerTimeNow()
+            local active = {}
+            for name, data in pairs(FuryTracker.__uses) do
+                if now - data.started < 4 then
+                    table.insert(active, {name = name, uses = data.uses})
+                end
+            end
+            if #active == 0 then
+                frame.Visible = false
+            else
+                frame.Visible = true
+                table.sort(active, function(a, b) return a.uses > b.uses end)
+                local txt = ""
+                for i, e in ipairs(active) do
+                    if i > 3 then break end
+                    txt = txt .. (i > 1 and " | " or "") .. e.name .. " (" .. e.uses .. ")"
+                end
+                if txt ~= lastText then
+                    lastText = txt
+                    body.Text = txt
+                    local s = body:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", body)
+                    s.Scale = 1.2
+                    TweenService:Create(s, Animation.springOut, {Scale = 1}):Play()
+                end
+            end
+        end
+    end)
+
+    return frame
+end
+
+createSOFIndicator()
 
 -- ═══════════════════════════════════════════════════════════
 -- AUTO START
