@@ -1,9 +1,10 @@
 -- ═══════════════════════════════════════════════════════════
--- BLABLA Hub FINAL v6 — Blade Ball Script
+-- BLABLA Hub FINAL v7 — Blade Ball Script
 -- Font: LuckiestGuy + FredokaOne + DenkOne
--- Auto Parry + Auto Spam + Manual Spam + Triggerbot + Floating Button
+-- Tabs + Auto Parry + Auto Spam + Manual Spam + Triggerbot
+-- Floating Buttons Premium (Manual Spam + Triggerbot)
 -- Detection Skip + Target Switch + Slider Rounding
--- بدون Divider line
+-- بدون Divider الأفقي داخل Modules + بدون Divider الجانبي
 -- ═══════════════════════════════════════════════════════════
 
 local cloneref = cloneref or function(o) return o end
@@ -27,6 +28,7 @@ local PALETTE = {
     accent = Color3.fromRGB(180, 130, 255), accentHot = Color3.fromRGB(220, 180, 255),
     text = Color3.fromRGB(255, 255, 255), textDim = Color3.fromRGB(220, 210, 240),
     textFaint = Color3.fromRGB(160, 145, 200),
+    success = Color3.fromRGB(120, 255, 170),
 }
 
 -- ═══════════════════════════════════════════════════════════
@@ -575,53 +577,82 @@ System.triggerbot = {
     __is_parrying = false,
     __parries = 0,
     __max_parries = 10000,
-    __parry_delay = 0.5,
+    __parry_delay = 0.15,
+    __cooldown = 0,
+    __stats = { total_triggers = 0, successful = 0, failed = 0 },
 }
 
 function System.triggerbot.trigger(ball)
-    if System.triggerbot.__is_parrying or System.triggerbot.__parries > System.triggerbot.__max_parries then
-        return
-    end
-    if LocalPlayer.Character and LocalPlayer.Character.PrimaryPart and 
-       LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then
-        return
+    if not System.triggerbot.__enabled then return end
+    if System.triggerbot.__is_parrying then return end
+    if System.triggerbot.__parries >= System.triggerbot.__max_parries then return end
+    if tick() - System.triggerbot.__cooldown < System.triggerbot.__parry_delay then return end
+    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
+    if LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then return end
+    if System.__config.__detections.__infinity and System.__properties.__infinity_active then return end
+    if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then return end
+    if System.__config.__detections.__timehole and System.__properties.__timehole_active then return end
+    if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then return end
+    if getgenv().CooldownProtection then
+        local hotbar = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
+        local block = hotbar and hotbar:FindFirstChild("Block")
+        local cd = block and block:FindFirstChild("UIGradient")
+        if cd and cd.Offset.Y < 0.4 then return end
     end
     System.triggerbot.__is_parrying = true
-    System.triggerbot.__parries = System.triggerbot.__parries + 1
-    System.parry.execute()
+    System.triggerbot.__parries += 1
+    System.triggerbot.__cooldown = tick()
+    System.triggerbot.__stats.total_triggers += 1
+    local success = pcall(function() System.parry.execute() end)
+    if success then System.triggerbot.__stats.successful += 1
+    else System.triggerbot.__stats.failed += 1 end
     task.delay(System.triggerbot.__parry_delay, function()
-        if System.triggerbot.__parries > 0 then
-            System.triggerbot.__parries = System.triggerbot.__parries - 1
-        end
+        if System.triggerbot.__parries > 0 then System.triggerbot.__parries -= 1 end
+        System.triggerbot.__is_parrying = false
     end)
     local connection
     connection = ball:GetAttributeChangedSignal('target'):Once(function()
         System.triggerbot.__is_parrying = false
-        if connection then
-            connection:Disconnect()
-        end
+        if connection then connection:Disconnect() end
     end)
     task.spawn(function()
         local start_time = tick()
-        repeat
-            RunService.Heartbeat:Wait()
-        until (tick() - start_time >= 1 or not System.triggerbot.__is_parrying)
+        repeat RunService.Heartbeat:Wait()
+        until (tick() - start_time >= System.triggerbot.__parry_delay * 2 or not System.triggerbot.__is_parrying)
         System.triggerbot.__is_parrying = false
     end)
 end
 
 function System.triggerbot.loop()
     if not System.triggerbot.__enabled then return end
-    if LocalPlayer.Character and LocalPlayer.Character.PrimaryPart and 
-       LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then
-        return
+    if System.triggerbot.__is_parrying then return end
+    if System.triggerbot.__parries >= System.triggerbot.__max_parries then return end
+    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
+    if LocalPlayer.Character.PrimaryPart:FindFirstChild('SingularityCape') then return end
+    if System.__config.__detections.__infinity and System.__properties.__infinity_active then return end
+    if System.__config.__detections.__deathslash and System.__properties.__deathslash_active then return end
+    if System.__config.__detections.__timehole and System.__properties.__timehole_active then return end
+    if System.__config.__detections.__slashesoffury and System.__properties.__slashesoffury_active then return end
+    if getgenv().CooldownProtection then
+        local hotbar = LocalPlayer.PlayerGui and LocalPlayer.PlayerGui:FindFirstChild("Hotbar")
+        local block = hotbar and hotbar:FindFirstChild("Block")
+        local cd = block and block:FindFirstChild("UIGradient")
+        if cd and cd.Offset.Y < 0.4 then return end
     end
     local balls = workspace:FindFirstChild('Balls')
     if not balls then return end
     for _, ball in pairs(balls:GetChildren()) do
         if ball:IsA('BasePart') and ball:GetAttribute('target') == LocalPlayer.Name then
-            System.triggerbot.trigger(ball)
-            break
+            local zoomies = ball:FindFirstChild('zoomies')
+            if zoomies then
+                local speed = zoomies.VectorVelocity.Magnitude
+                local distance = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Magnitude
+                local maxRange = getgenv().TriggerbotMaxRange or 25
+                if distance <= maxRange and speed > 0 then
+                    System.triggerbot.trigger(ball)
+                    break
+                end
+            end
         end
     end
 end
@@ -659,6 +690,8 @@ function System.autoparry.start()
             end
         end
         for _, ball in pairs(balls) do
+            if System.triggerbot and System.triggerbot.__enabled then return end
+            if getgenv().BallVelocityAbove800 then return end
             if not ball then continue end
             local zoomies = ball:FindFirstChild('zoomies')
             if not zoomies then continue end
@@ -1330,8 +1363,6 @@ function Azure.new()
     SubTitle.TextSize = 11
     SubTitle.ZIndex = 6
 
-    -- ★ Divider محذوف — مباشرة Tabs
-
     local TabsFrame = Instance.new("ScrollingFrame", Handler)
     TabsFrame.Name = "Tabs"
     TabsFrame.Size = UDim2.new(0, 140, 0, 445)
@@ -1692,21 +1723,7 @@ function Azure:create_tab(title)
         Circle.ZIndex = 11
         Instance.new("UICorner", Circle).CornerRadius = UDim.new(1, 0)
 
-        local Divider = Instance.new("Frame", Header)
-        Divider.AnchorPoint = Vector2.new(0.5, 0)
-        Divider.Position = UDim2.new(0.5, 0, 0.62, 0)
-        Divider.BackgroundColor3 = PALETTE.accent
-        Divider.BackgroundTransparency = 0.6
-        Divider.Size = UDim2.new(0, 225, 0, 1)
-        Divider.BorderSizePixel = 0
-        Divider.ZIndex = 9
-
-        local divGrad2 = Instance.new("UIGradient", Divider)
-        divGrad2.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.2),
-            NumberSequenceKeypoint.new(1, 1),
-        })
-        divGrad2.Parent = Divider
+        -- ★ Divider الأفقي داخل Module محذوف
 
         local Options = Instance.new("Frame", Module)
         Options.Name = "Options"
@@ -1774,12 +1791,10 @@ function Azure:create_tab(title)
             ModuleManager:change_state(not ModuleManager._state)
         end)
 
-        -- CHECKBOX
         function ModuleManager:create_checkbox(s)
             if self._size == 0 then self._size = 11 end
             self._size += 22
             refresh_size()
-
             local CM = { _state = false }
             local Checkbox = Instance.new("TextButton", Options)
             Checkbox.Name = "Checkbox"
@@ -1789,7 +1804,6 @@ function Azure:create_tab(title)
             Checkbox.Size = UDim2.new(0, 207, 0, 18)
             Checkbox.BorderSizePixel = 0
             Checkbox.ZIndex = 9
-
             local TitleLabel = Instance.new("TextLabel", Checkbox)
             TitleLabel.FontFace = FONT.semi
             TitleLabel.Text = s.title
@@ -1802,7 +1816,6 @@ function Azure:create_tab(title)
             TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
             TitleLabel.TextSize = 12
             TitleLabel.ZIndex = 10
-
             local Box = Instance.new("Frame", Checkbox)
             Box.AnchorPoint = Vector2.new(1, 0.5)
             Box.Position = UDim2.new(1, -2, 0.5, 0)
@@ -1812,13 +1825,11 @@ function Azure:create_tab(title)
             Box.BorderSizePixel = 0
             Box.ZIndex = 10
             Instance.new("UICorner", Box).CornerRadius = UDim.new(0, 6)
-
             local boxStroke = Instance.new("UIStroke", Box)
             boxStroke.Color = PALETTE.borderSoft
             boxStroke.Transparency = 0.4
             boxStroke.Thickness = 1
             boxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
             local Fill = Instance.new("Frame", Box)
             Fill.AnchorPoint = Vector2.new(0.5, 0.5)
             Fill.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -1828,7 +1839,6 @@ function Azure:create_tab(title)
             Fill.BorderSizePixel = 0
             Fill.ZIndex = 11
             Instance.new("UICorner", Fill).CornerRadius = UDim.new(0, 5)
-
             local checkMark = Instance.new("TextLabel", Box)
             checkMark.FontFace = FONT.bold
             checkMark.Text = "✓"
@@ -1838,7 +1848,6 @@ function Azure:create_tab(title)
             checkMark.Size = UDim2.new(1, 0, 1, 0)
             checkMark.TextSize = 12
             checkMark.ZIndex = 12
-
             Checkbox.MouseEnter:Connect(function()
                 TweenService:Create(TitleLabel, Animation.smoothOut, { TextTransparency = 0 }):Play()
                 TweenService:Create(boxStroke, Animation.smoothOut, { Color = PALETTE.accentHot, Transparency = 0.15 }):Play()
@@ -1849,7 +1858,6 @@ function Azure:create_tab(title)
                     TweenService:Create(boxStroke, Animation.smoothOut, { Color = PALETTE.borderSoft, Transparency = 0.4 }):Play()
                 end
             end)
-
             function CM:change_state(state)
                 self._state = state
                 if state then
@@ -1867,25 +1875,20 @@ function Azure:create_tab(title)
                 Config:save(game.GameId, Azure._config)
                 if s.callback then pcall(s.callback, self._state) end
             end
-
             if Azure._config._flags[s.flag] ~= nil then
                 CM:change_state(Azure._config._flags[s.flag])
             end
-
             Checkbox.MouseButton1Click:Connect(function()
                 CM:change_state(not CM._state)
             end)
-
             refresh_size()
             return CM
         end
 
-        -- SLIDER
         function ModuleManager:create_slider(s)
             if self._size == 0 then self._size = 11 end
             self._size += 30
             refresh_size()
-
             local Slider = Instance.new("TextButton", Options)
             Slider.Name = "Slider"
             Slider.Text = ""
@@ -1894,7 +1897,6 @@ function Azure:create_tab(title)
             Slider.Size = UDim2.new(0, 207, 0, 25)
             Slider.BorderSizePixel = 0
             Slider.ZIndex = 9
-
             local TitleLabel = Instance.new("TextLabel", Slider)
             TitleLabel.FontFace = FONT.semi
             TitleLabel.Text = s.title
@@ -1906,7 +1908,6 @@ function Azure:create_tab(title)
             TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
             TitleLabel.TextSize = 12
             TitleLabel.ZIndex = 10
-
             local Value = Instance.new("TextLabel", Slider)
             Value.Name = "Value"
             Value.FontFace = FONT.bold
@@ -1920,7 +1921,6 @@ function Azure:create_tab(title)
             Value.TextXAlignment = Enum.TextXAlignment.Right
             Value.TextSize = 12
             Value.ZIndex = 10
-
             local Drag = Instance.new("Frame", Slider)
             Drag.AnchorPoint = Vector2.new(0.5, 1)
             Drag.Position = UDim2.new(0.5, 0, 0.98, 0)
@@ -1930,7 +1930,6 @@ function Azure:create_tab(title)
             Drag.BorderSizePixel = 0
             Drag.ZIndex = 10
             Instance.new("UICorner", Drag).CornerRadius = UDim.new(1, 0)
-
             local Fill = Instance.new("Frame", Drag)
             Fill.AnchorPoint = Vector2.new(0, 0.5)
             Fill.Position = UDim2.new(0, 0, 0.5, 0)
@@ -1940,14 +1939,12 @@ function Azure:create_tab(title)
             Fill.BorderSizePixel = 0
             Fill.ZIndex = 11
             Instance.new("UICorner", Fill).CornerRadius = UDim.new(1, 0)
-
             local fillGrad = Instance.new("UIGradient", Fill)
             fillGrad.Color = ColorSequence.new{
                 ColorSequenceKeypoint.new(0, PALETTE.accent),
                 ColorSequenceKeypoint.new(1, PALETTE.accentHot),
             }
             fillGrad.Parent = Fill
-
             local Circle2 = Instance.new("Frame", Fill)
             Circle2.AnchorPoint = Vector2.new(1, 0.5)
             Circle2.Position = UDim2.new(1, 0, 0.5, 0)
@@ -1956,12 +1953,10 @@ function Azure:create_tab(title)
             Circle2.BorderSizePixel = 0
             Circle2.ZIndex = 12
             Instance.new("UICorner", Circle2).CornerRadius = UDim.new(1, 0)
-
             local SM = {}
             local min_v = s.minimum_value or 0
             local max_v = s.maximum_value or 100
             local cur = s.value or min_v
-
             function SM:set_value(v)
                 cur = math.clamp(v, min_v, max_v)
                 if s.round_number then
@@ -1978,10 +1973,8 @@ function Azure:create_tab(title)
                 Azure._config._flags[s.flag] = cur
                 if s.callback then pcall(s.callback, cur) end
             end
-
             if Azure._config._flags[s.flag] then SM:set_value(Azure._config._flags[s.flag])
             else SM:set_value(cur) end
-
             local dragging = false
             local function update_from_input(input)
                 local rel = math.clamp((input.Position.X - Drag.AbsolutePosition.X) / Drag.AbsoluteSize.X, 0, 1)
@@ -2010,17 +2003,14 @@ function Azure:create_tab(title)
                     end
                 end
             end)
-
             refresh_size()
             return SM
         end
 
-        -- RANGE SLIDER
         function ModuleManager:create_range_slider(s)
             if self._size == 0 then self._size = 11 end
             self._size += 30
             refresh_size()
-
             local Slider = Instance.new("TextButton", Options)
             Slider.Name = "RangeSlider"
             Slider.Text = ""
@@ -2029,7 +2019,6 @@ function Azure:create_tab(title)
             Slider.Size = UDim2.new(0, 207, 0, 25)
             Slider.BorderSizePixel = 0
             Slider.ZIndex = 9
-
             local TitleLabel = Instance.new("TextLabel", Slider)
             TitleLabel.FontFace = FONT.semi
             TitleLabel.Text = s.title
@@ -2041,7 +2030,6 @@ function Azure:create_tab(title)
             TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
             TitleLabel.TextSize = 12
             TitleLabel.ZIndex = 10
-
             local Value = Instance.new("TextLabel", Slider)
             Value.Name = "Value"
             Value.FontFace = FONT.bold
@@ -2055,7 +2043,6 @@ function Azure:create_tab(title)
             Value.TextXAlignment = Enum.TextXAlignment.Right
             Value.TextSize = 12
             Value.ZIndex = 10
-
             local Drag = Instance.new("Frame", Slider)
             Drag.AnchorPoint = Vector2.new(0.5, 1)
             Drag.Position = UDim2.new(0.5, 0, 0.98, 0)
@@ -2065,7 +2052,6 @@ function Azure:create_tab(title)
             Drag.BorderSizePixel = 0
             Drag.ZIndex = 10
             Instance.new("UICorner", Drag).CornerRadius = UDim.new(1, 0)
-
             local RangeFill = Instance.new("Frame", Drag)
             RangeFill.AnchorPoint = Vector2.new(0, 0.5)
             RangeFill.Position = UDim2.new(0, 0, 0.5, 0)
@@ -2075,7 +2061,6 @@ function Azure:create_tab(title)
             RangeFill.BorderSizePixel = 0
             RangeFill.ZIndex = 11
             Instance.new("UICorner", RangeFill).CornerRadius = UDim.new(1, 0)
-
             local MinHandle = Instance.new("Frame", Drag)
             MinHandle.AnchorPoint = Vector2.new(0.5, 0.5)
             MinHandle.Size = UDim2.fromOffset(11, 11)
@@ -2083,7 +2068,6 @@ function Azure:create_tab(title)
             MinHandle.BorderSizePixel = 0
             MinHandle.ZIndex = 12
             Instance.new("UICorner", MinHandle).CornerRadius = UDim.new(1, 0)
-
             local MaxHandle = Instance.new("Frame", Drag)
             MaxHandle.AnchorPoint = Vector2.new(0.5, 0.5)
             MaxHandle.Size = UDim2.fromOffset(11, 11)
@@ -2091,13 +2075,11 @@ function Azure:create_tab(title)
             MaxHandle.BorderSizePixel = 0
             MaxHandle.ZIndex = 12
             Instance.new("UICorner", MaxHandle).CornerRadius = UDim.new(1, 0)
-
             local SM = {}
             local min_v = s.minimum_value or 0
             local max_v = s.maximum_value or 100
             local cur_min = (s.value and s.value.min) or min_v
             local cur_max = (s.value and s.value.max) or max_v
-
             local function refresh()
                 local span = max_v - min_v
                 local pmin = span > 0 and (cur_min - min_v) / span or 0
@@ -2112,14 +2094,12 @@ function Azure:create_tab(title)
                 Azure._config._flags[s.flag] = { min = cur_min, max = cur_max }
                 if s.callback then pcall(s.callback, cur_min, cur_max) end
             end
-
             if Azure._config._flags[s.flag] then
                 local saved = Azure._config._flags[s.flag]
                 cur_min = saved.min or cur_min
                 cur_max = saved.max or cur_max
             end
             refresh()
-
             local active = "min"
             local dragging = false
             local function update_from_input(input)
@@ -2157,17 +2137,14 @@ function Azure:create_tab(title)
                     end
                 end
             end)
-
             refresh_size()
             return SM
         end
 
-        -- DROPDOWN
         function ModuleManager:create_dropdown(s)
             if self._size == 0 then self._size = 11 end
             self._size += 46
             refresh_size()
-
             local DM = { _state = false, _size = 0 }
             local Dropdown = Instance.new("TextButton", Options)
             Dropdown.Name = "Dropdown"
@@ -2177,7 +2154,6 @@ function Azure:create_tab(title)
             Dropdown.Size = UDim2.new(0, 207, 0, 42)
             Dropdown.BorderSizePixel = 0
             Dropdown.ZIndex = 9
-
             local TitleLabel = Instance.new("TextLabel", Dropdown)
             TitleLabel.FontFace = FONT.semi
             TitleLabel.Text = s.title
@@ -2188,7 +2164,6 @@ function Azure:create_tab(title)
             TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
             TitleLabel.TextSize = 12
             TitleLabel.ZIndex = 10
-
             local Box = Instance.new("Frame", TitleLabel)
             Box.ClipsDescendants = true
             Box.AnchorPoint = Vector2.new(0.5, 0)
@@ -2199,13 +2174,11 @@ function Azure:create_tab(title)
             Box.BorderSizePixel = 0
             Box.ZIndex = 11
             Instance.new("UICorner", Box).CornerRadius = UDim.new(0, 6)
-
             local boxStroke2 = Instance.new("UIStroke", Box)
             boxStroke2.Color = PALETTE.borderSoft
             boxStroke2.Transparency = 0.55
             boxStroke2.Thickness = 1
             boxStroke2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
             local arrow = Instance.new("TextLabel", Box)
             arrow.FontFace = FONT.bold
             arrow.Text = "▾"
@@ -2217,7 +2190,6 @@ function Azure:create_tab(title)
             arrow.Size = UDim2.fromOffset(12, 12)
             arrow.TextSize = 11
             arrow.ZIndex = 12
-
             local CurrentOption = Instance.new("TextLabel", Box)
             CurrentOption.FontFace = FONT.bold
             CurrentOption.TextColor3 = PALETTE.text
@@ -2229,7 +2201,6 @@ function Azure:create_tab(title)
             CurrentOption.TextXAlignment = Enum.TextXAlignment.Left
             CurrentOption.TextSize = 12
             CurrentOption.ZIndex = 12
-
             local OptionsFrame = Instance.new("ScrollingFrame", Box)
             OptionsFrame.ScrollBarThickness = 0
             OptionsFrame.BackgroundTransparency = 1
@@ -2241,14 +2212,12 @@ function Azure:create_tab(title)
             local optsList = Instance.new("UIListLayout", OptionsFrame)
             optsList.SortOrder = Enum.SortOrder.LayoutOrder
             optsList.Padding = UDim.new(0, 2)
-
             function DM:update(option)
                 CurrentOption.Text = (typeof(option) == "string" and option) or option.Name
                 Azure._config._flags[s.flag] = option
                 Config:save(game.GameId, Azure._config)
                 if s.callback then pcall(s.callback, option) end
             end
-
             if s.options and #s.options > 0 then
                 DM._size = 5
                 for index, value in ipairs(s.options) do
@@ -2266,7 +2235,6 @@ function Azure:create_tab(title)
                     Option.ZIndex = 13
                     local optPad = Instance.new("UIPadding", Option)
                     optPad.PaddingLeft = UDim.new(0, 8)
-
                     Option.MouseEnter:Connect(function()
                         if Option.Text ~= CurrentOption.Text then
                             TweenService:Create(Option, Animation.smoothOut, { TextTransparency = 0.1, TextColor3 = PALETTE.accentHot }):Play()
@@ -2277,7 +2245,6 @@ function Azure:create_tab(title)
                             TweenService:Create(Option, Animation.smoothOut, { TextTransparency = 0.5, TextColor3 = PALETTE.textDim }):Play()
                         end
                     end)
-
                     Option.MouseButton1Click:Connect(function()
                         DM:update(value)
                         for _, child in OptionsFrame:GetChildren() do
@@ -2292,10 +2259,8 @@ function Azure:create_tab(title)
                 end
                 OptionsFrame.Size = UDim2.fromOffset(207, DM._size)
             end
-
             if Azure._config._flags[s.flag] then DM:update(Azure._config._flags[s.flag])
             elseif s.options and s.options[1] then DM:update(s.options[1]) end
-
             Dropdown.MouseButton1Click:Connect(function()
                 self._state = not self._state
                 if self._state then
@@ -2311,7 +2276,6 @@ function Azure:create_tab(title)
                 end
                 refresh_size()
             end)
-
             refresh_size()
             return DM
         end
@@ -2333,7 +2297,6 @@ local SpamTab   = AzureWindow:create_tab("Spam")
 local DetTab    = AzureWindow:create_tab("Detection")
 local VisualTab = AzureWindow:create_tab("Visual")
 
--- MAIN — Auto Parry
 local autoparry_module = MainTab:create_module({
     title = "Auto Parry", description = "Auto Parry Settings",
     flag = "AutoParryModule", section = "left",
@@ -2342,7 +2305,6 @@ local autoparry_module = MainTab:create_module({
         if state then System.autoparry.start() else System.autoparry.stop() end
     end,
 })
-
 autoparry_module:create_slider({
     title = "Parry Accuracy", flag = "ParryAccuracy",
     maximum_value = 50, minimum_value = 1, value = 50, round_number = true,
@@ -2353,13 +2315,11 @@ autoparry_module:create_slider({
         end
     end,
 })
-
 autoparry_module:create_dropdown({
     title = "Parry Mode", flag = "AutoParryMode",
     options = {"Remote", "Keypress"}, maximum_options = 10,
     callback = function(value) getgenv().AutoParryMode = value end,
 })
-
 autoparry_module:create_dropdown({
     title = "Mode curve", flag = "ModeCurve",
     options = System.__config.__curve_names, maximum_options = 10,
@@ -2369,45 +2329,41 @@ autoparry_module:create_dropdown({
         end
     end,
 })
-
 autoparry_module:create_checkbox({
     title = "Cooldown Protection", flag = "CooldownProtection",
     callback = function(value) getgenv().CooldownProtection = value end,
 })
-
 autoparry_module:create_checkbox({
     title = "Auto Ability", flag = "AutoAbility",
     callback = function(value) getgenv().AutoAbility = value end,
 })
-
 autoparry_module:create_checkbox({
     title = "Notify", flag = "AutoParryNotify",
     callback = function(value) getgenv().AutoParryNotify = value end,
 })
 
--- ★ Triggerbot Module
 local triggerbot_module = MainTab:create_module({
-    title = "Triggerbot",
-    description = "Auto parry when ball targets you",
-    flag = "TriggerbotModule",
-    section = "right",
-    callback = function(state)
-        System.triggerbot.enable(state)
-    end,
+    title = "Triggerbot", description = "Auto parry when ball targets you",
+    flag = "TriggerbotModule", section = "right",
+    callback = function(state) System.triggerbot.enable(state) end,
 })
-
+triggerbot_module:create_slider({
+    title = "Parry Delay (ms)", flag = "TriggerbotDelay",
+    maximum_value = 500, minimum_value = 50, value = 150, round_number = true,
+    callback = function(value) System.triggerbot.__parry_delay = value / 1000 end,
+})
+triggerbot_module:create_slider({
+    title = "Max Range", flag = "TriggerbotRange",
+    maximum_value = 50, minimum_value = 5, value = 25, round_number = true,
+    callback = function(value) getgenv().TriggerbotMaxRange = value end,
+})
 triggerbot_module:create_checkbox({
-    title = "Notify",
-    flag = "TriggerbotNotify",
-    callback = function(value)
-        getgenv().TriggerbotNotify = value
-    end,
+    title = "Notify", flag = "TriggerbotNotify",
+    callback = function(value) getgenv().TriggerbotNotify = value end,
 })
 
--- Humanizer
 local humanizer_module = MainTab:create_module({
-    title = "Humanizer",
-    description = "Choose a random parry accuracy range.",
+    title = "Humanizer", description = "Choose a random parry accuracy range.",
     flag = "HumanizerModule", section = "right",
     callback = function(state)
         if System then
@@ -2416,7 +2372,6 @@ local humanizer_module = MainTab:create_module({
         end
     end,
 })
-
 humanizer_module:create_range_slider({
     title = "Humanizer Accuracy", flag = "HumanizerAccuracyRange",
     maximum_value = 50, minimum_value = 1,
@@ -2429,7 +2384,6 @@ humanizer_module:create_range_slider({
     end,
 })
 
--- SPAM — Manual Spam
 local manual_spam_module = SpamTab:create_module({
     title = "Manual Spam", description = "Spam parries continuously",
     flag = "ManualSpamModule", section = "left",
@@ -2438,14 +2392,12 @@ local manual_spam_module = SpamTab:create_module({
         if state then System.manual_spam.start() else System.manual_spam.stop() end
     end,
 })
-
 manual_spam_module:create_slider({
     title = "CPS", flag = "ManualSpamCPS",
     maximum_value = 200, minimum_value = 1, value = 100, round_number = true,
     callback = function(value) System.__properties.__spam_rate = value end,
 })
 
--- SPAM — Auto Spam
 local auto_spam_module = SpamTab:create_module({
     title = "Auto Spam", description = "Automatically spam parries ball",
     flag = "AutoSpamModule", section = "right",
@@ -2454,52 +2406,44 @@ local auto_spam_module = SpamTab:create_module({
         if state then System.auto_spam.start() else System.auto_spam.stop() end
     end,
 })
-
 auto_spam_module:create_slider({
     title = "Parry Threshold", flag = "ParryThreshold",
     maximum_value = 3, minimum_value = 1, value = 1, round_number = true,
     callback = function(value) System.__properties.__spam_threshold = value end,
 })
-
 auto_spam_module:create_slider({
     title = "Distance Multiplier", flag = "DistanceMultiplier",
     maximum_value = 5, minimum_value = 0.5, value = 2, round_number = false,
     callback = function(value) System.__properties.__distance_multiplier = value end,
 })
-
 auto_spam_module:create_dropdown({
     title = "Mode", flag = "AutoSpamMode",
     options = {"Remote", "Keypress"}, maximum_options = 10,
     callback = function(value) getgenv().AutoSpamMode = value end,
 })
-
 auto_spam_module:create_checkbox({
     title = "Animation Fix", flag = "AutoSpamAnimationFix",
     callback = function(value) getgenv().AutoSpamAnimationFix = value end,
 })
 
--- DETECTION
 local inf_mod = DetTab:create_module({
     title = "Infinity Ball", description = "skip parry while active",
     flag = "InfModule", section = "left",
     callback = function(state) System.__config.__detections.__infinity = state end,
 })
 inf_mod:change_state(true)
-
 local ds_mod = DetTab:create_module({
     title = "Death Slash", description = "skip parry while active",
     flag = "DSModule", section = "left",
     callback = function(state) System.__config.__detections.__deathslash = state end,
 })
 ds_mod:change_state(true)
-
 local th_mod = DetTab:create_module({
     title = "Time Hole", description = "skip parry while active",
     flag = "THModule", section = "right",
     callback = function(state) System.__config.__detections.__timehole = state end,
 })
 th_mod:change_state(true)
-
 local sof_mod = DetTab:create_module({
     title = "Slashes of Fury", description = "parry loop while active",
     flag = "SoFModule", section = "right",
@@ -2507,13 +2451,11 @@ local sof_mod = DetTab:create_module({
 })
 sof_mod:change_state(true)
 
--- VISUAL
 local nr_mod = VisualTab:create_module({
     title = "No Render", description = "disable effects completely",
     flag = "NRModule", section = "left",
     callback = function(state) System.no_render_set(state) end,
 })
-
 local fps_mod = VisualTab:create_module({
     title = "FPS Boost", description = "hide shadows & particles + boost",
     flag = "FPSModule", section = "right",
@@ -2521,58 +2463,133 @@ local fps_mod = VisualTab:create_module({
 })
 
 -- ═══════════════════════════════════════════════════════════
--- FLOATING MANUAL SPAM BUTTON
+-- PREMIUM FLOATING BUTTONS
 -- ═══════════════════════════════════════════════════════════
-local function createFloatingButton()
+local function createFloatingButton(config)
     local gui = Instance.new("ScreenGui")
-    gui.Name = "BlablaFloating"
+    gui.Name = "BlablaFloating_" .. config.name
     gui.ResetOnSpawn = false
     gui.IgnoreGuiInset = true
     gui.DisplayOrder = 999
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     gui.Parent = CoreGui
 
+    local shadow = Instance.new("Frame")
+    shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+    shadow.Position = UDim2.new(config.position.X.Scale, config.position.X.Offset, config.position.Y.Scale, config.position.Y.Offset + 4)
+    shadow.Size = UDim2.fromOffset(150, 52)
+    shadow.BackgroundColor3 = Color3.new(0, 0, 0)
+    shadow.BackgroundTransparency = 0.75
+    shadow.BorderSizePixel = 0
+    shadow.ZIndex = 1
+    shadow.Parent = gui
+    Instance.new("UICorner", shadow).CornerRadius = UDim.new(0, 12)
+
     local btn = Instance.new("TextButton")
-    btn.Name = "ManualSpamBtn"
+    btn.Name = "Button"
     btn.AnchorPoint = Vector2.new(0.5, 0.5)
-    btn.Position = UDim2.new(0.85, 0, 0.5, 0)
-    btn.Size = UDim2.fromOffset(70, 70)
-    btn.BackgroundColor3 = Color3.fromRGB(30, 22, 50)
-    btn.BackgroundTransparency = 0.15
+    btn.Position = config.position
+    btn.Size = UDim2.fromOffset(150, 52)
+    btn.BackgroundColor3 = PALETTE.card
+    btn.BackgroundTransparency = 0.05
     btn.BorderSizePixel = 0
     btn.Text = ""
     btn.AutoButtonColor = false
     btn.Active = true
+    btn.ZIndex = 2
     btn.Parent = gui
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 12)
+
+    local cardGrad = Instance.new("UIGradient", btn)
+    cardGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 28, 68)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(26, 18, 46)),
+    }
+    cardGrad.Rotation = 135
 
     local stroke = Instance.new("UIStroke", btn)
     stroke.Color = PALETTE.accent
-    stroke.Thickness = 2
-    stroke.Transparency = 0.4
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.5
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    Animation.glowPulse(stroke, 0.4, 0.1, 2)
+    Animation.glowPulse(stroke, 0.5, 0.2, 2)
+
+    Animation.glassHighlight(btn)
+
+    local shimmer = Instance.new("Frame", btn)
+    shimmer.AnchorPoint = Vector2.new(0.5, 0.5)
+    shimmer.Position = UDim2.new(0.5, 0, 0.5, 0)
+    shimmer.Size = UDim2.new(1, 0, 1, 0)
+    shimmer.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    shimmer.BorderSizePixel = 0
+    shimmer.ZIndex = 5
+    shimmer.Active = false
+    Instance.new("UICorner", shimmer).CornerRadius = UDim.new(0, 12)
+    local shimmerGrad = Instance.new("UIGradient", shimmer)
+    shimmerGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(200, 150, 255)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 200, 255)),
+    }
+    shimmerGrad.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0.00, 1), NumberSequenceKeypoint.new(0.42, 1),
+        NumberSequenceKeypoint.new(0.48, 0.12), NumberSequenceKeypoint.new(0.50, 0.04),
+        NumberSequenceKeypoint.new(0.52, 0.12), NumberSequenceKeypoint.new(0.58, 1),
+        NumberSequenceKeypoint.new(1.00, 1),
+    })
+    shimmerGrad.Rotation = 45
+    shimmerGrad.Offset = Vector2.new(-1.2, 0)
+    shimmerGrad.Parent = shimmer
+    Animation.shimmer(shimmerGrad, 1.6, 3.0)
+
+    local dot = Instance.new("Frame", btn)
+    dot.Size = UDim2.fromOffset(10, 10)
+    dot.Position = UDim2.new(0, 14, 0.5, -5)
+    dot.BackgroundColor3 = Color3.fromRGB(100, 100, 120)
+    dot.BorderSizePixel = 0
+    dot.ZIndex = 6
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+    local dotStroke = Instance.new("UIStroke", dot)
+    dotStroke.Color = PALETTE.accent
+    dotStroke.Thickness = 2
+    dotStroke.Transparency = 0.7
+    dotStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local icon = Instance.new("TextLabel", btn)
     icon.BackgroundTransparency = 1
-    icon.Size = UDim2.new(1, 0, 1, 0)
+    icon.Size = UDim2.fromOffset(30, 30)
+    icon.Position = UDim2.new(0, 32, 0.5, -15)
     icon.FontFace = FONT.bold
-    icon.Text = "F"
+    icon.Text = config.icon or "F"
     icon.TextColor3 = Color3.fromRGB(255, 255, 255)
     icon.TextTransparency = 0.1
-    icon.TextSize = 26
-    icon.ZIndex = 12
+    icon.TextSize = 22
+    icon.TextXAlignment = Enum.TextXAlignment.Left
+    icon.ZIndex = 6
 
     local subLabel = Instance.new("TextLabel", btn)
     subLabel.BackgroundTransparency = 1
-    subLabel.Size = UDim2.new(1, 0, 0, 12)
-    subLabel.Position = UDim2.new(0, 0, 1, -14)
+    subLabel.Position = UDim2.new(0, 72, 0.5, -9)
+    subLabel.Size = UDim2.new(1, -80, 0, 14)
     subLabel.FontFace = FONT.semi
-    subLabel.Text = "SPAM"
-    subLabel.TextColor3 = PALETTE.accentHot
-    subLabel.TextTransparency = 0.3
-    subLabel.TextSize = 8
-    subLabel.ZIndex = 12
+    subLabel.Text = config.subLabel or "SPAM"
+    subLabel.TextColor3 = PALETTE.text
+    subLabel.TextTransparency = 0.05
+    subLabel.TextSize = 13
+    subLabel.TextXAlignment = Enum.TextXAlignment.Left
+    subLabel.ZIndex = 6
+
+    local statusText = Instance.new("TextLabel", btn)
+    statusText.BackgroundTransparency = 1
+    statusText.Position = UDim2.new(0, 72, 0.5, 5)
+    statusText.Size = UDim2.new(1, -80, 0, 12)
+    statusText.FontFace = FONT.reg
+    statusText.Text = "OFF"
+    statusText.TextColor3 = PALETTE.textFaint
+    statusText.TextTransparency = 0.3
+    statusText.TextSize = 10
+    statusText.TextXAlignment = Enum.TextXAlignment.Left
+    statusText.ZIndex = 6
 
     Animation.ripple(btn, PALETTE.accentHot)
 
@@ -2598,10 +2615,12 @@ local function createFloatingButton()
                 local delta = input.Position - dragStart
                 if delta.Magnitude > 5 then
                     didMove = true
-                    btn.Position = UDim2.new(
+                    local newPos = UDim2.new(
                         startPos.X.Scale, startPos.X.Offset + delta.X,
                         startPos.Y.Scale, startPos.Y.Offset + delta.Y
                     )
+                    btn.Position = newPos
+                    shadow.Position = UDim2.new(newPos.X.Scale, newPos.X.Offset, newPos.Y.Scale, newPos.Y.Offset + 4)
                 end
             end
         end
@@ -2611,46 +2630,72 @@ local function createFloatingButton()
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
             if not didMove and tick() - touchStart < 0.3 then
-                -- ★ Toggle
-                System.__properties.__manual_spam_enabled = not System.__properties.__manual_spam_enabled
-                if System.__properties.__manual_spam_enabled then
-                    System.manual_spam.start()
-                else
-                    System.manual_spam.stop()
-                end
+                if config.onClick then config.onClick() end
             end
             dragStart = nil
             startPos = nil
         end
     end)
 
-    -- Update visual
     task.spawn(function()
         local last = nil
         while btn.Parent do
-            local cur = System.__properties.__manual_spam_enabled
+            local cur = config.getState()
             if cur ~= last then
                 last = cur
                 if cur then
                     TweenService:Create(btn, Animation.springOut, { BackgroundColor3 = PALETTE.accent }):Play()
-                    TweenService:Create(stroke, Animation.springOut, { Color = PALETTE.accentHot, Transparency = 0.1, Thickness = 2.5 }):Play()
-                    subLabel.Text = "ON"
+                    TweenService:Create(stroke, Animation.springOut, { Color = PALETTE.accentHot, Transparency = 0.15, Thickness = 2 }):Play()
+                    TweenService:Create(dot, Animation.springOut, { BackgroundColor3 = Color3.fromRGB(255, 255, 255) }):Play()
+                    TweenService:Create(dotStroke, Animation.springOut, { Color = Color3.fromRGB(255, 255, 255), Transparency = 0.3 }):Play()
+                    statusText.Text = "ON"
+                    statusText.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    statusText.TextTransparency = 0.15
                     subLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
                 else
-                    TweenService:Create(btn, Animation.smoothOut, { BackgroundColor3 = Color3.fromRGB(30, 22, 50) }):Play()
-                    TweenService:Create(stroke, Animation.smoothOut, { Color = PALETTE.accent, Transparency = 0.4, Thickness = 2 }):Play()
-                    subLabel.Text = "SPAM"
-                    subLabel.TextColor3 = PALETTE.accentHot
+                    TweenService:Create(btn, Animation.smoothOut, { BackgroundColor3 = PALETTE.card }):Play()
+                    TweenService:Create(stroke, Animation.smoothOut, { Color = PALETTE.accent, Transparency = 0.5, Thickness = 1.5 }):Play()
+                    TweenService:Create(dot, Animation.smoothOut, { BackgroundColor3 = Color3.fromRGB(100, 100, 120) }):Play()
+                    TweenService:Create(dotStroke, Animation.smoothOut, { Color = PALETTE.accent, Transparency = 0.7 }):Play()
+                    statusText.Text = "OFF"
+                    statusText.TextColor3 = PALETTE.textFaint
+                    statusText.TextTransparency = 0.3
+                    subLabel.TextColor3 = PALETTE.text
                 end
             end
             task.wait(0.1)
         end
     end)
 
-    return btn
+    return {btn = btn, shadow = shadow, gui = gui}
 end
 
-createFloatingButton()
+createFloatingButton({
+    name = "ManualSpam",
+    icon = "M",
+    subLabel = "MANUAL SPAM",
+    position = UDim2.new(0.85, 0, 0.35, 0),
+    getState = function() return System.__properties.__manual_spam_enabled end,
+    onClick = function()
+        System.__properties.__manual_spam_enabled = not System.__properties.__manual_spam_enabled
+        if System.__properties.__manual_spam_enabled then
+            System.manual_spam.start()
+        else
+            System.manual_spam.stop()
+        end
+    end,
+})
+
+createFloatingButton({
+    name = "Triggerbot",
+    icon = "T",
+    subLabel = "TRIGGERBOT",
+    position = UDim2.new(0.85, 0, 0.35, 60),
+    getState = function() return System.triggerbot.__enabled end,
+    onClick = function()
+        System.triggerbot.enable(not System.triggerbot.__enabled)
+    end,
+})
 
 -- ═══════════════════════════════════════════════════════════
 -- AUTO START
