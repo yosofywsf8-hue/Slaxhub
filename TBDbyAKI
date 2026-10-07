@@ -1,45 +1,38 @@
---[[
-============================================================
-  ALPHA XK — QST01 COMPLETE PACKAGE
-  ملف واحد: parry system + UI جوال بسيط + Slashes of Fury
-  ============================================================
-  
-  الأجزاء:
-    1. Parry system (qst01 core) — multi-target
-    2. Mobile UI بسيط — أزرار عائمة للتحكم
-    3. Slashes of Fury — Detection + Auto-Hit + Timer
-  
-  كيف تشغله:
-    1. افتح Blade Ball
-    2. شغل هذا السكربت كامل
-    3. UI يطلع لحاله على الجوال (زر XK)
-    4. استخدم الأزرار
-  
-  ملاحظة مهمة:
-    - السكربت يشتغل مستقلاً — ما يحتاج qst01 الأصلي.
-    - كل شي داخل الملف.
-  ============================================================
-]]
+-- ============================================================
+-- QST01 ESSENTIALS — الحزمة المختصرة
+-- يحتوي:
+--   1. Executor shim
+--   2. PARRY_PATCH (من qst01 الأصلي)
+--   3. features.Parry.Fire (الأصلي)
+--   4. features.Animation.Input + VIM + PlayAnimation (الأصلي)
+--   5. attemptAutoParry (الأصلي)
+--   6. features.Visuals — SOF كامل (UpdateFuryTimer, UpdateFuryCount,
+--      ClearFury, ClearFuryTimer, GetInfo)
+--   7. features.Loop — MainParryLoop, AutoSpamLoop, ManualSpamLoop
+--   8. features.Triggerbot (الأصلي)
+--   9. runSimulation (SOF الفعلي)
+--   10. UI جوال بسيط
+-- التحميل: مستقل — ما يحتاج qst01 الأصلي.
+-- ============================================================
 
 -- ============================================================
--- PART 0: EXECUTOR API
+-- 1. EXECUTOR SHIM
 -- ============================================================
 local CLIENT = {}
-
 CLIENT.getupvalues = rawget(getgenv(), "getupvalues")
     or rawget(getgenv(), "getupvals")
-    or (debug and debug.getupvalues)
     or (debug and debug.getupvalue)
-
 CLIENT.getconnections = rawget(getgenv(), "getconnections")
 CLIENT.hookfunction = rawget(getgenv(), "hookfunction")
     or rawget(getgenv(), "hookfunc")
+CLIENT.setreadonly = setreadonly
+CLIENT.getrawmetatable = getrawmetatable
 
-assert(CLIENT.getupvalues, "[QST01] executor needs getupvalues/getupvals")
+assert(CLIENT.getupvalues, "[QST01] executor needs getupvalues")
 assert(CLIENT.getconnections, "[QST01] executor needs getconnections")
 
 -- ============================================================
--- PART 1: DEPENDENCIES
+-- 2. DEPENDENCIES
 -- ============================================================
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
@@ -57,34 +50,50 @@ local Runtime = workspace:FindFirstChild("Runtime")
     or workspace:WaitForChild("Runtime", 30)
 
 -- ============================================================
--- PART 2: GLOBAL FLAGS
+-- 3. FLAGS
 -- ============================================================
 if type(getgenv().flags) ~= "table" then
     getgenv().flags = {}
 end
-local F = getgenv().flags
+local flags = getgenv().flags
 
--- Defaults
-F.AutoParryEnabled  = F.AutoParryEnabled  or false
-F.TriggerbotEnabled = F.TriggerbotEnabled or false
-F.AutoSpamEnabled   = F.AutoSpamEnabled   or false
-F.ManualSpamEnabled = F.ManualSpamEnabled or false
-F.FuryDetection     = F.FuryDetection     or false
-F.FurySpamHit       = F.FurySpamHit       or false
-F.FuryParryAmount   = F.FuryParryAmount   or 35
-F.FuryParryDelay    = F.FuryParryDelay    or 0.05
-F.FuryParryMethod   = F.FuryParryMethod   or "Remote"
+-- Defaults — نفس أسماء qst01
+flags.AutoParryEnabled  = flags.AutoParryEnabled  or false
+flags.TriggerbotEnabled = flags.TriggerbotEnabled or false
+flags.AutoSpamEnabled   = flags.AutoSpamEnabled   or false
+flags.ManualSpamEnabled = flags.ManualSpamEnabled or false
+flags.FuryDetection     = flags.FuryDetection     or false
+flags.FurySpamHit       = flags.FurySpamHit       or false
+flags.FuryParryAmount   = flags.FuryParryAmount   or 35
+flags.FuryParryDelay    = flags.FuryParryDelay    or 0.05
+flags.FuryParryMethod   = flags.FuryParryMethod   or "Remote"
+flags.AntiCurveEnabled  = flags.AntiCurveEnabled  or false
+flags.BackwardsAntiCurveEnabled = flags.BackwardsAntiCurveEnabled or false
+flags.ParryAccuracy     = flags.ParryAccuracy     or 80
+flags.ParryRange        = flags.ParryRange        or 0
+flags.AutoParryType     = flags.AutoParryType     or "Remote"
+flags.SelectedParryType = flags.SelectedParryType or "Camera"
+flags.ParriedEnabled    = flags.ParriedEnabled    or false
+flags.SpamThreshold     = flags.SpamThreshold     or 1
+flags.AutoSpamType      = flags.AutoSpamType      or "Remote"
+flags.AutoSpamAnimFix   = flags.AutoSpamAnimFix   or false
+flags.ManualSpamType    = flags.ManualSpamType    or "Remote"
+flags.ManualSpamAnimFix = flags.ManualSpamAnimFix or false
+flags.TriggerbotType    = flags.TriggerbotType    or "Remote"
+flags.TriggerbotDelay   = flags.TriggerbotDelay   or 0
+flags.AbilityESPEnabled = flags.AbilityESPEnabled or false
 
+-- State containers
 if type(getgenv().FlyteBB_State) ~= "table" then
-    getgenv().FlyteBB_State = { Connections = {} }
+    getgenv().FlyteBB_State = { Connections = {}, ESPLabels = {}, ESPConnections = {}, AbilityUses = {}, AbilityCooldowns = {}, AbilityActive = {}, SpamParries = {}, StatsPeak = {}, ExtraStats = {}, StaffDetected = {}, ParryMethod = nil }
 end
-local FlyteState = getgenv().FlyteBB_State
+local flyteBBState = getgenv().FlyteBB_State
 
-FlyteState.FuryCatch  = FlyteState.FuryCatch  or false
-FlyteState.FuryActive = FlyteState.FuryActive or false
+flyteBBState.FuryCatch  = flyteBBState.FuryCatch  or false
+flyteBBState.FuryActive = flyteBBState.FuryActive or false
 
 -- ============================================================
--- PART 3: PARRY_PATCH
+-- 4. PARRY PATCH
 -- ============================================================
 local _PARRY_PATCH = {
     keyTable    = nil,
@@ -94,7 +103,7 @@ local _PARRY_PATCH = {
     ready       = false,
 }
 
-local function init_parry_patch()
+do
     local ok, err = pcall(function()
         local Controllers = ReplicatedStorage:WaitForChild("Controllers", 15)
         if not Controllers then return end
@@ -107,7 +116,7 @@ local function init_parry_patch()
             end
         end
         if not SC then
-            warn("[QST01] SwordsController not found")
+            warn("[QST01] SwordsController not found — ادخل مباراة")
             return
         end
 
@@ -120,22 +129,18 @@ local function init_parry_patch()
         local Parry_Function = require(PRY)
         local ups = CLIENT.getupvalues(Parry_Function)
         if not ups or #ups < 8 then
-            warn("[QST01] unexpected upvalue count")
+            warn("[QST01] unexpected upvalue count:", ups and #ups or 0)
             return
         end
 
         _PARRY_PATCH.keyTable    = ups[3]
         _PARRY_PATCH.transformFn = ups[4]
         _PARRY_PATCH.parryHash   = ups[8]
+        print("[QST01] PARRY_PATCH: keyTable/transformFn/parryHash extracted")
     end)
-    if not ok then
-        warn("[QST01] init error:", tostring(err))
-    end
+    if not ok then warn("[QST01] init error:", tostring(err)) end
 end
 
-init_parry_patch()
-
--- Remote hook
 local _reverted = {}
 local _original = {}
 
@@ -152,11 +157,11 @@ end
 
 local function _hook(remote)
     if _reverted[remote] then return end
-    local mt = getrawmetatable and getrawmetatable(remote)
+    local mt = CLIENT.getrawmetatable and CLIENT.getrawmetatable(remote)
     if not mt or _original[mt] then return end
     _original[mt] = true
 
-    pcall(setreadonly, mt, false)
+    pcall(CLIENT.setreadonly, mt, false)
     local _old = mt.__index
     mt.__index = function(self, key)
         if (key == "FireServer" and self:IsA("RemoteEvent"))
@@ -173,7 +178,7 @@ local function _hook(remote)
         end
         return _old(self, key)
     end
-    pcall(setreadonly, mt, true)
+    pcall(CLIENT.setreadonly, mt, true)
 end
 
 for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
@@ -182,7 +187,6 @@ for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
     end
 end
 
--- Fire
 function _PARRY_PATCH.fire(curveCFrame, screenPositions, mouseLocation)
     if not _PARRY_PATCH.ready then return false end
     local kt = _PARRY_PATCH.keyTable
@@ -209,9 +213,7 @@ function _PARRY_PATCH.fire(curveCFrame, screenPositions, mouseLocation)
     end
     local token = table.concat(tc)
 
-    if type(screenPositions) ~= "table" then
-        screenPositions = {}
-    end
+    if type(screenPositions) ~= "table" then screenPositions = {} end
 
     local fok = pcall(function()
         _PARRY_PATCH.parryRemote:FireServer(
@@ -229,11 +231,11 @@ function _PARRY_PATCH.fire(curveCFrame, screenPositions, mouseLocation)
 end
 
 -- ============================================================
--- PART 4: SYSTEM TABLES
+-- 5. SYSTEM TABLES
 -- ============================================================
 local System = {
     __properties = {
-        __accuracy = 50,
+        __accuracy = flags.ParryAccuracy,
         __divisor_multiplier = 1.1,
         __parried = false,
         __training_parried = false,
@@ -241,9 +243,8 @@ local System = {
         __is_mobile = UserInputService.TouchEnabled
             and not UserInputService.MouseEnabled,
         __curve_mode = 1,
-        __spam_threshold = 1,
-        __auto_spam_mode = "Remote",
-        __auto_spam_anim_fix = false,
+        __spam_threshold = flags.SpamThreshold,
+        __auto_spam_mode = flags.AutoSpamType,
         __connections = {},
     },
     __config = {
@@ -259,6 +260,7 @@ local System = {
         __parry_delay = 0.5,
     },
 }
+getgenv().__QST01_SYSTEM = System
 
 local Closest_Entity = nil
 
@@ -269,8 +271,45 @@ end
 update_divisor()
 
 -- ============================================================
--- PART 5: PLAYER HELPERS
+-- 6. HELPERS (من qst01 الأصلي)
 -- ============================================================
+compareFunction = function(line)
+    local callbackFunction = line and line:GetAttribute("target")
+    if callbackFunction and callbackFunction ~= "" then
+        return callbackFunction
+    end
+    local valueObject = line and line:FindFirstChild("TargetAttachment")
+    local otherPart = valueObject and valueObject.Value
+        and valueObject.Value:FindFirstAncestorWhichIsA("Model")
+
+    while otherPart and otherPart:FindFirstChild("ActualCharacter") do
+        otherPart = otherPart.ActualCharacter.Value
+    end
+    return otherPart and otherPart.Name
+end
+
+updateFunction = function(line)
+    local model = LocalPlayer.Character
+    model = model and model:FindFirstChild("Abilities")
+    model = model and model:FindFirstChild(line)
+    return LocalPlayer:GetAttribute("CurrentlyEquippedAbility") == line
+        and model and model.Enabled
+end
+
+local function executeFunction(line)
+    if line then
+        line = line:IsA("BasePart") and line
+            or line:IsA("Model") and line.PrimaryPart
+            or line:FindFirstChild("Body")
+    end
+    return line
+end
+
+local function unexecuteFunction(line)
+    local angleRadians = executeFunction(line)
+    return angleRadians and angleRadians.Position or Vector3.zero
+end
+
 local System_player = {}
 
 function System_player.get_closest()
@@ -324,7 +363,7 @@ function System_player.get_closest_to_cursor()
 end
 
 -- ============================================================
--- PART 6: CURVE
+-- 7. CURVE (من qst01)
 -- ============================================================
 local System_curve = {}
 
@@ -390,7 +429,52 @@ function System_curve.get_cframe()
 end
 
 -- ============================================================
--- PART 7: PARRY EXECUTE (multi-target)
+-- 8. ANIMATION (من qst01)
+-- ============================================================
+local System_animation = {}
+
+function System_animation.VIM(line)
+    local model = LocalPlayer.Character
+    if model and model:GetAttribute("DEATH_SLASH_STANCE") then
+        return false
+    end
+    if not line and UserInputService:GetFocusedTextBox() then
+        return false
+    end
+
+    local VIM = game:GetService("VirtualInputManager")
+    if not VIM then return false end
+
+    local key = Enum.KeyCode.F
+    pcall(function()
+        VIM:SendKeyEvent(true, key, false, game)
+        VIM:SendKeyEvent(false, key, false, game)
+    end)
+    return true
+end
+
+function System_animation.Input(method, flag)
+    if method == "Remote" then
+        return false
+    end
+    if method == "VIM" then
+        return System_animation.VIM(flag)
+    end
+    if method == "Mouse Click" then
+        local VIM = game:GetService("VirtualInputManager")
+        if VIM then
+            pcall(function()
+                VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+            end)
+            return true
+        end
+    end
+    return false
+end
+
+-- ============================================================
+-- 9. PARRY EXECUTE (multi-target)
 -- ============================================================
 local System_parry = {}
 
@@ -474,28 +558,411 @@ function System_parry.keypress()
     end)
 end
 
--- VIM / Mouse Click helpers
-local function vim_click(method)
-    local VIM = game:GetService("VirtualInputManager")
-    if not VIM then return false end
-    if method == "VIM" then
-        pcall(function()
-            VIM:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-            VIM:SendKeyEvent(false, Enum.KeyCode.F, false, game)
-        end)
-        return true
-    elseif method == "Mouse Click" then
-        pcall(function()
-            VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-            VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-        end)
-        return true
+-- ============================================================
+-- 10. ATTEMPT AUTOPARRY (من qst01)
+-- ============================================================
+attemptAutoParry = function(player15, line, object, descendant, radius, zCoordinate)
+    local model = LocalPlayer.Character
+    if not model or not model.PrimaryPart then return false end
+    if not Alive or model.Parent ~= Alive then return false end
+
+    if not player15 then
+        player15 = System_ball and System_ball.get and System_ball.get()
     end
-    return false
+    if not player15 then return false end
+
+    line = line or flags.AutoParryType
+
+    if line == "Remote" then
+        if not _PARRY_PATCH.ready then return false end
+        local cell = not descendant
+        if cell then
+            cell = compareFunction(player15) ~= LocalPlayer.Name
+        end
+        if cell then return false end
+        System_parry.execute()
+        return true
+    else
+        local cell = not descendant
+        if cell then
+            cell = compareFunction(player15) ~= LocalPlayer.Name
+        end
+        if cell then return false end
+        return System_animation.Input(line)
+    end
 end
 
 -- ============================================================
--- PART 8: DETECTION STATE
+-- 11. BALL HELPERS
+-- ============================================================
+local System_ball = {}
+
+function System_ball.get()
+    local balls = workspace:FindFirstChild("Balls")
+    if not balls then return nil end
+    for _, ball in ipairs(balls:GetChildren()) do
+        if ball:GetAttribute("realBall") then
+            ball.CanCollide = false
+            return ball
+        end
+    end
+    return nil
+end
+
+function System_ball.get_all()
+    local balls_table = {}
+    local balls = workspace:FindFirstChild("Balls")
+    if not balls then return balls_table end
+    for _, ball in ipairs(balls:GetChildren()) do
+        if ball:GetAttribute("realBall") then
+            ball.CanCollide = false
+            table.insert(balls_table, ball)
+        end
+    end
+    return balls_table
+end
+
+-- ============================================================
+-- 12. SOF — Slashes of Fury (من qst01)
+-- ============================================================
+local System_visuals = {}
+System_visuals.FuryTimers = {}
+
+function System_visuals.ClearFuryTimer(id)
+    local t = System_visuals.FuryTimers[id]
+    if not t then return end
+    System_visuals.FuryTimers[id] = nil
+    if t.Tween then t.Tween:Cancel() end
+    if t.Gui and t.Gui.Parent then t.Gui:Destroy() end
+end
+
+function System_visuals.UpdateFuryTimer(ballName, current, total)
+    if type(current) ~= "number" or current <= 0 then
+        System_visuals.ClearFuryTimer(ballName)
+        return
+    end
+
+    local balls = workspace:FindFirstChild("Balls")
+    if not balls then return end
+
+    local ball
+    for _, b in ipairs(balls:GetChildren()) do
+        if b.Name == ballName and not b:GetAttribute("realBall") then
+            ball = b
+            break
+        end
+    end
+    if not ball then return end
+
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    local template = playerGui and playerGui:FindFirstChild("FuryTimer")
+    if not template then return end
+
+    local entry = System_visuals.FuryTimers[ballName]
+    if entry and entry.Gui.Parent ~= ball then
+        System_visuals.ClearFuryTimer(ballName)
+        entry = nil
+    end
+
+    if not entry then
+        local gui = Instance.new("BillboardGui")
+        gui.Name = "FuryCharge"
+        local size = math.max(ball.Size.X, ball.Size.Y, ball.Size.Z) * 2.5
+        gui.Size = UDim2.fromScale(size, size * 32 / 280)
+        gui.StudsOffset = Vector3.new(0, -ball.Size.Y / 2 - 0.5, 0)
+        gui.ZIndexBehavior = template.ZIndexBehavior
+        gui.AlwaysOnTop = true
+        gui.ClipsDescendants = false
+        gui.Adornee = ball
+
+        local container = Instance.new("Frame")
+        container.BackgroundTransparency = 1
+        container.AnchorPoint = Vector2.new(0.5, 0.5)
+        container.Position = UDim2.fromScale(0.5, 0.5)
+        container.Size = UDim2.fromScale(1, 1)
+        container.Parent = gui
+
+        local constraint = Instance.new("UISizeConstraint")
+        constraint.MinSize = Vector2.new(220, 25.14)
+        constraint.MaxSize = Vector2.new(240, 27.43)
+        constraint.Parent = container
+
+        local progress = template.Selection.ProgressBar:Clone()
+        progress.Size = UDim2.fromScale(0.88, 0.1890625)
+        progress.Position = UDim2.fromScale(0.55, 0.5)
+        progress.AnchorPoint = Vector2.new(0.5, 0.5)
+        if progress:FindFirstChild("UIStroke") then
+            progress.UIStroke.Thickness = 1
+        end
+        progress.Parent = container
+
+        gui.Parent = ball
+        entry = { Gui = gui, Fill = progress.Fill }
+        System_visuals.FuryTimers[ballName] = entry
+    end
+
+    if entry.Tween then entry.Tween:Cancel() end
+
+    entry.Fill.Size = UDim2.fromScale(
+        math.clamp(current / (total or current), 0, 1), 1)
+    local t = TweenService:Create(
+        entry.Fill,
+        TweenInfo.new(current, Enum.EasingStyle.Linear),
+        { Size = UDim2.fromScale(0, 1) }
+    )
+    entry.Tween = t
+    t.Completed:Once(function()
+        if System_visuals.FuryTimers[ballName] == entry
+            and entry.Tween == t then
+            System_visuals.ClearFuryTimer(ballName)
+        end
+    end)
+    t:Play()
+    return true
+end
+
+function System_visuals.ClearFury(line)
+    if not line then return end
+    if line.TimerId then
+        System_visuals.ClearFuryTimer(line.TimerId)
+        line.TimerId = nil
+    end
+    if line.ScaleTween then line.ScaleTween:Cancel() end
+    if line.PositionTween then line.PositionTween:Cancel() end
+    if line.Counter and line.Counter.Parent then line.Counter:Destroy() end
+    line.Counter = nil
+end
+
+function System_visuals.UpdateFuryCount(ball, uses)
+    if not ball then return end
+    local assets = ReplicatedStorage:FindFirstChild("Assets")
+    local template = assets and assets:FindFirstChild("ComboCounter")
+    if not template then return end
+
+    local existing = ball:FindFirstChild("ComboCounter")
+    local clone = existing
+    if not clone then
+        clone = template:Clone()
+        clone.Parent = ball
+    end
+
+    local label = clone:FindFirstChild("TextLabel")
+    if not label then return end
+
+    local scale = label:FindFirstChild("UIScale")
+    if scale then scale.Scale = 1.2 end
+
+    label.Text = tostring(uses or 0)
+    label.TextColor3 = Color3.new(1, 1, 1):Lerp(
+        Color3.fromHSV((1 - math.min((uses or 0) / 35, 1)) * 0.166666, 1, 1),
+        math.min((uses or 0) / 5, 1)
+    )
+    clone.StudsOffset = Vector3.new(0, 4, 0)
+
+    if scale then
+        TweenService:Create(
+            scale,
+            TweenInfo.new(0.333, Enum.EasingStyle.Sine,
+                Enum.EasingDirection.InOut),
+            { Scale = 0.6 }
+        ):Play()
+    end
+    TweenService:Create(
+        clone,
+        TweenInfo.new(0.666, Enum.EasingStyle.Sine,
+            Enum.EasingDirection.InOut),
+        { StudsOffset = Vector3.new(0, 3, 0) }
+    ):Play()
+end
+
+-- SOF catch loop (من qst01 runSimulation)
+local active_fury_connections = {}
+
+local function clear_fury_connections()
+    for _, c in ipairs(active_fury_connections) do
+        pcall(function() c:Disconnect() end)
+    end
+    table.clear(active_fury_connections)
+end
+
+local function fire_parry(method)
+    if method == "Remote" then
+        pcall(System_parry.execute)
+        return true
+    end
+    return System_animation.Input(method)
+end
+
+local function handle_fury_catch(combo_counter)
+    if not flags.FuryDetection or not flyteBBState.FuryCatch then return end
+    if not combo_counter:IsDescendantOf(workspace) then return end
+
+    flyteBBState.FuryActive = true
+
+    local label = combo_counter:FindFirstChildOfClass("TextLabel")
+    if not label then return end
+
+    local method = flags.FuryParryMethod or "Remote"
+    local previous = tonumber(label.Text) or 0
+
+    local connection = RunService.Heartbeat:Connect(function()
+        if not flags.FuryDetection
+            or not flyteBBState.FuryCatch
+            or not combo_counter:IsDescendantOf(workspace) then
+            return
+        end
+
+        local current = tonumber(label.Text)
+        if not current then return end
+
+        if current > previous then
+            local diff = current - previous
+            previous = current
+
+            if flags.FurySpamHit then
+                for _ = 1, math.min(diff, 5) do
+                    if current < (flags.FuryParryAmount or 35) then
+                        local ok = fire_parry(method)
+                        if ok then
+                            current = current + 1
+                            label.Text = tostring(current)
+                        end
+                    end
+                    local delay_time = flags.FuryParryDelay or 0.05
+                    if method ~= "Remote" and delay_time > 0 then
+                        task.wait(delay_time)
+                    end
+                end
+            end
+        end
+    end)
+
+    table.insert(active_fury_connections, connection)
+end
+
+local function on_fury_ball_added(ball_gui)
+    if not flags.FuryDetection then return end
+
+    local key = "Fury Ball " .. ball_gui:GetDebugId()
+    if flyteBBState.Connections[key] then
+        pcall(function() flyteBBState.Connections[key]:Disconnect() end)
+    end
+
+    local existing = ball_gui:FindFirstChild("ComboCounter")
+    if existing then
+        task.spawn(handle_fury_catch, existing)
+    end
+
+    flyteBBState.Connections[key] = ball_gui.ChildAdded:Connect(function(child)
+        if child.Name == "ComboCounter" then
+            handle_fury_catch(child)
+        end
+    end)
+end
+
+local function on_fury_start()
+    flyteBBState.FuryCatch = true
+    flyteBBState.FuryActive = false
+end
+
+local function on_fury_end()
+    flyteBBState.FuryCatch = false
+    flyteBBState.FuryActive = false
+    clear_fury_connections()
+end
+
+local function install_fury_signals()
+    pcall(function()
+        local net = ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"].net
+        net["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(on_fury_start)
+        net["RE/SlashesOfFuryEnd"].OnClientEvent:Connect(on_fury_end)
+        net["RE/SlashesOfFuryActivate"].OnClientEvent:Connect(function(...)
+            local args = {...}
+            local p = args[1]
+            if p == LocalPlayer or p == LocalPlayer.Name
+                or (p and p.Name == LocalPlayer.Name) then
+                on_fury_start()
+            end
+        end)
+    end)
+
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui then
+        playerGui.ChildAdded:Connect(on_fury_ball_added)
+        for _, child in ipairs(playerGui:GetChildren()) do
+            on_fury_ball_added(child)
+        end
+        playerGui.ChildRemoved:Connect(function(gui)
+            local key = "Fury Ball " .. gui:GetDebugId()
+            if flyteBBState.Connections[key] then
+                pcall(function()
+                    flyteBBState.Connections[key]:Disconnect()
+                end)
+                flyteBBState.Connections[key] = nil
+            end
+        end)
+    end
+end
+
+install_fury_signals()
+
+-- SOF GetInfo — مراقبة FuryCatch attribute و بدء timer
+local function sof_get_info()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return end
+
+    if not flags.AbilityESPEnabled then return end
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local char = player.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                if char:GetAttribute("FuryCatch") == true then
+                    local entry = flyteBBState.AbilityUses[player]
+                    local now = workspace:GetServerTimeNow()
+
+                    if not entry then
+                        entry = {
+                            Ability = "Slashes of Fury",
+                            Character = char,
+                            Uses = 0,
+                            Started = now,
+                        }
+                        flyteBBState.AbilityUses[player] = entry
+                    end
+
+                    if not entry.TimerId and entry.Uses == 0 then
+                        local endPosition = 3.5 - now - entry.Started
+                        if 0 < endPosition then
+                            local balls = workspace:FindFirstChild("Balls")
+                            if balls then
+                                for _, ball in ipairs(balls:GetChildren()) do
+                                    if ball:GetAttribute("FuryCatch" .. char.Name) then
+                                        if System_visuals.UpdateFuryTimer(
+                                            ball.Name, endPosition, 3.5
+                                        ) then
+                                            entry.TimerId = ball.Name
+                                        end
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                else
+                    local entry = flyteBBState.AbilityUses[player]
+                    if entry and entry.Ability == "Slashes of Fury" then
+                        System_visuals.ClearFury(entry)
+                        flyteBBState.AbilityUses[player] = nil
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- 13. PARRY LOOP
 -- ============================================================
 local Detection = {
     infinity_active = false,
@@ -531,42 +998,13 @@ pcall(function()
     end)
 end)
 
--- SOF Activate/End — نسجل هنا عشان الـ parry loop يقدر يتخطى
-pcall(function()
-    local net = ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"].net
-    net["RE/SlashesOfFuryActivate"].OnClientEvent:Connect(function(...)
-        local args = {...}
-        local p = args[1]
-        if p == LocalPlayer or p == LocalPlayer.Name
-            or (p and p.Name == LocalPlayer.Name) then
-            Detection.slashesoffury_active = true
-        end
-    end)
-    net["RE/SlashesOfFuryEnd"].OnClientEvent:Connect(function()
-        Detection.slashesoffury_active = false
-    end)
-end)
-
--- ============================================================
--- PART 9: AUTO PARRY LOOP
--- ============================================================
 local function parry_loop()
-    if not F.AutoParryEnabled then return end
+    if not flags.AutoParryEnabled then return end
     if not LocalPlayer.Character
         or not LocalPlayer.Character.PrimaryPart then return end
     if System.__properties.__parried then return end
 
-    local balls_folder = workspace:FindFirstChild("Balls")
-    if not balls_folder then return end
-
-    local target_ball
-    for _, ball in ipairs(balls_folder:GetChildren()) do
-        if ball:GetAttribute("realBall") then
-            ball.CanCollide = false
-            target_ball = ball
-            break
-        end
-    end
+    local target_ball = System_ball.get()
     if not target_ball then return end
 
     if Detection.infinity_active then return end
@@ -608,10 +1046,10 @@ local function parry_loop()
 end
 
 -- ============================================================
--- PART 10: TRIGGERBOT
+-- 14. TRIGGERBOT (من qst01)
 -- ============================================================
 local function triggerbot_loop()
-    if not F.TriggerbotEnabled then return end
+    if not flags.TriggerbotEnabled then return end
     if LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
         and LocalPlayer.Character.PrimaryPart:FindFirstChild("SingularityCape")
     then return end
@@ -619,10 +1057,10 @@ local function triggerbot_loop()
         or System.__triggerbot.__parries > System.__triggerbot.__max_parries
     then return end
 
-    local balls_folder = workspace:FindFirstChild("Balls")
-    if not balls_folder then return end
+    local balls = workspace:FindFirstChild("Balls")
+    if not balls then return end
 
-    for _, ball in ipairs(balls_folder:GetChildren()) do
+    for _, ball in ipairs(balls:GetChildren()) do
         if ball:IsA("BasePart")
             and ball:GetAttribute("target") == LocalPlayer.Name
             and ball:GetAttribute("realBall") then
@@ -648,15 +1086,10 @@ local function triggerbot_loop()
 end
 
 -- ============================================================
--- PART 11: AUTO SPAM
+-- 15. AUTO SPAM
 -- ============================================================
 local function get_ball_props()
-    local balls_folder = workspace:FindFirstChild("Balls")
-    if not balls_folder then return nil end
-    local ball
-    for _, b in ipairs(balls_folder:GetChildren()) do
-        if b:GetAttribute("realBall") then ball = b break end
-    end
+    local ball = System_ball.get()
     if not ball then return nil end
     if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then
         return nil
@@ -686,45 +1119,12 @@ local function get_entity_props()
     return { Velocity = vel, Direction = dir, Distance = dist }
 end
 
-local function spam_service(self)
-    local ball_props = get_ball_props()
-    if not ball_props then return 5 end
-    local entity_props = get_entity_props()
-    if not entity_props then return 5 end
-
-    local D = 5
-    local n = ball_props.Velocity.Magnitude
-    if n == 0 then return D end
-
-    local t = 0
-    if n > 0 and ball_props.Velocity.Magnitude > 0 then
-        t = ball_props.Direction:Dot(ball_props.Velocity.Unit)
-    end
-
-    local X = entity_props.Distance
-    local B = (self.Ping or 50) * 0.7 + math.min(n / 1.2, 80)
-
-    if entity_props.Distance > B then return D end
-    if ball_props.Distance > B then return D end
-    if X > B then return D end
-
-    local U = math.clamp(-t, 0, 1)
-    local q = math.clamp(U * (n / 40), 0, 4)
-    return B - q
-end
-
 local function autospam_loop()
-    if not F.AutoSpamEnabled then return end
+    if not flags.AutoSpamEnabled then return end
     if not LocalPlayer.Character then return end
 
-    local balls_folder = workspace:FindFirstChild("Balls")
-    if not balls_folder then return end
-    local ball
-    for _, b in ipairs(balls_folder:GetChildren()) do
-        if b:GetAttribute("realBall") then ball = b break end
-    end
+    local ball = System_ball.get()
     if not ball then return end
-
     if Detection.slashesoffury_active then return end
 
     local zoomies = ball:FindFirstChild("zoomies")
@@ -733,6 +1133,10 @@ local function autospam_loop()
     System_player.get_closest()
     if not Closest_Entity or not Closest_Entity.PrimaryPart then return end
 
+    local ball_props = get_ball_props()
+    local entity_props = get_entity_props()
+    if not ball_props or not entity_props then return end
+
     local ping = 0
     pcall(function()
         ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
@@ -740,27 +1144,22 @@ local function autospam_loop()
     local ping_threshold = math.clamp(ping / 10, 1, 16)
 
     local ball_target = ball:GetAttribute("target")
-    local ball_props = get_ball_props()
-    local entity_props = get_entity_props()
-    if not ball_props or not entity_props then return end
-
-    local spam_accuracy = spam_service({
-        Ball_Properties = ball_props,
-        Entity_Properties = entity_props,
-        Ping = ping_threshold,
-    })
-
     local target_distance = entity_props.Distance
     if zoomies.VectorVelocity.Magnitude == 0 then return end
 
     local distance = ball_props.Distance
     if not ball_target then return end
+
+    local spam_accuracy = 5
+    local n = ball_props.Velocity.Magnitude
+    if n > 0 then
+        local B = (ping_threshold or 50) * 0.7 + math.min(n / 1.2, 80)
+        spam_accuracy = B
+    end
+
     if target_distance > spam_accuracy or distance > spam_accuracy then
         return
     end
-
-    local pulsed = LocalPlayer.Character:GetAttribute("Pulsed")
-    if pulsed then return end
 
     if ball_target == LocalPlayer.Name
         and target_distance > 30 and distance > 30 then
@@ -770,346 +1169,36 @@ local function autospam_loop()
     if distance <= spam_accuracy
         and System.__properties.__parries > System.__properties.__spam_threshold
     then
-        if System.__properties.__auto_spam_mode == "Keypress" then
+        if flags.AutoSpamType == "Keypress" then
             System_parry.keypress()
         else
             System_parry.execute()
+            if flags.AutoSpamAnimFix and getgenv().PF then
+                pcall(getgenv().PF)
+            end
         end
     end
 end
 
 -- ============================================================
--- PART 12: MANUAL SPAM
+-- 16. MANUAL SPAM
 -- ============================================================
 local function manual_spam_loop()
-    if not F.ManualSpamEnabled then return end
+    if not flags.ManualSpamEnabled then return end
     if not LocalPlayer.Character
         or LocalPlayer.Character.Parent ~= Alive then return end
-    System_parry.execute()
+    if flags.ManualSpamType == "Keypress" then
+        System_parry.keypress()
+    else
+        System_parry.execute()
+        if flags.ManualSpamAnimFix and getgenv().PF then
+            pcall(getgenv().PF)
+        end
+    end
 end
 
 -- ============================================================
--- PART 13: SLASHES OF FURY (SOF)
--- ============================================================
-local SOF = {}
-
--- Fury Timers
-local FuryTimers = {}
-
-local function clear_fury_timer(id)
-    local t = FuryTimers[id]
-    if not t then return end
-    FuryTimers[id] = nil
-    if t.Tween then t.Tween:Cancel() end
-    if t.Gui and t.Gui.Parent then t.Gui:Destroy() end
-end
-
-local function update_fury_timer(id, current, total)
-    if type(current) ~= "number" or current <= 0 then
-        clear_fury_timer(id)
-        return
-    end
-
-    local balls_folder = workspace:FindFirstChild("Balls")
-    if not balls_folder then return end
-
-    local ball
-    for _, b in ipairs(balls_folder:GetChildren()) do
-        if b.Name == id and not b:GetAttribute("realBall") then
-            ball = b
-            break
-        end
-    end
-    if not ball then return end
-
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    local template = playerGui and playerGui:FindFirstChild("FuryTimer")
-    if not template then return end
-
-    local entry = FuryTimers[id]
-    if entry and entry.Gui.Parent ~= ball then
-        clear_fury_timer(id)
-        entry = nil
-    end
-
-    if not entry then
-        local gui = Instance.new("BillboardGui")
-        gui.Name = "FuryCharge"
-        local size = math.max(ball.Size.X, ball.Size.Y, ball.Size.Z) * 2.5
-        gui.Size = UDim2.fromScale(size, size * 32 / 280)
-        gui.StudsOffset = Vector3.new(0, -ball.Size.Y / 2 - 0.5, 0)
-        gui.ZIndexBehavior = template.ZIndexBehavior
-        gui.AlwaysOnTop = true
-        gui.ClipsDescendants = false
-        gui.Adornee = ball
-
-        local container = Instance.new("Frame")
-        container.BackgroundTransparency = 1
-        container.AnchorPoint = Vector2.new(0.5, 0.5)
-        container.Position = UDim2.fromScale(0.5, 0.5)
-        container.Size = UDim2.fromScale(1, 1)
-        container.Parent = gui
-
-        local constraint = Instance.new("UISizeConstraint")
-        constraint.MinSize = Vector2.new(220, 25.14)
-        constraint.MaxSize = Vector2.new(240, 27.43)
-        constraint.Parent = container
-
-        local progress = template.Selection.ProgressBar:Clone()
-        progress.Size = UDim2.fromScale(0.88, 0.1890625)
-        progress.Position = UDim2.fromScale(0.55, 0.5)
-        progress.AnchorPoint = Vector2.new(0.5, 0.5)
-        if progress:FindFirstChild("UIStroke") then
-            progress.UIStroke.Thickness = 1
-        end
-        progress.Parent = container
-
-        gui.Parent = ball
-        entry = { Gui = gui, Fill = progress.Fill }
-        FuryTimers[id] = entry
-    end
-
-    if entry.Tween then entry.Tween:Cancel() end
-
-    entry.Fill.Size = UDim2.fromScale(
-        math.clamp(current / (total or current), 0, 1), 1)
-    local t = TweenService:Create(
-        entry.Fill,
-        TweenInfo.new(current, Enum.EasingStyle.Linear),
-        { Size = UDim2.fromScale(0, 1) }
-    )
-    entry.Tween = t
-    t.Completed:Once(function()
-        if FuryTimers[id] == entry and entry.Tween == t then
-            clear_fury_timer(id)
-        end
-    end)
-    t:Play()
-    return true
-end
-
--- Fury Counter
-local FuryCounters = {}
-
-local function clear_fury_counter(ball)
-    local c = FuryCounters[ball]
-    if c and c.Parent then c:Destroy() end
-    FuryCounters[ball] = nil
-end
-
-local function update_fury_count(ball, uses)
-    if FuryCounters[ball] and FuryCounters[ball].Parent ~= ball then
-        clear_fury_counter(ball)
-    end
-
-    update_fury_timer(ball.Name, 0.5)
-
-    local existing = ball:FindFirstChild("ComboCounter")
-    if existing then return end
-
-    local clone = FuryCounters[ball]
-    if not clone then
-        local assets = replicatedStorage:FindFirstChild("Assets")
-        local template = assets and assets:FindFirstChild("ComboCounter")
-        if not template then return end
-        clone = template:Clone()
-        clone.Parent = ball
-        FuryCounters[ball] = clone
-    end
-
-    local label = clone:FindFirstChild("TextLabel")
-    if not label then return end
-
-    local scale = label:FindFirstChild("UIScale")
-    if scale then scale.Scale = 1.2 end
-
-    label.Text = tostring(uses or 0)
-    label.TextColor3 = Color3.new(1, 1, 1):Lerp(
-        Color3.fromHSV((1 - math.min((uses or 0) / 35, 1)) * 0.166666, 1, 1),
-        math.min((uses or 0) / 5, 1)
-    )
-    clone.StudsOffset = Vector3.new(0, 4, 0)
-
-    if scale then
-        local t = TweenService:Create(
-            scale,
-            TweenInfo.new(0.333, Enum.EasingStyle.Sine,
-                Enum.EasingDirection.InOut),
-            { Scale = 0.6 }
-        )
-        t:Play()
-    end
-
-    local t2 = TweenService:Create(
-        clone,
-        TweenInfo.new(0.666, Enum.EasingStyle.Sine,
-            Enum.EasingDirection.InOut),
-        { StudsOffset = Vector3.new(0, 3, 0) }
-    )
-    t2:Play()
-end
-
--- Fury catch connections
-local active_fury_connections = {}
-
-local function clear_fury_connections()
-    for _, c in ipairs(active_fury_connections) do
-        pcall(function() c:Disconnect() end)
-    end
-    table.clear(active_fury_connections)
-end
-
-local function fire_parry(method)
-    if method == "Remote" then
-        pcall(System_parry.execute)
-        return true
-    end
-    return vim_click(method)
-end
-
-local function handle_fury_catch(combo_counter)
-    if not F.FuryDetection or not FlyteState.FuryCatch then return end
-    if not combo_counter:IsDescendantOf(workspace) then return end
-
-    FlyteState.FuryActive = true
-
-    local label = combo_counter:FindFirstChildOfClass("TextLabel")
-    if not label then return end
-
-    local method = F.FuryParryMethod or "Remote"
-    local previous = tonumber(label.Text) or 0
-
-    local connection = RunService.Heartbeat:Connect(function()
-        if not F.FuryDetection
-            or not FlyteState.FuryCatch
-            or not combo_counter:IsDescendantOf(workspace) then
-            return
-        end
-
-        local current = tonumber(label.Text)
-        if not current then return end
-
-        if current > previous then
-            local diff = current - previous
-            previous = current
-
-            if F.FurySpamHit then
-                for _ = 1, math.min(diff, 5) do
-                    if current < (F.FuryParryAmount or 35) then
-                        local ok = fire_parry(method)
-                        if ok then
-                            current = current + 1
-                            label.Text = tostring(current)
-                        end
-                    end
-                    local delay_time = F.FuryParryDelay or 0.05
-                    if method ~= "Remote" and delay_time > 0 then
-                        task.wait(delay_time)
-                    end
-                end
-            end
-        end
-    end)
-
-    table.insert(active_fury_connections, connection)
-end
-
-local function on_fury_ball_added(ball_gui)
-    if not F.FuryDetection then return end
-
-    local key = "Fury Ball " .. ball_gui:GetDebugId()
-    if FlyteState.Connections[key] then
-        pcall(function() FlyteState.Connections[key]:Disconnect() end)
-    end
-
-    local existing = ball_gui:FindFirstChild("ComboCounter")
-    if existing then
-        task.spawn(handle_fury_catch, existing)
-    end
-
-    FlyteState.Connections[key] =
-        ball_gui.ChildAdded:Connect(function(child)
-            if child.Name == "ComboCounter" then
-                handle_fury_catch(child)
-            end
-        end)
-end
-
-local function on_fury_start()
-    FlyteState.FuryCatch = true
-    FlyteState.FuryActive = false
-end
-
-local function on_fury_end()
-    FlyteState.FuryCatch = false
-    FlyteState.FuryActive = false
-    clear_fury_connections()
-end
-
-local function install_fury_signals()
-    pcall(function()
-        local net = ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"].net
-        net["RE/SlashesOfFuryCatch"].OnClientEvent:Connect(on_fury_start)
-        net["RE/SlashesOfFuryEnd"].OnClientEvent:Connect(on_fury_end)
-        net["RE/SlashesOfFuryActivate"].OnClientEvent:Connect(function(...)
-            local args = {...}
-            local p = args[1]
-            if p == LocalPlayer or p == LocalPlayer.Name
-                or (p and p.Name == LocalPlayer.Name) then
-                on_fury_start()
-            end
-        end)
-    end)
-
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if playerGui then
-        playerGui.ChildAdded:Connect(on_fury_ball_added)
-        for _, child in ipairs(playerGui:GetChildren()) do
-            on_fury_ball_added(child)
-        end
-        playerGui.ChildRemoved:Connect(function(gui)
-            local key = "Fury Ball " .. gui:GetDebugId()
-            if FlyteState.Connections[key] then
-                pcall(function()
-                    FlyteState.Connections[key]:Disconnect()
-                end)
-                FlyteState.Connections[key] = nil
-            end
-        end)
-    end
-end
-
-install_fury_signals()
-
--- SOF Public API
-function SOF.set_parry_method(m)
-    if m == "Remote" or m == "VIM" or m == "Mouse Click" then
-        F.FuryParryMethod = m
-    end
-end
-
-function SOF.set_parry_amount(n)
-    F.FuryParryAmount = math.clamp(tonumber(n) or 35, 1, 35)
-end
-
-function SOF.set_parry_delay(n)
-    F.FuryParryDelay = math.clamp(tonumber(n) or 0.05, 0.02, 0.5)
-end
-
-function SOF.status()
-    return {
-        detection = F.FuryDetection,
-        auto_hit = F.FurySpamHit,
-        amount = F.FuryParryAmount,
-        delay = F.FuryParryDelay,
-        method = F.FuryParryMethod,
-        catch = FlyteState.FuryCatch,
-        active = FlyteState.FuryActive,
-    }
-end
-
--- ============================================================
--- PART 14: CONNECTIONS
+-- 17. CONNECTIONS
 -- ============================================================
 System.__properties.__connections.parry =
     RunService.PreSimulation:Connect(parry_loop)
@@ -1123,16 +1212,24 @@ System.__properties.__connections.autospam =
 System.__properties.__connections.manual_spam =
     RunService.Heartbeat:Connect(manual_spam_loop)
 
+System.__properties.__connections.sof_info =
+    RunService.Heartbeat:Connect(function()
+        pcall(sof_get_info)
+    end)
+
 -- ============================================================
--- PART 15: EXPORTS
+-- 18. EXPORTS
 -- ============================================================
 getgenv().__QST01_SYSTEM     = System
 getgenv().__QST01_PARRY      = System_parry
+getgenv().__QST01_BALL       = System_ball
+getgenv().__QST01_ANIMATION  = System_animation
+getgenv().__QST01_VISUALS    = System_visuals
 getgenv().__QST01_PARRY_PATCH = _PARRY_PATCH
-getgenv().__SOF_FURY         = SOF
+getgenv().__QST01_ATTEMPT_PARRY = attemptAutoParry
 
 -- ============================================================
--- PART 16: MOBILE UI
+-- 19. MOBILE UI
 -- ============================================================
 local IS_TOUCH = UserInputService.TouchEnabled
 local FORCE_SHOW = getgenv().__MOBILE_UI_FORCE_SHOW == true
@@ -1160,9 +1257,9 @@ local function corner(p, r)
     return c
 end
 
-local function stroke(p, color)
+local function stroke(p)
     local s = Instance.new("UIStroke")
-    s.Color = color or THEME.stroke
+    s.Color = THEME.stroke
     s.Thickness = 1
     s.Transparency = 0.3
     s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -1193,7 +1290,6 @@ screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screen.DisplayOrder = 500
 screen.Parent = parent_gui
 
--- Toggle XK
 local toggle = Instance.new("TextButton")
 toggle.Size = UDim2.new(0, 50, 0, 50)
 toggle.Position = UDim2.new(0, 16, 0.5, -25)
@@ -1209,7 +1305,6 @@ toggle.Parent = screen
 corner(toggle, 25)
 stroke(toggle)
 
--- Panel
 local panel = Instance.new("Frame")
 panel.Size = UDim2.new(0, 220, 0, 420)
 panel.Position = UDim2.new(0, 16, 0.5, -210)
@@ -1221,7 +1316,6 @@ panel.Parent = screen
 corner(panel, 12)
 stroke(panel)
 
--- Header
 local header = Instance.new("Frame")
 header.Size = UDim2.new(1, 0, 0, 40)
 header.BackgroundTransparency = 1
@@ -1252,7 +1346,6 @@ close.AutoButtonColor = false
 close.Parent = header
 corner(close, 6)
 
--- Divider
 local div = Instance.new("Frame")
 div.Size = UDim2.new(1, -20, 0, 1)
 div.Position = UDim2.new(0, 10, 0, 40)
@@ -1260,7 +1353,6 @@ div.BackgroundColor3 = THEME.stroke
 div.BorderSizePixel = 0
 div.Parent = panel
 
--- Content
 local content = Instance.new("ScrollingFrame")
 content.Size = UDim2.new(1, -16, 1, -52)
 content.Position = UDim2.new(0, 8, 0, 46)
@@ -1278,7 +1370,6 @@ layout.Padding = UDim.new(0, 6)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Parent = content
 
--- Button maker
 local function make_toggle(name, label, order, flag_key)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, 0, 0, 42)
@@ -1316,7 +1407,7 @@ local function make_toggle(name, label, order, flag_key)
     stt.Parent = btn
 
     local function refresh()
-        local on = F[flag_key] == true
+        local on = flags[flag_key] == true
         btn.BackgroundColor3 = on and THEME.on or THEME.soft
         btn.BackgroundTransparency = on and 0.15 or 0
         st.Color = on and THEME.on or THEME.stroke
@@ -1325,7 +1416,7 @@ local function make_toggle(name, label, order, flag_key)
     end
 
     btn.MouseButton1Click:Connect(function()
-        F[flag_key] = not (F[flag_key] == true)
+        flags[flag_key] = not (flags[flag_key] == true)
         refresh()
     end)
 
@@ -1374,34 +1465,22 @@ local function make_cycle(name, label, order, values, getter, setter)
     val.TextYAlignment = Enum.TextYAlignment.Center
     val.Parent = btn
 
-    local function refresh()
-        val.Text = tostring(getter())
-    end
-
     btn.MouseButton1Click:Connect(function()
         local current = getter()
         local idx = table.find(values, current) or 1
         idx = (idx % #values) + 1
         setter(values[idx])
-        refresh()
-    end)
-
-    refresh()
-    task.spawn(function()
-        while btn.Parent do
-            task.wait(0.5)
-            refresh()
-        end
+        val.Text = tostring(values[idx])
     end)
 end
 
--- UI Buttons
+-- أزرار
 make_toggle("AutoParry",  "Auto Parry",  1, "AutoParryEnabled")
 make_toggle("Triggerbot", "Triggerbot",  2, "TriggerbotEnabled")
 make_toggle("AutoSpam",   "Auto Spam",   3, "AutoSpamEnabled")
 make_toggle("ManualSpam", "Manual Spam", 4, "ManualSpamEnabled")
 
--- SOF Section Divider
+-- SOF Section
 local sof_div = Instance.new("Frame")
 sof_div.Size = UDim2.new(1, 0, 0, 1)
 sof_div.BackgroundColor3 = THEME.stroke
@@ -1424,23 +1503,22 @@ make_toggle("FurySpamHit",   "SOF Auto Hit",  53, "FurySpamHit")
 
 make_cycle("FuryMethod", "SOF Method", 54,
     {"Remote", "VIM", "Mouse Click"},
-    function() return F.FuryParryMethod or "Remote" end,
-    function(v) F.FuryParryMethod = v end
+    function() return flags.FuryParryMethod or "Remote" end,
+    function(v) flags.FuryParryMethod = v end
 )
 
 make_cycle("FuryAmount", "SOF Amount", 55,
     {10, 20, 30, 35},
-    function() return F.FuryParryAmount or 35 end,
-    function(v) F.FuryParryAmount = v end
+    function() return flags.FuryParryAmount or 35 end,
+    function(v) flags.FuryParryAmount = v end
 )
 
 make_cycle("FuryDelay", "SOF Delay", 56,
     {0.02, 0.05, 0.08, 0.12, 0.2},
-    function() return F.FuryParryDelay or 0.05 end,
-    function(v) F.FuryParryDelay = v end
+    function() return flags.FuryParryDelay or 0.05 end,
+    function(v) flags.FuryParryDelay = v end
 )
 
--- Curve Mode
 make_cycle("CurveMode", "Curve", 57,
     System.__config.__curve_names,
     function()
@@ -1456,14 +1534,12 @@ make_cycle("CurveMode", "Curve", 57,
     end
 )
 
--- Parry Type
-make_cycle("ParryType", "Parry Type", 58,
-    {"Remote", "Keypress"},
-    function() return System.__properties.__auto_spam_mode or "Remote" end,
-    function(v) System.__properties.__auto_spam_mode = v end
+make_cycle("AutoParryType", "Parry Type", 58,
+    {"Remote", "VIM", "Mouse Click"},
+    function() return flags.AutoParryType or "Remote" end,
+    function(v) flags.AutoParryType = v end
 )
 
--- Stop All
 local stop = Instance.new("TextButton")
 stop.Size = UDim2.new(1, 0, 0, 42)
 stop.BackgroundColor3 = THEME.soft
@@ -1479,12 +1555,12 @@ corner(stop, 8)
 stroke(stop)
 
 stop.MouseButton1Click:Connect(function()
-    F.AutoParryEnabled  = false
-    F.TriggerbotEnabled = false
-    F.AutoSpamEnabled   = false
-    F.ManualSpamEnabled = false
-    F.FuryDetection     = false
-    F.FurySpamHit       = false
+    flags.AutoParryEnabled  = false
+    flags.TriggerbotEnabled = false
+    flags.AutoSpamEnabled   = false
+    flags.ManualSpamEnabled = false
+    flags.FuryDetection     = false
+    flags.FurySpamHit       = false
 
     stop.Text = "تم"
     task.delay(1.2, function() stop.Text = "أوقف الكل" end)
@@ -1544,19 +1620,11 @@ end
 toggle.MouseButton1Click:Connect(function() set_open(not is_open) end)
 close.MouseButton1Click:Connect(function() set_open(false) end)
 
-getgenv().__QST01_UI = {
-    screen  = screen,
-    panel   = panel,
-    open    = function() set_open(true) end,
-    close   = function() set_open(false) end,
-    destroy = function() screen:Destroy() end,
-}
-
-end -- نهاية فحص الجوال
+end -- end mobile UI
 
 -- ============================================================
 -- DONE
 -- ============================================================
-print("[QST01 FULL] كل شي جاهز — ABSOLUTE KODE، يا ريدز")
-print("[QST01 FULL] Parry: " .. tostring(_PARRY_PATCH.ready))
-print("[QST01 FULL] UI: " .. tostring(IS_TOUCH or FORCE_SHOW))
+print("[QST01] جاهز — ABSOLUTE KODE، يا ريدز")
+print("[QST01] PARRY ready:", _PARRY_PATCH.ready)
+print("[QST01] UI:", IS_TOUCH or FORCE_SHOW)
