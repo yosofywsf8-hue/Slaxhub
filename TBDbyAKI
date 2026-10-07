@@ -1,166 +1,878 @@
+--[[
+============================================================
+  ALPHA XK — QST01 FULL PACKAGE
+  ملف واحد: نظام qst01 كامل + UI جوال مدمج
+  ============================================================
+  
+  الأجزاء:
+    1. qst01 parry system (الأصلي)
+    2. Mobile UI مدمج داخل qst01 (يتحكم من الداخل)
+    3. AutoParry, Triggerbot, AutoSpam, ManualSpam, Stop All
+  
+  كيف تستخدمه:
+    1. افتح Blade Ball
+    2. شغّل هذا السكربت كامل
+    3. UI يطلع لحاله على الجوال
+    4. اضغط XK لفتح/إغلاق اللوحة
+  
+  ملاحظة: هذا الملف يحتوي على qst01 مختصر — 
+  فقط الأجزاء الضرورية للـ parry system + UI.
+  باقي qst01 (visuals, unlock, avatar) موجود في الملف الأصلي.
+  ============================================================
+]]
+
 -- ============================================================
--- MOBILE TEMP UI — لوحة تحكم مؤقتة للجوال
--- File: mobile_temp_ui.lua
--- الهدف: أزرار عائمة تشتغل على الجوال، تتحكم بـ:
---        - Parry Engine (qst01 / azure)
---        - AutoSpam on/off
---        - Manual Spam on/off
---        - AutoParry on/off
---        - Triggerbot on/off (اختياري)
--- التحميل: بعد azure_parry_bridge.lua
---          و qst01_parry_multitarget.lua
---          و azure_autospam_bridge.lua
+-- PART 1: QST01 PARRY SYSTEM
 -- ============================================================
 
-local Players          = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService       = game:GetService("RunService")
-local TweenService     = game:GetService("TweenService")
-local CoreGui          = game:GetService("CoreGui")
+local CLIENT = {}
+
+-- ---------- Executor API ----------
+CLIENT.getupvalues = rawget(getgenv(), "getupvalues")
+    or rawget(getgenv(), "getupvals")
+    or debug.getupvalues
+    or debug.getupvalue
+
+CLIENT.getconnections = rawget(getgenv(), "getconnections")
+CLIENT.hookfunction = rawget(getgenv(), "hookfunction")
+    or rawget(getgenv(), "hookfunc")
+
+assert(CLIENT.getupvalues, "[QST01] executor needs getupvalues/getupvals")
+assert(CLIENT.getconnections, "[QST01] executor needs getconnections")
+
+-- ---------- Dependencies ----------
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local Stats             = game:GetService("Stats")
+local UserInputService  = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService      = game:GetService("TweenService")
+local CoreGui           = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 
--- ---------- 0. الحماية: جوال فقط أو تشغيل إجباري ----------
+local Alive   = workspace:FindFirstChild("Alive")   or workspace:WaitForChild("Alive", 30)
+local Runtime = workspace:FindFirstChild("Runtime") or workspace:WaitForChild("Runtime", 30)
+
+-- ---------- PARRY_PATCH ----------
+local _PARRY_PATCH = {
+    keyTable    = nil,
+    transformFn = nil,
+    parryHash   = nil,
+    parryRemote = nil,
+    ready       = false,
+}
+
+local function init_parry_patch()
+    local ok, err = pcall(function()
+        local Controllers = ReplicatedStorage:WaitForChild("Controllers", 15)
+        if not Controllers then return end
+
+        local SC
+        for _, child in ipairs(Controllers:GetChildren()) do
+            if child.Name:sub(1, 16) == "SwordsController" then
+                SC = child
+                break
+            end
+        end
+        if not SC then
+            warn("[QST01] SwordsController not found")
+            return
+        end
+
+        local PRY = SC:WaitForChild("PRY", 15)
+        if not PRY then
+            warn("[QST01] PRY module not found")
+            return
+        end
+
+        local Parry_Function = require(PRY)
+        local ups = CLIENT.getupvalues(Parry_Function)
+        if not ups or #ups < 8 then
+            warn("[QST01] unexpected upvalue count")
+            return
+        end
+
+        _PARRY_PATCH.keyTable    = ups[3]
+        _PARRY_PATCH.transformFn = ups[4]
+        _PARRY_PATCH.parryHash   = ups[8]
+    end)
+    if not ok then
+        warn("[QST01] init error:", tostring(err))
+    end
+end
+
+init_parry_patch()
+
+-- ---------- Remote Hook ----------
+local _reverted = {}
+local _original = {}
+
+local function _is_valid(args)
+    return #args == 8
+        and type(args[2]) == "string"
+        and type(args[3]) == "string"
+        and type(args[4]) == "number"
+        and typeof(args[5]) == "CFrame"
+        and type(args[6]) == "table"
+        and type(args[7]) == "table"
+        and type(args[8]) == "boolean"
+end
+
+local function _hook(remote)
+    if _reverted[remote] then return end
+    local mt = getrawmetatable and getrawmetatable(remote)
+    if not mt or _original[mt] then return end
+    _original[mt] = true
+
+    setreadonly(mt, false)
+    local _old = mt.__index
+    mt.__index = function(self, key)
+        if (key == "FireServer" and self:IsA("RemoteEvent"))
+            or (key == "InvokeServer" and self:IsA("RemoteFunction")) then
+            return function(_, ...)
+                local args = {...}
+                if _is_valid(args) and not _reverted[self] then
+                    _reverted[self] = args
+                    _PARRY_PATCH.ready = true
+                    _PARRY_PATCH.parryRemote = self
+                end
+                return _old(self, key)(_, ...)
+            end
+        end
+        return _old(self, key)
+    end
+    setreadonly(mt, true)
+end
+
+for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
+    if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
+        _hook(remote)
+    end
+end
+
+-- ---------- Fire ----------
+-- نسخة multi-target: ترسل كل entity في Alive
+function _PARRY_PATCH.fire(curveCFrame, screenPositions, mouseLocation)
+    if not _PARRY_PATCH.ready then return false end
+    local kt = _PARRY_PATCH.keyTable
+    if not kt then return false end
+
+    local keyIndex = kt[1]
+    local currentKey = kt[2] and kt[2][keyIndex]
+    if not currentKey then return false end
+
+    local tok, transformed = pcall(_PARRY_PATCH.transformFn, currentKey, "TIME")
+    if not tok or not transformed then
+        tok, transformed = pcall(_PARRY_PATCH.transformFn, currentKey)
+        if not tok or not transformed then return false end
+    end
+
+    local serverTime = workspace:GetServerTimeNow() * 100
+    local timeStr = tostring(math.floor(serverTime))
+    local tc = {}
+    for i = 1, #timeStr do
+        local ki = (i - 1) % #transformed + 1
+        local kb = string.byte(transformed, ki)
+        local tb = (string.byte(timeStr, i) + i) % 256
+        tc[i] = string.char(bit32.bxor(tb, kb))
+    end
+    local token = table.concat(tc)
+
+    if type(screenPositions) ~= "table" then
+        screenPositions = {}
+    end
+
+    local fok = pcall(function()
+        _PARRY_PATCH.parryRemote:FireServer(
+            _PARRY_PATCH.parryHash,
+            currentKey,
+            token,
+            0.5,
+            curveCFrame,
+            screenPositions,
+            mouseLocation,
+            false
+        )
+    end)
+    return fok
+end
+
+-- ---------- System Tables ----------
+local System = {
+    __properties = {
+        __accuracy = 50,
+        __divisor_multiplier = 1.1,
+        __parried = false,
+        __training_parried = false,
+        __parries = 0,
+        __is_mobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled,
+        __curve_mode = 1,
+        __humanizer_enabled = false,
+        __humanizer_min_accuracy = 1,
+        __humanizer_max_accuracy = 50,
+        __humanizer_last_update = 0,
+        __humanizer_next_change = 0.8,
+        __autoparry_enabled = false,
+        __triggerbot_enabled = false,
+        __manual_spam_enabled = false,
+        __auto_spam_enabled = false,
+        __spam_threshold = 1,
+        __auto_spam_distance_multiplier = 0.3,
+        __auto_spam_mode = "Remote",
+        __auto_spam_anim_fix = false,
+        __connections = {},
+    },
+    __config = {
+        __curve_names = {
+            "Camera", "Random", "Accelerated", "Backwards",
+            "Slow", "High", "Left", "Right"
+        },
+    },
+    __triggerbot = {
+        __enabled = false,
+        __is_parrying = false,
+        __parries = 0,
+        __max_parries = 10000,
+        __parry_delay = 0.5,
+    },
+}
+
+local Closest_Entity = nil
+
+local function update_divisor()
+    System.__properties.__divisor_multiplier =
+        0.7 + (System.__properties.__accuracy - 1) * 0.0035353535353535
+end
+update_divisor()
+
+-- ---------- Player Helpers ----------
+local System_player = {}
+
+function System_player.get_closest()
+    local max_distance = math.huge
+    local closest_entity = nil
+    if not Alive then return nil end
+    for _, entity in ipairs(Alive:GetChildren()) do
+        if entity ~= LocalPlayer.Character and entity.PrimaryPart then
+            local distance = LocalPlayer:DistanceFromCharacter(entity.PrimaryPart.Position)
+            if distance < max_distance then
+                max_distance = distance
+                closest_entity = entity
+            end
+        end
+    end
+    Closest_Entity = closest_entity
+    return closest_entity
+end
+
+function System_player.get_closest_to_cursor()
+    if not LocalPlayer.Character
+        or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return nil
+    end
+    local camera = workspace.CurrentCamera
+    if not Alive then return nil end
+    local ok, mouse_location = pcall(function()
+        return UserInputService:GetMouseLocation()
+    end)
+    if not ok then return nil end
+    local ray = camera:ScreenPointToRay(mouse_location.X, mouse_location.Y)
+    local pointer = CFrame.lookAt(ray.Origin, ray.Origin + ray.Direction)
+
+    local closest_player = nil
+    local minimal_dot = -math.huge
+    for _, player in ipairs(Alive:GetChildren()) do
+        if player ~= LocalPlayer.Character
+            and player:FindFirstChild("HumanoidRootPart") then
+            local direction = (player.HumanoidRootPart.Position - camera.CFrame.Position).Unit
+            local dot = pointer.LookVector:Dot(direction)
+            if dot > minimal_dot then
+                minimal_dot = dot
+                closest_player = player
+            end
+        end
+    end
+    return closest_player
+end
+
+-- ---------- Curve ----------
+local System_curve = {}
+
+function System_curve.get_cframe()
+    local camera = workspace.CurrentCamera
+    local root = LocalPlayer.Character
+        and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return camera.CFrame end
+
+    local targetPart
+    local closest = System_player.get_closest_to_cursor()
+    if closest and closest:FindFirstChild("HumanoidRootPart") then
+        targetPart = closest.HumanoidRootPart
+    end
+    local target_pos = targetPart and targetPart.Position
+        or (root.Position + camera.CFrame.LookVector * 100)
+
+    local curve_functions = {
+        function() return camera.CFrame end,
+        function()
+            local direction = (target_pos - root.Position).Unit
+            local random_offset
+            local attempts = 0
+            repeat
+                random_offset = Vector3.new(
+                    math.random(-4000, 4000),
+                    math.random(-4000, 4000),
+                    math.random(-4000, 4000)
+                )
+                local curve_direction = (target_pos + random_offset - root.Position).Unit
+                attempts = attempts + 1
+            until direction:Dot(curve_direction) < 0.95 or attempts > 10
+            return CFrame.new(root.Position, target_pos + random_offset)
+        end,
+        function()
+            return CFrame.new(root.Position, target_pos + Vector3.new(0, 5, 0))
+        end,
+        function()
+            local direction = (root.Position - target_pos).Unit
+            local backwards_pos = root.Position + direction * 10000 + Vector3.new(0, 1000, 0)
+            return CFrame.new(camera.CFrame.Position, backwards_pos)
+        end,
+        function()
+            return CFrame.new(root.Position, target_pos + Vector3.new(0, -9e18, 0))
+        end,
+        function()
+            return CFrame.new(root.Position, target_pos + Vector3.new(0, 9e18, 0))
+        end,
+        function()
+            local left_vec = -camera.CFrame.RightVector * 10000
+            return CFrame.new(root.Position, root.Position + left_vec)
+        end,
+        function()
+            local right_vec = camera.CFrame.RightVector * 10000
+            return CFrame.new(root.Position, root.Position + right_vec)
+        end,
+    }
+    return curve_functions[System.__properties.__curve_mode]()
+end
+
+-- ---------- Parry ----------
+local System_parry = {}
+
+function System_parry.execute()
+    if System.__properties.__parries > 10000 or not LocalPlayer.Character then
+        return
+    end
+    if not _PARRY_PATCH.ready then return end
+
+    local camera = workspace.CurrentCamera
+    local ok, mouse = pcall(function()
+        return UserInputService:GetMouseLocation()
+    end)
+    if not ok then return end
+
+    -- multi-target: كل entity في Alive + Dead + TrainingBalls
+    local screenPositions = {}
+    local function add(entity, root)
+        if not entity or not root then return end
+        local ok2, sp = pcall(function()
+            return camera:WorldToScreenPoint(root.Position)
+        end)
+        if ok2 then screenPositions[entity.Name] = sp end
+    end
+
+    if Alive then
+        for _, entity in ipairs(Alive:GetChildren()) do
+            if entity ~= LocalPlayer.Character then
+                add(entity, entity.PrimaryPart
+                    or entity:FindFirstChild("HumanoidRootPart"))
+            end
+        end
+    end
+
+    local Dead = workspace:FindFirstChild("Dead")
+    if Dead then
+        for _, entity in ipairs(Dead:GetChildren()) do
+            add(entity, entity.PrimaryPart
+                or entity:FindFirstChild("HumanoidRootPart"))
+        end
+    end
+
+    local TrainingBalls = workspace:FindFirstChild("TrainingBalls")
+    if TrainingBalls then
+        for _, entity in ipairs(TrainingBalls:GetChildren()) do
+            add(entity, entity.PrimaryPart
+                or entity:FindFirstChild("HumanoidRootPart"))
+        end
+    end
+
+    local curveCF = System_curve.get_cframe() or camera.CFrame
+    local mouseLocation
+    if System.__properties.__is_mobile then
+        local vp = camera.ViewportSize
+        mouseLocation = {vp.X / 2, vp.Y / 2}
+    else
+        mouseLocation = {mouse.X, mouse.Y}
+    end
+
+    _PARRY_PATCH.fire(curveCF, screenPositions, mouseLocation)
+
+    System.__properties.__parries = System.__properties.__parries + 1
+    task.delay(0.5, function()
+        if System.__properties.__parries > 0 then
+            System.__properties.__parries = System.__properties.__parries - 1
+        end
+    end)
+end
+
+function System_parry.keypress()
+    if System.__properties.__parries > 10000 or not LocalPlayer.Character then
+        return
+    end
+    if getgenv().PF then pcall(getgenv().PF) end
+    System.__properties.__parries = System.__properties.__parries + 1
+    task.delay(0.5, function()
+        if System.__properties.__parries > 0 then
+            System.__properties.__parries = System.__properties.__parries - 1
+        end
+    end)
+end
+
+-- ---------- Detection Helpers ----------
+local System_detection = {
+    __state = {
+        infinity_active = false,
+        deathslash_active = false,
+        timehole_active = false,
+        slashesoffury_active = false,
+    },
+}
+
+pcall(function()
+    ReplicatedStorage.Remotes.DeathBall.OnClientEvent:Connect(function(c, d)
+        System_detection.__state.deathslash_active = d or false
+    end)
+end)
+
+pcall(function()
+    ReplicatedStorage.Remotes.InfinityBall.OnClientEvent:Connect(function(a, b)
+        System_detection.__state.infinity_active = b or false
+    end)
+end)
+
+pcall(function()
+    ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"]
+        .net["RE/TimeHoleActivate"].OnClientEvent:Connect(function(...)
+            local args = {...}
+            local p = args[1]
+            if p == LocalPlayer or p == LocalPlayer.Name
+                or (p and p.Name == LocalPlayer.Name) then
+                System_detection.__state.timehole_active = true
+            end
+        end)
+end)
+
+pcall(function()
+    ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"]
+        .net["RE/TimeHoleDeactivate"].OnClientEvent:Connect(function()
+            System_detection.__state.timehole_active = false
+        end)
+end)
+
+pcall(function()
+    ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"]
+        .net["RE/SlashesOfFuryActivate"].OnClientEvent:Connect(function(...)
+            local args = {...}
+            local p = args[1]
+            if p == LocalPlayer or p == LocalPlayer.Name
+                or (p and p.Name == LocalPlayer.Name) then
+                System_detection.__state.slashesoffury_active = true
+            end
+        end)
+end)
+
+pcall(function()
+    ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"]
+        .net["RE/SlashesOfFuryEnd"].OnClientEvent:Connect(function()
+            System_detection.__state.slashesoffury_active = false
+        end)
+end)
+
+-- ---------- AutoParry Loop ----------
+local function parry_loop()
+    if not System.__properties.__autoparry_enabled then return end
+    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return end
+    if System.__properties.__parried then return end
+
+    local balls_folder = workspace:FindFirstChild("Balls")
+    if not balls_folder then return end
+
+    -- ball الحقيقي فقط
+    local target_ball
+    for _, ball in ipairs(balls_folder:GetChildren()) do
+        if ball:GetAttribute("realBall") then
+            ball.CanCollide = false
+            target_ball = ball
+            break
+        end
+    end
+    if not target_ball then return end
+
+    -- تخطي الحالات
+    if System_detection.__state.infinity_active then return end
+    if System_detection.__state.deathslash_active then return end
+    if System_detection.__state.timehole_active then return end
+    if System_detection.__state.slashesoffury_active then return end
+
+    -- تخطي Tornado
+    local tornado = Runtime:FindFirstChild("Tornado")
+    if tornado then
+        local t = tornado:GetAttribute("TornadoTime") or 1
+        -- skip لما tornado شغال (تقريب)
+    end
+
+    local zoomies = target_ball:FindFirstChild("zoomies")
+    if not zoomies then return end
+
+    local ball_target = target_ball:GetAttribute("target")
+    if ball_target ~= LocalPlayer.Name then return end
+
+    local velocity = zoomies.VectorVelocity or Vector3.new()
+    local speed = velocity.Magnitude
+    if speed < 0.001 then return end
+
+    local root = LocalPlayer.Character.PrimaryPart
+    local distance = (root.Position - target_ball.Position).Magnitude
+
+    -- parry threshold
+    local ping = 0
+    pcall(function()
+        ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 10
+    end)
+    local ping_threshold = math.clamp(ping / 10, 5, 17)
+    local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
+    local speed_divisor = (2.4 + capped_speed_diff * 0.002)
+        * System.__properties.__divisor_multiplier
+    local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+
+    if distance <= parry_accuracy then
+        System_parry.execute()
+        System.__properties.__parried = true
+        task.delay(0.3, function()
+            System.__properties.__parried = false
+        end)
+    end
+end
+
+-- ---------- Triggerbot ----------
+local System_triggerbot = {}
+
+function System_triggerbot.trigger(ball)
+    if System.__triggerbot.__is_parrying
+        or System.__triggerbot.__parries > System.__triggerbot.__max_parries then
+        return
+    end
+    if LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
+        and LocalPlayer.Character.PrimaryPart:FindFirstChild("SingularityCape") then
+        return
+    end
+
+    System.__triggerbot.__is_parrying = true
+    System.__triggerbot.__parries = System.__triggerbot.__parries + 1
+
+    System_parry.execute()
+
+    task.delay(System.__triggerbot.__parry_delay, function()
+        if System.__triggerbot.__parries > 0 then
+            System.__triggerbot.__parries = System.__triggerbot.__parries - 1
+        end
+    end)
+
+    task.delay(1, function()
+        System.__triggerbot.__is_parrying = false
+    end)
+end
+
+local function triggerbot_loop()
+    if not System.__triggerbot.__enabled then return end
+    if LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
+        and LocalPlayer.Character.PrimaryPart:FindFirstChild("SingularityCape") then
+        return
+    end
+    local balls_folder = workspace:FindFirstChild("Balls")
+    if not balls_folder then return end
+
+    for _, ball in ipairs(balls_folder:GetChildren()) do
+        if ball:IsA("BasePart")
+            and ball:GetAttribute("target") == LocalPlayer.Name
+            and ball:GetAttribute("realBall") then
+            System_triggerbot.trigger(ball)
+            break
+        end
+    end
+end
+
+-- ---------- AutoSpam ----------
+local function get_ball_props()
+    local balls_folder = workspace:FindFirstChild("Balls")
+    if not balls_folder then return nil end
+    local ball
+    for _, b in ipairs(balls_folder:GetChildren()) do
+        if b:GetAttribute("realBall") then ball = b break end
+    end
+    if not ball then return nil end
+    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then
+        return nil
+    end
+
+    local vel = ball.AssemblyLinearVelocity or Vector3.new()
+    local to_ball = LocalPlayer.Character.PrimaryPart.Position - ball.Position
+    local dist = to_ball.Magnitude
+    local dir = dist > 0 and to_ball.Unit or Vector3.new()
+    local dot = 0
+    if vel.Magnitude > 0 and dist > 0 then
+        dot = dir:Dot(vel.Unit)
+    end
+    return { Velocity = vel, Distance = dist, Direction = dir, Dot = dot }
+end
+
+local function get_entity_props()
+    if not Closest_Entity or not Closest_Entity.PrimaryPart then return nil end
+    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then
+        return nil
+    end
+    local vel = Closest_Entity.PrimaryPart.Velocity
+    local dir = (LocalPlayer.Character.PrimaryPart.Position
+        - Closest_Entity.PrimaryPart.Position).Unit
+    local dist = (LocalPlayer.Character.PrimaryPart.Position
+        - Closest_Entity.PrimaryPart.Position).Magnitude
+    return { Velocity = vel, Direction = dir, Distance = dist }
+end
+
+local function spam_service(self)
+    local ball_props = get_ball_props()
+    if not ball_props then return 5 end
+    local entity_props = get_entity_props()
+    if not entity_props then return 5 end
+
+    local D = 5
+    local n = ball_props.Velocity.Magnitude
+    if n == 0 then return D end
+
+    local t = 0
+    if n > 0 and ball_props.Velocity.Magnitude > 0 then
+        t = ball_props.Direction:Dot(ball_props.Velocity.Unit)
+    end
+
+    local X = entity_props.Distance
+    local B = (self.Ping or 50) * 0.7 + math.min(n / 1.2, 80)
+
+    if entity_props.Distance > B then return D end
+    if ball_props.Distance > B then return D end
+    if X > B then return D end
+
+    local U = math.clamp(-t, 0, 1)
+    local q = math.clamp(U * (n / 40), 0, 4)
+    return B - q
+end
+
+local function autospam_loop()
+    if not System.__properties.__auto_spam_enabled then return end
+    if not LocalPlayer.Character then return end
+
+    local balls_folder = workspace:FindFirstChild("Balls")
+    if not balls_folder then return end
+    local ball
+    for _, b in ipairs(balls_folder:GetChildren()) do
+        if b:GetAttribute("realBall") then ball = b break end
+    end
+    if not ball then return end
+
+    if System_detection.__state.slashesoffury_active then return end
+
+    local zoomies = ball:FindFirstChild("zoomies")
+    if not zoomies then return end
+
+    System_player.get_closest()
+    if not Closest_Entity or not Closest_Entity.PrimaryPart then return end
+
+    local ping = 0
+    pcall(function()
+        ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    local ping_threshold = math.clamp(ping / 10, 1, 16)
+
+    local ball_target = ball:GetAttribute("target")
+    local ball_props = get_ball_props()
+    local entity_props = get_entity_props()
+    if not ball_props or not entity_props then return end
+
+    local spam_accuracy = spam_service({
+        Ball_Properties = ball_props,
+        Entity_Properties = entity_props,
+        Ping = ping_threshold,
+    })
+
+    local target_distance = entity_props.Distance
+    if zoomies.VectorVelocity.Magnitude == 0 then return end
+
+    local distance = ball_props.Distance
+    if not ball_target then return end
+    if target_distance > spam_accuracy or distance > spam_accuracy then
+        return
+    end
+
+    local pulsed = LocalPlayer.Character:GetAttribute("Pulsed")
+    if pulsed then return end
+
+    if ball_target == LocalPlayer.Name
+        and target_distance > 30 and distance > 30 then
+        return
+    end
+
+    if distance <= spam_accuracy
+        and System.__properties.__parries > System.__properties.__spam_threshold then
+        if System.__properties.__auto_spam_mode == "Keypress" then
+            System_parry.keypress()
+        else
+            System_parry.execute()
+        end
+    end
+end
+
+-- ---------- Manual Spam ----------
+local function manual_spam_loop()
+    if not System.__properties.__manual_spam_enabled then return end
+    if not LocalPlayer.Character
+        or LocalPlayer.Character.Parent ~= Alive then return end
+
+    System_parry.execute()
+end
+
+-- ---------- Wire Connections ----------
+System.__properties.__connections.parry =
+    RunService.PreSimulation:Connect(parry_loop)
+
+System.__properties.__connections.triggerbot =
+    RunService.Heartbeat:Connect(triggerbot_loop)
+
+System.__properties.__connections.autospam =
+    RunService.PreSimulation:Connect(autospam_loop)
+
+System.__properties.__connections.manual_spam =
+    RunService.Heartbeat:Connect(manual_spam_loop)
+
+-- تصدير
+getgenv().__QST01_SYSTEM = System
+getgenv().__QST01_PARRY = System_parry
+getgenv().__QST01_TRIGGERBOT = System_triggerbot
+getgenv().__QST01_PARRY_PATCH = _PARRY_PATCH
+
+-- ============================================================
+-- PART 2: MOBILE UI
+-- ============================================================
+
 local IS_TOUCH = UserInputService.TouchEnabled
 local FORCE_SHOW = getgenv().__MOBILE_UI_FORCE_SHOW == true
 
-if not IS_TOUCH and not FORCE_SHOW then
-    warn("[MOBILE UI] الجوال غير مفعّل. لو تبي تجبره: getgenv().__MOBILE_UI_FORCE_SHOW = true")
-    return
-end
+if IS_TOUCH or FORCE_SHOW then
 
--- ---------- 1. الوصول للنظم المحمّلة ----------
-local System       = getgenv().__AZURE_SYSTEM
-local System_parry = getgenv().__AZURE_PARRY
-local AUTOSPAM_CFG = getgenv().__AZURE_AUTOSPAM
-
--- ملاحظة: UI يشتغل حتى لو النظم ناقصة — يعطي تحذير فقط.
-local function has_parry() return System ~= nil and System_parry ~= nil end
-local function has_autospam() return AUTOSPAM_CFG ~= nil end
-
--- ---------- 2. الحالة العامة ----------
-local STATE = {
-    auto_parry    = false,
-    auto_spam     = false,
-    manual_spam   = false,
-    triggerbot    = false,
-    engine        = getgenv().__PARRY_ACTIVE_ENGINE or "qst01",
-}
-
--- ---------- 3. الثيم المبسّط ----------
 local THEME = {
-    bg          = Color3.fromRGB(14, 14, 18),
-    bg_soft     = Color3.fromRGB(22, 22, 28),
-    stroke      = Color3.fromRGB(55, 55, 70),
-    stroke_lit  = Color3.fromRGB(90, 90, 120),
-    text        = Color3.fromRGB(240, 240, 245),
-    text_dim    = Color3.fromRGB(160, 160, 180),
-    accent_on   = Color3.fromRGB(100, 220, 130),
-    accent_off  = Color3.fromRGB(60, 60, 70),
-    warn        = Color3.fromRGB(230, 180, 80),
-    error       = Color3.fromRGB(220, 90, 100),
-    font        = Font.new("rbxasset://fonts/families/GothamSSm.json",
-                           Enum.FontWeight.SemiBold, Enum.FontStyle.Normal),
-    font_bold   = Font.new("rbxasset://fonts/families/GothamSSm.json",
-                           Enum.FontWeight.Bold, Enum.FontStyle.Normal),
+    bg         = Color3.fromRGB(14, 14, 18),
+    bg_soft    = Color3.fromRGB(22, 22, 28),
+    stroke     = Color3.fromRGB(55, 55, 70),
+    stroke_lit = Color3.fromRGB(90, 90, 120),
+    text       = Color3.fromRGB(240, 240, 245),
+    text_dim   = Color3.fromRGB(160, 160, 180),
+    on         = Color3.fromRGB(100, 220, 130),
+    off        = Color3.fromRGB(60, 60, 70),
+    warn       = Color3.fromRGB(230, 180, 80),
+    error      = Color3.fromRGB(220, 90, 100),
+    font       = Font.new("rbxasset://fonts/families/GothamSSm.json",
+                          Enum.FontWeight.SemiBold, Enum.FontStyle.Normal),
+    font_bold  = Font.new("rbxasset://fonts/families/GothamSSm.json",
+                          Enum.FontWeight.Bold, Enum.FontStyle.Normal),
 }
 
--- ---------- 4. الأدوات ----------
-local function corner(parent, radius)
+local function corner(p, r)
     local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, radius or 10)
-    c.Parent = parent
+    c.CornerRadius = UDim.new(0, r or 10)
+    c.Parent = p
     return c
 end
 
-local function stroke(parent, color, transparency)
+local function stroke(p, color, tr)
     local s = Instance.new("UIStroke")
     s.Color = color or THEME.stroke
-    s.Transparency = transparency or 0.3
+    s.Transparency = tr or 0.3
     s.Thickness = 1
     s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    s.Parent = parent
+    s.Parent = p
     return s
 end
 
-local function tween(obj, duration, props, style, dir)
+local function tween(o, d, props, st, dr)
     return TweenService:Create(
-        obj,
-        TweenInfo.new(
-            duration or 0.2,
-            style or Enum.EasingStyle.Quint,
-            dir or Enum.EasingDirection.Out
-        ),
+        o,
+        TweenInfo.new(d or 0.2, st or Enum.EasingStyle.Quint,
+                      dr or Enum.EasingDirection.Out),
         props
     )
 end
 
--- ---------- 5. بناء الواجهة ----------
-local parent_gui
-do
-    -- نحاول gethui أول، ثم CoreGui
-    if gethui then
-        local ok, hui = pcall(gethui)
-        if ok and hui then
-            parent_gui = hui
-        end
-    end
-    if not parent_gui then
-        parent_gui = CoreGui
-    end
+local parent_gui = CoreGui
+if gethui then
+    local ok, h = pcall(gethui)
+    if ok and h then parent_gui = h end
 end
 
 local screen = Instance.new("ScreenGui")
-screen.Name = "AzureMobileTempUI"
+screen.Name = "Qst01MobileUI"
 screen.ResetOnSpawn = false
 screen.IgnoreGuiInset = true
 screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screen.DisplayOrder = 500
 screen.Parent = parent_gui
 
--- زر التعليق (Collapse) — زر صغير دائم
+-- زر تعليق
 local toggle_btn = Instance.new("TextButton")
-toggle_btn.Name = "ToggleButton"
-toggle_btn.Size = UDim2.new(0, 56, 0, 56)
-toggle_btn.Position = UDim2.new(0, 16, 0.5, -28)
+toggle_btn.Size = UDim2.new(0, 54, 0, 54)
+toggle_btn.Position = UDim2.new(0, 16, 0.5, -27)
 toggle_btn.BackgroundColor3 = THEME.bg
 toggle_btn.BackgroundTransparency = 0.1
 toggle_btn.BorderSizePixel = 0
 toggle_btn.Text = "XK"
 toggle_btn.TextColor3 = THEME.text
 toggle_btn.FontFace = THEME.font_bold
-toggle_btn.TextSize = 18
+toggle_btn.TextSize = 17
 toggle_btn.AutoButtonColor = false
 toggle_btn.Parent = screen
-corner(toggle_btn, 28)
-local toggle_stroke = stroke(toggle_btn, THEME.stroke_lit, 0.35)
+corner(toggle_btn, 27)
+stroke(toggle_btn, THEME.stroke_lit, 0.35)
 
--- اللوحة الرئيسية
+-- لوحة
 local panel = Instance.new("Frame")
-panel.Name = "Panel"
-panel.Size = UDim2.new(0, 260, 0, 400)
-panel.Position = UDim2.new(0, 16, 0.5, -200)
+panel.Size = UDim2.new(0, 250, 0, 340)
+panel.Position = UDim2.new(0, 16, 0.5, -170)
 panel.BackgroundColor3 = THEME.bg
 panel.BackgroundTransparency = 0.05
 panel.BorderSizePixel = 0
-panel.Visible = true
+panel.Visible = false
 panel.Parent = screen
 corner(panel, 14)
-local panel_stroke = stroke(panel, THEME.stroke, 0.35)
+stroke(panel, THEME.stroke, 0.35)
 
--- الهيدر
+-- هيدر
 local header = Instance.new("Frame")
-header.Name = "Header"
 header.Size = UDim2.new(1, 0, 0, 42)
 header.BackgroundTransparency = 1
 header.Parent = panel
 
 local title = Instance.new("TextLabel")
-title.Name = "Title"
-title.Size = UDim2.new(1, -50, 1, 0)
+title.Size = UDim2.new(1, -46, 1, 0)
 title.Position = UDim2.new(0, 14, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "ALPHA XK — تحكم"
+title.Text = "qst01 — تحكم"
 title.TextColor3 = THEME.text
 title.FontFace = THEME.font_bold
 title.TextSize = 15
@@ -169,7 +881,6 @@ title.TextYAlignment = Enum.TextYAlignment.Center
 title.Parent = header
 
 local close_btn = Instance.new("TextButton")
-close_btn.Name = "Close"
 close_btn.Size = UDim2.new(0, 30, 0, 30)
 close_btn.Position = UDim2.new(1, -38, 0, 6)
 close_btn.BackgroundColor3 = THEME.bg_soft
@@ -183,16 +894,15 @@ close_btn.Parent = header
 corner(close_btn, 8)
 
 -- فاصل
-local divider = Instance.new("Frame")
-divider.Size = UDim2.new(1, -24, 0, 1)
-divider.Position = UDim2.new(0, 12, 0, 42)
-divider.BackgroundColor3 = THEME.stroke
-divider.BorderSizePixel = 0
-divider.Parent = panel
+local div = Instance.new("Frame")
+div.Size = UDim2.new(1, -24, 0, 1)
+div.Position = UDim2.new(0, 12, 0, 42)
+div.BackgroundColor3 = THEME.stroke
+div.BorderSizePixel = 0
+div.Parent = panel
 
--- محتوى — ScrollingFrame
+-- محتوى
 local content = Instance.new("ScrollingFrame")
-content.Name = "Content"
 content.Size = UDim2.new(1, -16, 1, -56)
 content.Position = UDim2.new(0, 8, 0, 50)
 content.BackgroundTransparency = 1
@@ -209,21 +919,19 @@ list.Padding = UDim.new(0, 8)
 list.SortOrder = Enum.SortOrder.LayoutOrder
 list.Parent = content
 
-local padding = Instance.new("UIPadding")
-padding.PaddingTop = UDim.new(0, 8)
-padding.PaddingLeft = UDim.new(0, 4)
-padding.PaddingRight = UDim.new(0, 4)
-padding.PaddingBottom = UDim.new(0, 8)
-padding.Parent = content
+local pad = Instance.new("UIPadding")
+pad.PaddingTop = UDim.new(0, 8)
+pad.PaddingLeft = UDim.new(0, 4)
+pad.PaddingRight = UDim.new(0, 4)
+pad.PaddingBottom = UDim.new(0, 8)
+pad.Parent = content
 
--- ---------- 6. صانع الأزرار ----------
-local button_refs = {}
+local BTN = {}
 
 local function make_button(cfg)
     local btn = Instance.new("TextButton")
-    btn.Name = cfg.name or "Btn"
     btn.Size = UDim2.new(1, -8, 0, 46)
-    btn.BackgroundColor3 = cfg.active and THEME.accent_on or THEME.bg_soft
+    btn.BackgroundColor3 = cfg.active and THEME.on or THEME.bg_soft
     btn.BackgroundTransparency = cfg.active and 0.15 or 0
     btn.BorderSizePixel = 0
     btn.Text = ""
@@ -231,33 +939,32 @@ local function make_button(cfg)
     btn.LayoutOrder = cfg.order or 0
     btn.Parent = content
     corner(btn, 10)
-    local st = stroke(btn, cfg.active and THEME.accent_on or THEME.stroke, 0.3)
+    local st = stroke(btn, cfg.active and THEME.on or THEME.stroke, 0.3)
 
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -60, 1, 0)
-    label.Position = UDim2.new(0, 14, 0, 0)
-    label.BackgroundTransparency = 1
-    label.Text = cfg.label or "Button"
-    label.TextColor3 = THEME.text
-    label.FontFace = THEME.font
-    label.TextSize = 14
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.TextYAlignment = Enum.TextYAlignment.Center
-    label.Parent = btn
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -64, 1, 0)
+    lbl.Position = UDim2.new(0, 14, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = cfg.label
+    lbl.TextColor3 = THEME.text
+    lbl.FontFace = THEME.font
+    lbl.TextSize = 14
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextYAlignment = Enum.TextYAlignment.Center
+    lbl.Parent = btn
 
-    local status = Instance.new("TextLabel")
-    status.Size = UDim2.new(0, 48, 1, 0)
-    status.Position = UDim2.new(1, -54, 0, 0)
-    status.BackgroundTransparency = 1
-    status.Text = cfg.active and "شغال" or "واقف"
-    status.TextColor3 = cfg.active and THEME.accent_on or THEME.text_dim
-    status.FontFace = THEME.font_bold
-    status.TextSize = 12
-    status.TextXAlignment = Enum.TextXAlignment.Right
-    status.TextYAlignment = Enum.TextYAlignment.Center
-    status.Parent = btn
+    local stt = Instance.new("TextLabel")
+    stt.Size = UDim2.new(0, 52, 1, 0)
+    stt.Position = UDim2.new(1, -58, 0, 0)
+    stt.BackgroundTransparency = 1
+    stt.Text = cfg.active and "شغال" or "واقف"
+    stt.TextColor3 = cfg.active and THEME.on or THEME.text_dim
+    stt.FontFace = THEME.font_bold
+    stt.TextSize = 12
+    stt.TextXAlignment = Enum.TextXAlignment.Right
+    stt.TextYAlignment = Enum.TextYAlignment.Center
+    stt.Parent = btn
 
-    -- لمعة عند الضغط
     btn.MouseButton1Down:Connect(function()
         tween(btn, 0.08, { Size = UDim2.new(1, -10, 0, 43) }):Play()
     end)
@@ -267,215 +974,137 @@ local function make_button(cfg)
     end)
 
     local ref = {
-        btn    = btn,
-        label  = label,
-        status = status,
-        stroke = st,
-        update = function(active, status_text)
-            btn.BackgroundColor3 = active and THEME.accent_on or THEME.bg_soft
+        btn = btn,
+        set_active = function(active)
+            btn.BackgroundColor3 = active and THEME.on or THEME.bg_soft
             btn.BackgroundTransparency = active and 0.15 or 0
-            st.Color = active and THEME.accent_on or THEME.stroke
-            status.Text = status_text or (active and "شغال" or "واقف")
-            status.TextColor3 = active and THEME.accent_on or THEME.text_dim
+            st.Color = active and THEME.on or THEME.stroke
+            stt.Text = active and "شغال" or "واقف"
+            stt.TextColor3 = active and THEME.on or THEME.text_dim
         end,
-        set_status_text = function(txt, color)
-            status.Text = txt
-            if color then status.TextColor3 = color end
+        set_status = function(txt, color)
+            stt.Text = txt
+            if color then stt.TextColor3 = color end
         end,
     }
-    button_refs[cfg.name] = ref
+    BTN[cfg.name] = ref
     return ref
 end
 
--- ---------- 7. الأزرار ----------
-
--- 7.1 محرك الـ Parry
-local engine_ref = make_button({
-    name  = "Engine",
-    label = "محرك الباري",
-    order = 1,
-    active = STATE.engine == "qst01",
+-- زر AutoParry
+local ap = make_button({
+    name = "AutoParry", label = "AutoParry",
+    order = 1, active = System.__properties.__autoparry_enabled,
 })
 
-local function refresh_engine()
-    local eng = STATE.engine
-    engine_ref.update(eng == "qst01", eng == "qst01" and "qst01" or "azure")
-    engine_ref.status.TextColor3 = THEME.warn
+ap.btn.MouseButton1Click:Connect(function()
+    System.__properties.__autoparry_enabled =
+        not System.__properties.__autoparry_enabled
+    ap.set_active(System.__properties.__autoparry_enabled)
+end)
+
+-- زر Triggerbot
+local tb = make_button({
+    name = "Triggerbot", label = "Triggerbot",
+    order = 2, active = System.__triggerbot.__enabled,
+})
+
+tb.btn.MouseButton1Click:Connect(function()
+    System.__triggerbot.__enabled = not System.__triggerbot.__enabled
+    tb.set_active(System.__triggerbot.__enabled)
+end)
+
+-- زر AutoSpam
+local as = make_button({
+    name = "AutoSpam", label = "AutoSpam",
+    order = 3, active = System.__properties.__auto_spam_enabled,
+})
+
+as.btn.MouseButton1Click:Connect(function()
+    System.__properties.__auto_spam_enabled =
+        not System.__properties.__auto_spam_enabled
+    as.set_active(System.__properties.__auto_spam_enabled)
+end)
+
+-- زر Manual Spam
+local ms = make_button({
+    name = "ManualSpam", label = "Manual Spam",
+    order = 4, active = System.__properties.__manual_spam_enabled,
+})
+
+ms.btn.MouseButton1Click:Connect(function()
+    System.__properties.__manual_spam_enabled =
+        not System.__properties.__manual_spam_enabled
+    ms.set_active(System.__properties.__manual_spam_enabled)
+end)
+
+-- زر Parry Type
+local pt = make_button({
+    name = "ParryType", label = "Parry Type",
+    order = 5, active = false,
+})
+
+local function update_parry_type_label()
+    local mode = System.__properties.__auto_spam_mode or "Remote"
+    pt.set_status(mode, THEME.warn)
 end
-refresh_engine()
+update_parry_type_label()
 
-engine_ref.btn.MouseButton1Click:Connect(function()
-    STATE.engine = (STATE.engine == "qst01") and "azure" or "qst01"
-    getgenv().__PARRY_ACTIVE_ENGINE = STATE.engine
-    refresh_engine()
-end)
-
--- 7.2 AutoParry
-local autoparry_ref = make_button({
-    name  = "AutoParry",
-    label = "AutoParry",
-    order = 2,
-    active = STATE.auto_parry,
-})
-
-autoparry_ref.btn.MouseButton1Click:Connect(function()
-    if not has_parry() then
-        autoparry_ref.set_status_text("ناقص", THEME.error)
-        return
-    end
-    STATE.auto_parry = not STATE.auto_parry
-    System.__properties.__autoparry_enabled = STATE.auto_parry
-
-    -- تشغيل أو إيقاف حلقة الباري
-    if STATE.auto_parry then
-        if System.autoparry and System.autoparry.start then
-            pcall(System.autoparry.start)
-        end
+pt.btn.MouseButton1Click:Connect(function()
+    if System.__properties.__auto_spam_mode == "Remote" then
+        System.__properties.__auto_spam_mode = "Keypress"
     else
-        if System.autoparry and System.autoparry.stop then
-            pcall(System.autoparry.stop)
-        end
+        System.__properties.__auto_spam_mode = "Remote"
     end
-
-    autoparry_ref.update(STATE.auto_parry)
+    update_parry_type_label()
 end)
 
--- 7.3 AutoSpam
-local autospam_ref = make_button({
-    name  = "AutoSpam",
-    label = "AutoSpam",
-    order = 3,
-    active = STATE.auto_spam,
+-- زر Curve Mode
+local cm = make_button({
+    name = "CurveMode", label = "Curve",
+    order = 6, active = false,
 })
 
-autospam_ref.btn.MouseButton1Click:Connect(function()
-    if not has_autospam() then
-        autospam_ref.set_status_text("ناقص", THEME.error)
-        return
-    end
-    STATE.auto_spam = not STATE.auto_spam
+local function update_curve_label()
+    local idx = System.__properties.__curve_mode
+    local name = System.__config.__curve_names[idx] or "?"
+    cm.set_status(name, THEME.warn)
+end
+update_curve_label()
 
-    local toggle = getgenv().__AZURE_AUTOSPAM_TOGGLE
-    if toggle then
-        pcall(toggle, STATE.auto_spam)
-    end
-
-    autospam_ref.update(STATE.auto_spam)
+cm.btn.MouseButton1Click:Connect(function()
+    local n = #System.__config.__curve_names
+    System.__properties.__curve_mode = (System.__properties.__curve_mode % n) + 1
+    update_curve_label()
 end)
 
--- 7.4 Manual Spam
-local manual_ref = make_button({
-    name  = "ManualSpam",
-    label = "Manual Spam",
-    order = 4,
-    active = STATE.manual_spam,
+-- زر أوقف الكل
+local stop = make_button({
+    name = "StopAll", label = "أوقف الكل",
+    order = 99, active = false,
 })
 
-manual_ref.btn.MouseButton1Click:Connect(function()
-    if not has_parry() then
-        manual_ref.set_status_text("ناقص", THEME.error)
-        return
-    end
-    STATE.manual_spam = not STATE.manual_spam
+stop.btn.MouseButton1Click:Connect(function()
+    System.__properties.__autoparry_enabled = false
+    ap.set_active(false)
 
-    -- Manual spam = استدعاء execute من heartbeat
-    if STATE.manual_spam then
-        if getgenv().__AZURE_MANUAL_CONN then
-            pcall(function() getgenv().__AZURE_MANUAL_CONN:Disconnect() end)
-        end
-        getgenv().__AZURE_MANUAL_CONN = RunService.Heartbeat:Connect(function()
-            if not STATE.manual_spam then return end
-            if not LocalPlayer.Character then return end
-            pcall(System_parry.execute)
-        end)
-    else
-        if getgenv().__AZURE_MANUAL_CONN then
-            pcall(function() getgenv().__AZURE_MANUAL_CONN:Disconnect() end)
-            getgenv().__AZURE_MANUAL_CONN = nil
-        end
-    end
+    System.__triggerbot.__enabled = false
+    tb.set_active(false)
 
-    manual_ref.update(STATE.manual_spam)
-end)
+    System.__properties.__auto_spam_enabled = false
+    as.set_active(false)
 
--- 7.5 Triggerbot (اختياري — إذا النظام موجود)
-local triggerbot_ref = make_button({
-    name  = "Triggerbot",
-    label = "Triggerbot",
-    order = 5,
-    active = STATE.triggerbot,
-})
+    System.__properties.__manual_spam_enabled = false
+    ms.set_active(false)
 
-triggerbot_ref.btn.MouseButton1Click:Connect(function()
-    local tb = getgenv().features
-    if tb and tb.Triggerbot and tb.Triggerbot.SetEnabled then
-        STATE.triggerbot = not STATE.triggerbot
-        pcall(tb.Triggerbot.SetEnabled, STATE.triggerbot)
-        triggerbot_ref.update(STATE.triggerbot)
-    else
-        triggerbot_ref.set_status_text("ناقص", THEME.warn)
-    end
-end)
-
--- 7.6 زر إيقاف الكل
-local stop_all = make_button({
-    name  = "StopAll",
-    label = "أوقف الكل",
-    order = 99,
-    active = false,
-})
-
-stop_all.btn.MouseButton1Click:Connect(function()
-    -- AutoParry
-    STATE.auto_parry = false
-    if System and System.__properties then
-        System.__properties.__autoparry_enabled = false
-        if System.autoparry and System.autoparry.stop then
-            pcall(System.autoparry.stop)
-        end
-    end
-    autoparry_ref.update(false)
-
-    -- AutoSpam
-    STATE.auto_spam = false
-    if getgenv().__AZURE_AUTOSPAM_TOGGLE then
-        pcall(getgenv().__AZURE_AUTOSPAM_TOGGLE, false)
-    end
-    autospam_ref.update(false)
-
-    -- Manual Spam
-    STATE.manual_spam = false
-    if getgenv().__AZURE_MANUAL_CONN then
-        pcall(function() getgenv().__AZURE_MANUAL_CONN:Disconnect() end)
-        getgenv().__AZURE_MANUAL_CONN = nil
-    end
-    manual_ref.update(false)
-
-    -- Triggerbot
-    STATE.triggerbot = false
-    local tb = getgenv().features
-    if tb and tb.Triggerbot and tb.Triggerbot.SetEnabled then
-        pcall(tb.Triggerbot.SetEnabled, false)
-    end
-    triggerbot_ref.update(false)
-
-    stop_all.set_status_text("تمام", THEME.accent_on)
+    stop.set_status("تمام", THEME.on)
     task.delay(1.5, function()
-        stop_all.set_status_text("واقف", THEME.text_dim)
+        stop.set_status("واقف", THEME.text_dim)
     end)
 end)
 
--- ---------- 8. السحب والإفلات (Drag) ----------
-local dragging = false
-local drag_start = nil
-local panel_start = nil
-
-local function is_in_header(pos)
-    local abs = header.AbsolutePosition
-    local size = header.AbsoluteSize
-    return pos.X >= abs.X and pos.X <= abs.X + size.X
-       and pos.Y >= abs.Y and pos.Y <= abs.Y + size.Y
-end
+-- سحب
+local dragging, drag_start, panel_start = false, nil, nil
 
 header.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.Touch
@@ -508,75 +1137,38 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- ---------- 9. زر التعليق ----------
-local panel_open = true
+-- فتح/إغلاق
+local open = false
 
 local function set_open(state)
-    panel_open = state
+    open = state
     if state then
         panel.Visible = true
-        panel.Size = UDim2.new(0, 260, 0, 100)  -- نبدأ صغير
-        tween(panel, 0.3, { Size = UDim2.new(0, 260, 0, 400) },
+        panel.Size = UDim2.new(0, 250, 0, 100)
+        tween(panel, 0.3, { Size = UDim2.new(0, 250, 0, 340) },
               Enum.EasingStyle.Back):Play()
-        tween(toggle_btn, 0.25, { BackgroundColor3 = THEME.bg }):Play()
     else
-        tween(panel, 0.25, { Size = UDim2.new(0, 260, 0, 40) }):Play()
+        tween(panel, 0.25, { Size = UDim2.new(0, 250, 0, 40) }):Play()
         task.delay(0.25, function()
-            if not panel_open then
-                panel.Visible = false
-            end
+            if not open then panel.Visible = false end
         end)
-        tween(toggle_btn, 0.25, { BackgroundColor3 = THEME.bg_soft }):Play()
     end
 end
 
-toggle_btn.MouseButton1Click:Connect(function()
-    set_open(not panel_open)
-end)
+toggle_btn.MouseButton1Click:Connect(function() set_open(not open) end)
+close_btn.MouseButton1Click:Connect(function() set_open(false) end)
 
-close_btn.MouseButton1Click:Connect(function()
-    set_open(false)
-end)
-
--- ---------- 10. مزامنة تلقائية كل نصف ثانية ----------
-task.spawn(function()
-    while screen and screen.Parent do
-        task.wait(0.5)
-
-        -- AutoParry
-        if System and System.__properties then
-            local real = System.__properties.__autoparry_enabled
-            if real ~= nil and real ~= STATE.auto_parry then
-                STATE.auto_parry = real
-                autoparry_ref.update(real)
-            end
-        end
-
-        -- AutoSpam
-        if AUTOSPAM_CFG then
-            if AUTOSPAM_CFG.enabled ~= STATE.auto_spam then
-                STATE.auto_spam = AUTOSPAM_CFG.enabled
-                autospam_ref.update(STATE.auto_spam)
-            end
-        end
-
-        -- Engine
-        local eng = getgenv().__PARRY_ACTIVE_ENGINE
-        if eng and eng ~= STATE.engine then
-            STATE.engine = eng
-            refresh_engine()
-        end
-    end
-end)
-
--- ---------- 11. تصدير ----------
-getgenv().__MOBILE_UI = {
+-- تصدير UI
+getgenv().__QST01_UI = {
     screen  = screen,
     panel   = panel,
-    toggle  = toggle_btn,
     open    = function() set_open(true) end,
     close   = function() set_open(false) end,
     destroy = function() screen:Destroy() end,
 }
 
-print("[MOBILE UI] جاهز — ABSOLUTE KODE، يا ريدز")
+print("[QST01 UI] جاهز على الجوال — اضغط XK")
+
+end -- نهاية فحص الجوال
+
+print("[QST01 FULL] النظام + UI جاهز — ABSOLUTE KODE، يا ريدز")
