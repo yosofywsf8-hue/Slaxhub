@@ -1,1031 +1,582 @@
--- ================================================================
--- Slax Hub | Timebomb Duels — Full Build v3
--- Nyx Edition | AutoPlay + Noclip + FFlag Boost + Cosmetics + Music
--- + Parry/Dodge + Auto-Swing + Infinite Jump + ESP + HUD + Anti-AFK
--- ================================================================
+-- ============================================================
+-- MOBILE TEMP UI — لوحة تحكم مؤقتة للجوال
+-- File: mobile_temp_ui.lua
+-- الهدف: أزرار عائمة تشتغل على الجوال، تتحكم بـ:
+--        - Parry Engine (qst01 / azure)
+--        - AutoSpam on/off
+--        - Manual Spam on/off
+--        - AutoParry on/off
+--        - Triggerbot on/off (اختياري)
+-- التحميل: بعد azure_parry_bridge.lua
+--          و qst01_parry_multitarget.lua
+--          و azure_autospam_bridge.lua
+-- ============================================================
 
-local Players      = game:GetService("Players")
-local RunService   = game:GetService("RunService")
-local SoundService = game:GetService("SoundService")
-local Lighting     = game:GetService("Lighting")
-local Workspace    = game:GetService("Workspace")
-local UIS          = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local HttpService  = game:GetService("HttpService")
-local LocalPlayer  = Players.LocalPlayer
+local Players          = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+local TweenService     = game:GetService("TweenService")
+local CoreGui          = game:GetService("CoreGui")
 
--- ============ Cleanup ============
-for _, name in ipairs({"SlaxHubPremium", "SlaxHubToggle", "SlaxHubHUD", "SlaxHubESP"}) do
-    local old = LocalPlayer.PlayerGui:FindFirstChild(name)
-    if old then old:Destroy() end
+local LocalPlayer = Players.LocalPlayer
+
+-- ---------- 0. الحماية: جوال فقط أو تشغيل إجباري ----------
+local IS_TOUCH = UserInputService.TouchEnabled
+local FORCE_SHOW = getgenv().__MOBILE_UI_FORCE_SHOW == true
+
+if not IS_TOUCH and not FORCE_SHOW then
+    warn("[MOBILE UI] الجوال غير مفعّل. لو تبي تجبره: getgenv().__MOBILE_UI_FORCE_SHOW = true")
+    return
 end
 
--- ================================================================
--- WIND-STYLE UI
--- ================================================================
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SlaxHubPremium"
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+-- ---------- 1. الوصول للنظم المحمّلة ----------
+local System       = getgenv().__AZURE_SYSTEM
+local System_parry = getgenv().__AZURE_PARRY
+local AUTOSPAM_CFG = getgenv().__AZURE_AUTOSPAM
 
--- ---- Toggle Button ----
-local ToggleButton = Instance.new("ImageButton")
-ToggleButton.Size = UDim2.new(0, 55, 0, 55)
-ToggleButton.Position = UDim2.new(0.02, 0, 0.2, 0)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-ToggleButton.BorderSizePixel = 0
-ToggleButton.Active = true
-ToggleButton.Draggable = true
-ToggleButton.ScaleType = Enum.ScaleType.Crop
-ToggleButton.Image = "rbxthumb://type=Asset&id=124643845022233&w=420&h=420"
-ToggleButton.Parent = ScreenGui
-Instance.new("UICorner", ToggleButton).CornerRadius = UDim.new(0, 14)
-local SquareStroke = Instance.new("UIStroke")
-SquareStroke.Color = Color3.fromRGB(255, 30, 30)
-SquareStroke.Thickness = 2
-SquareStroke.Parent = ToggleButton
+-- ملاحظة: UI يشتغل حتى لو النظم ناقصة — يعطي تحذير فقط.
+local function has_parry() return System ~= nil and System_parry ~= nil end
+local function has_autospam() return AUTOSPAM_CFG ~= nil end
 
--- ---- Main Window ----
-local MainFrame = Instance.new("ImageLabel")
-MainFrame.Size = UDim2.new(0, 340, 0, 560)
-MainFrame.Position = UDim2.new(0.2, 0, 0.05, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Draggable = true
-MainFrame.Image = "rbxthumb://type=Asset&id=108512464651627&w=420&h=420"
-MainFrame.ScaleType = Enum.ScaleType.Crop
-MainFrame.ImageTransparency = 0.25
-MainFrame.Parent = ScreenGui
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 14)
-local MainStroke = Instance.new("UIStroke")
-MainStroke.Color = Color3.fromRGB(255, 40, 40)
-MainStroke.Thickness = 1.5
-MainStroke.Transparency = 0.3
-MainStroke.Parent = MainFrame
-
-local BlurOverlay = Instance.new("Frame")
-BlurOverlay.Size = UDim2.new(1, 0, 1, 0)
-BlurOverlay.BackgroundColor3 = Color3.fromRGB(12, 14, 20)
-BlurOverlay.BackgroundTransparency = 0.3
-BlurOverlay.BorderSizePixel = 0
-BlurOverlay.Parent = MainFrame
-Instance.new("UICorner", BlurOverlay).CornerRadius = UDim.new(0, 14)
-
--- ---- Header ----
-local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 42)
-Header.BackgroundColor3 = Color3.fromRGB(20, 22, 30)
-Header.BackgroundTransparency = 0.2
-Header.BorderSizePixel = 0
-Header.Parent = MainFrame
-local HeaderCorner = Instance.new("UICorner")
-HeaderCorner.CornerRadius = UDim.new(0, 14)
-HeaderCorner.Parent = Header
-local HeaderHide = Instance.new("Frame")
-HeaderHide.Size = UDim2.new(1, 0, 0.5, 0)
-HeaderHide.Position = UDim2.new(0, 0, 0.5, 0)
-HeaderHide.BackgroundColor3 = Header.BackgroundColor3
-HeaderHide.BackgroundTransparency = Header.BackgroundTransparency
-HeaderHide.BorderSizePixel = 0
-HeaderHide.Parent = Header
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(0.7, 0, 1, 0)
-Title.Position = UDim2.new(0.04, 0, 0, 0)
-Title.Text = "Slax Hub"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.BackgroundTransparency = 1
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 14
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Header
-
-local SubTitle = Instance.new("TextLabel")
-SubTitle.Size = UDim2.new(0.7, 0, 1, 0)
-SubTitle.Position = UDim2.new(0.04, 0, 0, 14)
-SubTitle.Text = "Timebomb Duels · Nyx Edition"
-SubTitle.TextColor3 = Color3.fromRGB(180, 180, 200)
-SubTitle.BackgroundTransparency = 1
-SubTitle.Font = Enum.Font.Gotham
-SubTitle.TextSize = 9
-SubTitle.TextXAlignment = Enum.TextXAlignment.Left
-SubTitle.Parent = Header
-
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 24, 0, 24)
-CloseBtn.Position = UDim2.new(1, -32, 0.5, -12)
-CloseBtn.Text = "✕"
-CloseBtn.TextSize = 12
-CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 60)
-CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.BorderSizePixel = 0
-CloseBtn.Parent = Header
-Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 8)
-
--- ---- Tabs ----
-local TabBar = Instance.new("Frame")
-TabBar.Size = UDim2.new(1, -16, 0, 30)
-TabBar.Position = UDim2.new(0, 8, 0, 46)
-TabBar.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
-TabBar.BorderSizePixel = 0
-TabBar.Parent = MainFrame
-Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0, 8)
-
-local TabLayout = Instance.new("UIListLayout")
-TabLayout.FillDirection = Enum.FillDirection.Horizontal
-TabLayout.Padding = UDim.new(0, 4)
-TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-TabLayout.Parent = TabBar
-
-local TabPadding = Instance.new("UIPadding")
-TabPadding.PaddingLeft = UDim.new(0, 4)
-TabPadding.PaddingTop = UDim.new(0, 4)
-TabPadding.Parent = TabBar
-
-local Pages = {}
-local TabButtons = {}
-
-local function makeTab(name, order)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 68, 0, 22)
-    btn.Text = name
-    btn.BackgroundColor3 = Color3.fromRGB(30, 34, 44)
-    btn.BackgroundTransparency = 0.3
-    btn.TextColor3 = Color3.fromRGB(180, 180, 200)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 10
-    btn.BorderSizePixel = 0
-    btn.LayoutOrder = order
-    btn.Parent = TabBar
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-
-    local page = Instance.new("ScrollingFrame")
-    page.Size = UDim2.new(1, -16, 1, -88)
-    page.Position = UDim2.new(0, 8, 0, 84)
-    page.BackgroundTransparency = 1
-    page.BorderSizePixel = 0
-    page.ScrollBarThickness = 3
-    page.ScrollBarImageColor3 = Color3.fromRGB(255, 60, 60)
-    page.CanvasSize = UDim2.new(0, 0, 0, 400)
-    page.Visible = false
-    page.Parent = MainFrame
-
-    local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0, 6)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Parent = page
-
-    TabButtons[order] = btn
-    Pages[name] = page
-
-    btn.MouseButton1Click:Connect(function()
-        for _, p in pairs(Pages) do p.Visible = false end
-        for _, b in pairs(TabButtons) do
-            b.BackgroundColor3 = Color3.fromRGB(30, 34, 44)
-            b.TextColor3 = Color3.fromRGB(180, 180, 200)
-        end
-        page.Visible = true
-        btn.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    end)
-
-    return page
-end
-
-local function makeSection(parent, title)
-    local section = Instance.new("Frame")
-    section.Size = UDim2.new(1, 0, 0, 22)
-    section.BackgroundTransparency = 1
-    section.Parent = parent
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.Position = UDim2.new(0, 4, 0, 0)
-    label.Text = title
-    label.TextColor3 = Color3.fromRGB(255, 100, 100)
-    label.BackgroundTransparency = 1
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 10
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = section
-    return section
-end
-
-local function makeButton(parent, text, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 34)
-    btn.Text = text
-    btn.BackgroundColor3 = Color3.fromRGB(30, 34, 44)
-    btn.BackgroundTransparency = 0.15
-    btn.TextColor3 = Color3.fromRGB(230, 230, 240)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 11
-    btn.BorderSizePixel = 0
-    btn.AutoButtonColor = false
-    btn.Parent = parent
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(60, 65, 80)
-    stroke.Thickness = 1
-    stroke.Transparency = 0.5
-    stroke.Parent = btn
-    btn.MouseButton1Click:Connect(function()
-        if callback then callback() end
-    end)
-    return btn
-end
-
--- ================================================================
--- STATE + HELPERS
--- ================================================================
-local state = {
-    AutoPlay = false,
-    Noclip = false,
-    Bloxstrap = false,
-    Korblox = false,
-    Headless = false,
-    Parry = false,
-    AutoSwing = false,
-    InfiniteJump = false,
-    ESP = false,
-    HUD = false,
-    AntiAFK = false,
+-- ---------- 2. الحالة العامة ----------
+local STATE = {
+    auto_parry    = false,
+    auto_spam     = false,
+    manual_spam   = false,
+    triggerbot    = false,
+    engine        = getgenv().__PARRY_ACTIVE_ENGINE or "qst01",
 }
 
-local originalProps = {}
+-- ---------- 3. الثيم المبسّط ----------
+local THEME = {
+    bg          = Color3.fromRGB(14, 14, 18),
+    bg_soft     = Color3.fromRGB(22, 22, 28),
+    stroke      = Color3.fromRGB(55, 55, 70),
+    stroke_lit  = Color3.fromRGB(90, 90, 120),
+    text        = Color3.fromRGB(240, 240, 245),
+    text_dim    = Color3.fromRGB(160, 160, 180),
+    accent_on   = Color3.fromRGB(100, 220, 130),
+    accent_off  = Color3.fromRGB(60, 60, 70),
+    warn        = Color3.fromRGB(230, 180, 80),
+    error       = Color3.fromRGB(220, 90, 100),
+    font        = Font.new("rbxasset://fonts/families/GothamSSm.json",
+                           Enum.FontWeight.SemiBold, Enum.FontStyle.Normal),
+    font_bold   = Font.new("rbxasset://fonts/families/GothamSSm.json",
+                           Enum.FontWeight.Bold, Enum.FontStyle.Normal),
+}
 
-local function saveProp(inst, prop)
-    if not originalProps[inst] then originalProps[inst] = {} end
-    if originalProps[inst][prop] == nil then
-        originalProps[inst][prop] = inst[prop]
-    end
+-- ---------- 4. الأدوات ----------
+local function corner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 10)
+    c.Parent = parent
+    return c
 end
 
-local function getChar() return LocalPlayer.Character end
-local function getHRP(plr)
-    plr = plr or LocalPlayer
-    if plr.Character then return plr.Character:FindFirstChild("HumanoidRootPart") end
-end
-local function getHum(plr)
-    plr = plr or LocalPlayer
-    if plr.Character then return plr.Character:FindFirstChildOfClass("Humanoid") end
-end
-
-local function hasBomb()
-    local char = getChar()
-    if not char then return false end
-    for _, obj in ipairs(char:GetChildren()) do
-        local n = obj.Name:lower()
-        if obj:IsA("Tool") and (n:find("bomb") or n:find("c4") or n:find("tnt") or n:find("device")) then
-            return true
-        end
-    end
-    for _, obj in ipairs(LocalPlayer.Backpack:GetChildren()) do
-        local n = obj.Name:lower()
-        if obj:IsA("Tool") and (n:find("bomb") or n:find("c4") or n:find("tnt") or n:find("device")) then
-            return true
-        end
-    end
-    for _, attr in ipairs(LocalPlayer:GetAttributes()) do
-        local a = attr:lower()
-        if (a:find("bomb") or a:find("carrier") or a:find("has"))
-           and LocalPlayer:GetAttribute(attr) == true then
-            return true
-        end
-    end
-    if LocalPlayer:HasTag("HasBomb") or LocalPlayer:HasTag("Bomb") then return true end
-    if char:HasTag("HasBomb") or char:HasTag("Bomb") then return true end
-    return false
+local function stroke(parent, color, transparency)
+    local s = Instance.new("UIStroke")
+    s.Color = color or THEME.stroke
+    s.Transparency = transparency or 0.3
+    s.Thickness = 1
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = parent
+    return s
 end
 
-local function getNearestTarget(maxDist)
-    maxDist = maxDist or 150
-    local myHRP = getHRP()
-    if not myHRP then return nil, nil end
-    local nearest, shortestDist = nil, math.huge
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then
-            local hum, hrp = getHum(plr), getHRP(plr)
-            if hum and hrp and hum.Health > 0 then
-                local d = (hrp.Position - myHRP.Position).Magnitude
-                if d < maxDist and d < shortestDist then
-                    shortestDist = d
-                    nearest = plr
-                end
-            end
-        end
-    end
-    return nearest, shortestDist
-end
-
-local function jitter(v)
-    return v + Vector3.new(
-        (math.random() - 0.5) * 0.05, 0,
-        (math.random() - 0.5) * 0.05
+local function tween(obj, duration, props, style, dir)
+    return TweenService:Create(
+        obj,
+        TweenInfo.new(
+            duration or 0.2,
+            style or Enum.EasingStyle.Quint,
+            dir or Enum.EasingDirection.Out
+        ),
+        props
     )
 end
 
--- ================================================================
--- COSMETICS
--- ================================================================
-local function applyKorblox(on)
-    local char = getChar()
-    if not char then return end
-    local candidates = {"Right Leg", "RightLeg", "RightUpperLeg", "RightLowerLeg", "RightFoot"}
-    local found = {}
-    for _, name in ipairs(candidates) do
-        local part = char:FindFirstChild(name)
-        if part and part:IsA("BasePart") then table.insert(found, part) end
-    end
-    if #found == 0 then
-        for _, obj in ipairs(char:GetChildren()) do
-            if obj:IsA("BasePart") then
-                for _, att in ipairs(obj:GetChildren()) do
-                    if att:IsA("Attachment")
-                       and (att.Name:find("RightHip") or att.Name:find("Right Leg")) then
-                        table.insert(found, obj)
-                        break
-                    end
-                end
-            end
+-- ---------- 5. بناء الواجهة ----------
+local parent_gui
+do
+    -- نحاول gethui أول، ثم CoreGui
+    if gethui then
+        local ok, hui = pcall(gethui)
+        if ok and hui then
+            parent_gui = hui
         end
     end
-    for _, part in ipairs(found) do
-        if on then
-            saveProp(part, "Transparency")
-            saveProp(part, "LocalTransparencyModifier")
-            saveProp(part, "CanCollide")
-            part.Transparency = 1
-            part.LocalTransparencyModifier = 1
-            part.CanCollide = false
-        else
-            if originalProps[part] then
-                for prop, val in pairs(originalProps[part]) do
-                    pcall(function() part[prop] = val end)
-                end
-            end
-        end
-        for _, child in ipairs(part:GetChildren()) do
-            if child:IsA("Decal") or child:IsA("Texture") then
-                if on then
-                    saveProp(child, "Transparency")
-                    child.Transparency = 1
-                elseif originalProps[child] then
-                    child.Transparency = originalProps[child].Transparency or 0
-                end
-            end
-        end
-    end
-    for _, obj in ipairs(char:GetChildren()) do
-        if obj:IsA("Accessory") or obj:IsA("Accoutrement") then
-            local handle = obj:FindFirstChild("Handle")
-            if handle then
-                for _, att in ipairs(handle:GetChildren()) do
-                    if att:IsA("Attachment")
-                       and (att.Name:find("RightHip") or att.Name:find("Right Leg")) then
-                        if on then
-                            saveProp(handle, "Transparency")
-                            saveProp(handle, "LocalTransparencyModifier")
-                            handle.Transparency = 1
-                            handle.LocalTransparencyModifier = 1
-                        elseif originalProps[handle] then
-                            for prop, val in pairs(originalProps[handle]) do
-                                pcall(function() handle[prop] = val end)
-                            end
-                        end
-                        break
-                    end
-                end
-            end
-        end
+    if not parent_gui then
+        parent_gui = CoreGui
     end
 end
 
-local function applyHeadless(on)
-    local char = getChar()
-    if not char then return end
-    local head = char:FindFirstChild("Head")
-    if not head then return end
-    if on then
-        saveProp(head, "Transparency")
-        saveProp(head, "LocalTransparencyModifier")
-        head.Transparency = 1
-        head.LocalTransparencyModifier = 1
-    else
-        if originalProps[head] then
-            head.Transparency = originalProps[head].Transparency or 0
-            head.LocalTransparencyModifier = originalProps[head].LocalTransparencyModifier or 0
-        else
-            head.Transparency = 0
-            head.LocalTransparencyModifier = 0
-        end
-    end
-    for _, child in ipairs(head:GetChildren()) do
-        if child:IsA("Decal") or child:IsA("Texture") then
-            if on then
-                saveProp(child, "Transparency")
-                child.Transparency = 1
-            elseif originalProps[child] then
-                child.Transparency = originalProps[child].Transparency or 0
-            end
-        end
-        if child:IsA("SpecialMesh") then
-            if on then
-                saveProp(child, "Scale")
-                child.Scale = Vector3.new(0.01, 0.01, 0.01)
-            elseif originalProps[child] then
-                child.Scale = originalProps[child].Scale or Vector3.new(1, 1, 1)
-            end
-        end
-    end
-    for _, obj in ipairs(char:GetChildren()) do
-        if obj:IsA("Accessory") or obj:IsA("Accoutrement") then
-            local handle = obj:FindFirstChild("Handle")
-            if handle then
-                for _, att in ipairs(handle:GetChildren()) do
-                    if att:IsA("Attachment") and att.Name:find("Head") then
-                        if on then
-                            saveProp(handle, "Transparency")
-                            saveProp(handle, "LocalTransparencyModifier")
-                            handle.Transparency = 1
-                            handle.LocalTransparencyModifier = 1
-                        elseif originalProps[handle] then
-                            for prop, val in pairs(originalProps[handle]) do
-                                pcall(function() handle[prop] = val end)
-                            end
-                        end
-                        break
-                    end
-                end
-            end
-        end
-    end
-end
+local screen = Instance.new("ScreenGui")
+screen.Name = "AzureMobileTempUI"
+screen.ResetOnSpawn = false
+screen.IgnoreGuiInset = true
+screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screen.DisplayOrder = 500
+screen.Parent = parent_gui
 
--- ================================================================
--- MUSIC SYSTEM
--- ================================================================
-local currentSound = Instance.new("Sound")
-currentSound.Name = "SlaxLocalSound"
-currentSound.Volume = 2
-currentSound.Looped = true
-currentSound.Parent = SoundService
+-- زر التعليق (Collapse) — زر صغير دائم
+local toggle_btn = Instance.new("TextButton")
+toggle_btn.Name = "ToggleButton"
+toggle_btn.Size = UDim2.new(0, 56, 0, 56)
+toggle_btn.Position = UDim2.new(0, 16, 0.5, -28)
+toggle_btn.BackgroundColor3 = THEME.bg
+toggle_btn.BackgroundTransparency = 0.1
+toggle_btn.BorderSizePixel = 0
+toggle_btn.Text = "XK"
+toggle_btn.TextColor3 = THEME.text
+toggle_btn.FontFace = THEME.font_bold
+toggle_btn.TextSize = 18
+toggle_btn.AutoButtonColor = false
+toggle_btn.Parent = screen
+corner(toggle_btn, 28)
+local toggle_stroke = stroke(toggle_btn, THEME.stroke_lit, 0.35)
 
-local savedSongsList = {
-    {Name = "Song 1 🎶", Id = 102710215948261, Loud = false},
-    {Name = "Song 2 🎶", Id = 86503267790406,  Loud = false},
-    {Name = "Song 3 🔊", Id = 111018848542448, Loud = true},
-}
+-- اللوحة الرئيسية
+local panel = Instance.new("Frame")
+panel.Name = "Panel"
+panel.Size = UDim2.new(0, 260, 0, 400)
+panel.Position = UDim2.new(0, 16, 0.5, -200)
+panel.BackgroundColor3 = THEME.bg
+panel.BackgroundTransparency = 0.05
+panel.BorderSizePixel = 0
+panel.Visible = true
+panel.Parent = screen
+corner(panel, 14)
+local panel_stroke = stroke(panel, THEME.stroke, 0.35)
 
-local function playSongById(id)
-    if id then
-        currentSound.SoundId = "rbxassetid://" .. tostring(id)
-        currentSound:Play()
-    end
-end
+-- الهيدر
+local header = Instance.new("Frame")
+header.Name = "Header"
+header.Size = UDim2.new(1, 0, 0, 42)
+header.BackgroundTransparency = 1
+header.Parent = panel
 
-local function stopSong()
-    currentSound:Stop()
-end
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.Size = UDim2.new(1, -50, 1, 0)
+title.Position = UDim2.new(0, 14, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "ALPHA XK — تحكم"
+title.TextColor3 = THEME.text
+title.FontFace = THEME.font_bold
+title.TextSize = 15
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextYAlignment = Enum.TextYAlignment.Center
+title.Parent = header
 
--- ================================================================
--- BLOXSTRAP FFLAG BOOST
--- ================================================================
-local originalLighting = {
-    Brightness = Lighting.Brightness,
-    GlobalShadows = Lighting.GlobalShadows,
-    Ambient = Lighting.Ambient,
-    OutdoorAmbient = Lighting.OutdoorAmbient,
-    FogEnd = Lighting.FogEnd,
-    FogStart = Lighting.FogStart,
-    EnvironmentDiffuseScale = Lighting.EnvironmentDiffuseScale,
-    EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale,
-}
-local originalQuality = nil
-pcall(function() originalQuality = settings().Rendering.QualityLevel end)
-local disabledEffects = {}
+local close_btn = Instance.new("TextButton")
+close_btn.Name = "Close"
+close_btn.Size = UDim2.new(0, 30, 0, 30)
+close_btn.Position = UDim2.new(1, -38, 0, 6)
+close_btn.BackgroundColor3 = THEME.bg_soft
+close_btn.BorderSizePixel = 0
+close_btn.Text = "×"
+close_btn.TextColor3 = THEME.text_dim
+close_btn.FontFace = THEME.font_bold
+close_btn.TextSize = 20
+close_btn.AutoButtonColor = false
+close_btn.Parent = header
+corner(close_btn, 8)
 
-local function enableBoost()
-    local fflags = {
-        ["DFIntTaskSchedulerTargetFps"] = 240,
-        ["DFIntTextureQualityOverride"] = 0,
-        ["FIntRenderShadowIntensity"] = 0,
-        ["FIntFRMMinGrassDistance"] = 0,
-        ["FIntFRMMaxGrassDistance"] = 0,
-        ["FIntFRMMinTerrainDistance"] = 0,
-        ["FIntFRMMaxTerrainDistance"] = 0,
-        ["FFlagDisablePostFx"] = "True",
-        ["FFlagDisableBloom"] = "True",
-        ["FFlagDisableDOF"] = "True",
-        ["FFlagDisableSunRays"] = "True",
-        ["FFlagDisableAtmosphere"] = "True",
-        ["FFlagDisableMSAA"] = "True",
-        ["FFlagDisableFXAA"] = "True",
-        ["FFlagRenderFastClear"] = "True",
-        ["FFlagOptimizeMotionBlur"] = "True",
-    }
-    for flag, value in pairs(fflags) do
-        pcall(function() sethiddenproperty(game, flag, value) end)
-        pcall(function() setfflag(flag, tostring(value)) end)
-    end
-    pcall(function()
-        Lighting.GlobalShadows = false
-        Lighting.Brightness = 2
-        Lighting.EnvironmentDiffuseScale = 0
-        Lighting.EnvironmentSpecularScale = 0
-        Lighting.OutdoorAmbient = Color3.fromRGB(178, 178, 178)
-        Lighting.FogEnd = 100000
-        Lighting.FogStart = 0
-    end)
-    for _, v in ipairs(Lighting:GetDescendants()) do
-        if v:IsA("PostEffect") and v.Enabled then
-            disabledEffects[v] = true
-            v.Enabled = false
-        end
-        if v:IsA("Sky") or v:IsA("Atmosphere") then
-            pcall(function() v.Parent = nil end)
-        end
-    end
-    pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
-    pcall(function()
-        if Workspace.StreamingEnabled then
-            Workspace.StreamingTargetRadius = 256
-        end
-    end)
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("ParticleEmitter") or obj:IsA("Fire")
-           or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-            pcall(function() obj.Enabled = false end)
-        end
-        if obj:IsA("Trail") or obj:IsA("Beam") then
-            pcall(function() obj.Enabled = false end)
-        end
-        if obj:IsA("BasePart") then
-            pcall(function() obj.CastShadow = false end)
-        end
-    end
-    pcall(function() RunService:SetPhysicsThrottleEnabled(true) end)
-end
+-- فاصل
+local divider = Instance.new("Frame")
+divider.Size = UDim2.new(1, -24, 0, 1)
+divider.Position = UDim2.new(0, 12, 0, 42)
+divider.BackgroundColor3 = THEME.stroke
+divider.BorderSizePixel = 0
+divider.Parent = panel
 
-local function disableBoost()
-    pcall(function()
-        for prop, val in pairs(originalLighting) do
-            Lighting[prop] = val
-        end
-    end)
-    if originalQuality then
-        pcall(function() settings().Rendering.QualityLevel = originalQuality end)
-    end
-    for effect, _ in pairs(disabledEffects) do
-        if effect and effect.Parent then
-            pcall(function() effect.Enabled = true end)
-        end
-    end
-    disabledEffects = {}
-    for _, part in ipairs(Workspace:GetDescendants()) do
-        if part:IsA("BasePart") then
-            pcall(function() part.CastShadow = true end)
-        end
-    end
-    pcall(function() RunService:SetPhysicsThrottleEnabled(false) end)
-end
+-- محتوى — ScrollingFrame
+local content = Instance.new("ScrollingFrame")
+content.Name = "Content"
+content.Size = UDim2.new(1, -16, 1, -56)
+content.Position = UDim2.new(0, 8, 0, 50)
+content.BackgroundTransparency = 1
+content.BorderSizePixel = 0
+content.ScrollBarThickness = 3
+content.ScrollBarImageColor3 = THEME.stroke_lit
+content.ScrollBarImageTransparency = 0.5
+content.CanvasSize = UDim2.new(0, 0, 0, 0)
+content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+content.Parent = panel
 
--- ================================================================
--- ESP
--- ================================================================
-local ESPFolder = Instance.new("Folder")
-ESPFolder.Name = "SlaxHubESP"
-ESPFolder.Parent = Workspace
+local list = Instance.new("UIListLayout")
+list.Padding = UDim.new(0, 8)
+list.SortOrder = Enum.SortOrder.LayoutOrder
+list.Parent = content
 
-local function createESP(plr)
-    if not plr.Character then return end
-    local box = Instance.new("Highlight")
-    box.Name = "SlaxESP_" .. plr.Name
-    box.Adornee = plr.Character
-    box.FillColor = Color3.fromRGB(255, 40, 40)
-    box.OutlineColor = Color3.fromRGB(255, 255, 255)
-    box.FillTransparency = 0.6
-    box.OutlineTransparency = 0.2
-    box.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    box.Parent = ESPFolder
+local padding = Instance.new("UIPadding")
+padding.PaddingTop = UDim.new(0, 8)
+padding.PaddingLeft = UDim.new(0, 4)
+padding.PaddingRight = UDim.new(0, 4)
+padding.PaddingBottom = UDim.new(0, 8)
+padding.Parent = content
 
-    local tag = Instance.new("BillboardGui")
-    tag.Name = "SlaxTag_" .. plr.Name
-    tag.Size = UDim2.new(0, 100, 0, 22)
-    tag.StudsOffset = Vector3.new(0, 3, 0)
-    tag.AlwaysOnTop = true
-    tag.Adornee = plr.Character
-    tag.Parent = ESPFolder
+-- ---------- 6. صانع الأزرار ----------
+local button_refs = {}
+
+local function make_button(cfg)
+    local btn = Instance.new("TextButton")
+    btn.Name = cfg.name or "Btn"
+    btn.Size = UDim2.new(1, -8, 0, 46)
+    btn.BackgroundColor3 = cfg.active and THEME.accent_on or THEME.bg_soft
+    btn.BackgroundTransparency = cfg.active and 0.15 or 0
+    btn.BorderSizePixel = 0
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.LayoutOrder = cfg.order or 0
+    btn.Parent = content
+    corner(btn, 10)
+    local st = stroke(btn, cfg.active and THEME.accent_on or THEME.stroke, 0.3)
 
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 1, 0)
+    label.Size = UDim2.new(1, -60, 1, 0)
+    label.Position = UDim2.new(0, 14, 0, 0)
     label.BackgroundTransparency = 1
-    label.Text = plr.Name
-    label.TextColor3 = Color3.fromRGB(255, 80, 80)
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 12
-    label.TextStrokeTransparency = 0.3
-    label.Parent = tag
-end
+    label.Text = cfg.label or "Button"
+    label.TextColor3 = THEME.text
+    label.FontFace = THEME.font
+    label.TextSize = 14
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextYAlignment = Enum.TextYAlignment.Center
+    label.Parent = btn
 
-local function refreshESP()
-    for _, obj in ipairs(ESPFolder:GetChildren()) do obj:Destroy() end
-    if state.ESP then
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Humanoid") then
-                createESP(plr)
-            end
-        end
-    end
-end
+    local status = Instance.new("TextLabel")
+    status.Size = UDim2.new(0, 48, 1, 0)
+    status.Position = UDim2.new(1, -54, 0, 0)
+    status.BackgroundTransparency = 1
+    status.Text = cfg.active and "شغال" or "واقف"
+    status.TextColor3 = cfg.active and THEME.accent_on or THEME.text_dim
+    status.FontFace = THEME.font_bold
+    status.TextSize = 12
+    status.TextXAlignment = Enum.TextXAlignment.Right
+    status.TextYAlignment = Enum.TextYAlignment.Center
+    status.Parent = btn
 
--- ================================================================
--- HUD
--- ================================================================
-local hudGui = Instance.new("ScreenGui")
-hudGui.Name = "SlaxHubHUD"
-hudGui.ResetOnSpawn = false
-hudGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
-local hudFrame = Instance.new("Frame")
-hudFrame.Size = UDim2.new(0, 180, 0, 90)
-hudFrame.Position = UDim2.new(1, -195, 0, 20)
-hudFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-hudFrame.BackgroundTransparency = 0.3
-hudFrame.BorderSizePixel = 0
-hudFrame.Visible = false
-hudFrame.Parent = hudGui
-Instance.new("UICorner", hudFrame).CornerRadius = UDim.new(0, 10)
-local hudStroke = Instance.new("UIStroke")
-hudStroke.Color = Color3.fromRGB(255, 60, 60)
-hudStroke.Thickness = 1
-hudStroke.Transparency = 0.4
-hudStroke.Parent = hudFrame
-
-local hudLayout = Instance.new("UIListLayout")
-hudLayout.Padding = UDim.new(0, 2)
-hudLayout.Parent = hudFrame
-local hudPad = Instance.new("UIPadding")
-hudPad.PaddingTop = UDim.new(0, 6)
-hudPad.PaddingLeft = UDim.new(0, 10)
-hudPad.Parent = hudFrame
-
-local function makeHudLine(txt)
-    local l = Instance.new("TextLabel")
-    l.Size = UDim2.new(1, -20, 0, 14)
-    l.BackgroundTransparency = 1
-    l.Text = txt
-    l.TextColor3 = Color3.fromRGB(220, 220, 230)
-    l.Font = Enum.Font.Gotham
-    l.TextSize = 10
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.Parent = hudFrame
-    return l
-end
-
-local fpsLine  = makeHudLine("FPS: --")
-local pingLine = makeHudLine("Ping: --")
-local bombLine = makeHudLine("Bomb: --")
-local timeLine = makeHudLine("Time: --")
-
--- ================================================================
--- BUILD UI PAGES
--- ================================================================
-local mainPage   = makeTab("Main", 1)
-local combatPage = makeTab("Combat", 2)
-local visualPage = makeTab("Visual", 3)
-local musicPage  = makeTab("Music", 4)
-local miscPage   = makeTab("Misc", 5)
-
--- ========== MAIN ==========
-makeSection(mainPage, "AutoPlay")
-state.AutoPlayBtn = makeButton(mainPage, "Auto Play: OFF", function()
-    state.AutoPlay = not state.AutoPlay
-    state.AutoPlayBtn.Text = state.AutoPlay and "Auto Play: ON" or "Auto Play: OFF"
-    state.AutoPlayBtn.BackgroundColor3 = state.AutoPlay and Color3.fromRGB(40, 167, 69)
-                                                     or Color3.fromRGB(30, 34, 44)
-end)
-
-makeSection(mainPage, "Movement")
-state.NoclipBtn = makeButton(mainPage, "Noclip: OFF", function()
-    state.Noclip = not state.Noclip
-    state.NoclipBtn.Text = state.Noclip and "Noclip: ON" or "Noclip: OFF"
-    state.NoclipBtn.BackgroundColor3 = state.Noclip and Color3.fromRGB(140, 50, 210)
-                                                 or Color3.fromRGB(30, 34, 44)
-end)
-
-state.InfJumpBtn = makeButton(mainPage, "Infinite Jump: OFF", function()
-    state.InfiniteJump = not state.InfiniteJump
-    state.InfJumpBtn.Text = state.InfiniteJump and "Infinite Jump: ON" or "Infinite Jump: OFF"
-    state.InfJumpBtn.BackgroundColor3 = state.InfiniteJump and Color3.fromRGB(0, 150, 255)
-                                                         or Color3.fromRGB(30, 34, 44)
-end)
-
-makeSection(mainPage, "Boost")
-state.BoostBtn = makeButton(mainPage, "Bloxstrap Boost: OFF", function()
-    state.Bloxstrap = not state.Bloxstrap
-    state.BoostBtn.Text = state.Bloxstrap and "Bloxstrap Boost: ON" or "Bloxstrap Boost: OFF"
-    state.BoostBtn.BackgroundColor3 = state.Bloxstrap and Color3.fromRGB(0, 150, 255)
-                                                     or Color3.fromRGB(30, 34, 44)
-    if state.Bloxstrap then enableBoost() else disableBoost() end
-end)
-
--- ========== COMBAT ==========
-makeSection(combatPage, "Defense")
-state.ParryBtn = makeButton(combatPage, "Auto Parry: OFF", function()
-    state.Parry = not state.Parry
-    state.ParryBtn.Text = state.Parry and "Auto Parry: ON" or "Auto Parry: OFF"
-    state.ParryBtn.BackgroundColor3 = state.Parry and Color3.fromRGB(40, 167, 69)
-                                                 or Color3.fromRGB(30, 34, 44)
-end)
-
-makeSection(combatPage, "Offense")
-state.SwingBtn = makeButton(combatPage, "Auto Swing: OFF", function()
-    state.AutoSwing = not state.AutoSwing
-    state.SwingBtn.Text = state.AutoSwing and "Auto Swing: ON" or "Auto Swing: OFF"
-    state.SwingBtn.BackgroundColor3 = state.AutoSwing and Color3.fromRGB(220, 53, 69)
-                                                    or Color3.fromRGB(30, 34, 44)
-end)
-
--- ========== VISUAL ==========
-makeSection(visualPage, "ESP")
-state.ESPBtn = makeButton(visualPage, "Player ESP: OFF", function()
-    state.ESP = not state.ESP
-    state.ESPBtn.Text = state.ESP and "Player ESP: ON" or "Player ESP: OFF"
-    state.ESPBtn.BackgroundColor3 = state.ESP and Color3.fromRGB(255, 140, 0)
-                                            or Color3.fromRGB(30, 34, 44)
-    refreshESP()
-end)
-
-makeSection(visualPage, "HUD")
-state.HUDBtn = makeButton(visualPage, "HUD: OFF", function()
-    state.HUD = not state.HUD
-    state.HUDBtn.Text = state.HUD and "HUD: ON" or "HUD: OFF"
-    state.HUDBtn.BackgroundColor3 = state.HUD and Color3.fromRGB(40, 167, 69)
-                                             or Color3.fromRGB(30, 34, 44)
-    hudFrame.Visible = state.HUD
-end)
-
-makeSection(visualPage, "Cosmetics")
-state.KorbloxBtn = makeButton(visualPage, "Fake Korblox: OFF", function()
-    state.Korblox = not state.Korblox
-    state.KorbloxBtn.Text = state.Korblox and "Fake Korblox: ON" or "Fake Korblox: OFF"
-    state.KorbloxBtn.BackgroundColor3 = state.Korblox and Color3.fromRGB(255, 140, 0)
-                                                      or Color3.fromRGB(30, 34, 44)
-    applyKorblox(state.Korblox)
-end)
-
-state.HeadlessBtn = makeButton(visualPage, "Fake Headless: OFF", function()
-    state.Headless = not state.Headless
-    state.HeadlessBtn.Text = state.Headless and "Fake Headless: ON" or "Fake Headless: OFF"
-    state.HeadlessBtn.BackgroundColor3 = state.Headless and Color3.fromRGB(150, 0, 255)
-                                                      or Color3.fromRGB(30, 34, 44)
-    applyHeadless(state.Headless)
-end)
-
--- ========== MUSIC ==========
-makeSection(musicPage, "Now Playing")
-local musicStatusLbl = Instance.new("TextLabel")
-musicStatusLbl.Size = UDim2.new(1, 0, 0, 18)
-musicStatusLbl.Text = "Status: Ready 🎧"
-musicStatusLbl.TextColor3 = Color3.fromRGB(160, 165, 180)
-musicStatusLbl.BackgroundTransparency = 1
-musicStatusLbl.Font = Enum.Font.Gotham
-musicStatusLbl.TextSize = 10
-musicStatusLbl.Parent = musicPage
-
-makeSection(musicPage, "Play by ID")
-local idRow = Instance.new("Frame")
-idRow.Size = UDim2.new(1, 0, 0, 32)
-idRow.BackgroundTransparency = 1
-idRow.Parent = musicPage
-
-local MusicBox = Instance.new("TextBox")
-MusicBox.Size = UDim2.new(0.6, 0, 1, 0)
-MusicBox.PlaceholderText = "🎵 حط ID هنا"
-MusicBox.Text = ""
-MusicBox.BackgroundColor3 = Color3.fromRGB(25, 30, 42)
-MusicBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-MusicBox.PlaceholderColor3 = Color3.fromRGB(140, 150, 170)
-MusicBox.Font = Enum.Font.Gotham
-MusicBox.TextSize = 9
-MusicBox.Parent = idRow
-Instance.new("UICorner", MusicBox).CornerRadius = UDim.new(0, 6)
-
-local PlayMusicBtn = Instance.new("TextButton")
-PlayMusicBtn.Size = UDim2.new(0.18, 0, 1, 0)
-PlayMusicBtn.Position = UDim2.new(0.62, 0, 0, 0)
-PlayMusicBtn.Text = "▶️"
-PlayMusicBtn.BackgroundColor3 = Color3.fromRGB(40, 167, 69)
-PlayMusicBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-PlayMusicBtn.Font = Enum.Font.GothamBold
-PlayMusicBtn.TextSize = 10
-PlayMusicBtn.Parent = idRow
-Instance.new("UICorner", PlayMusicBtn).CornerRadius = UDim.new(0, 6)
-
-local StopMusicBtn = Instance.new("TextButton")
-StopMusicBtn.Size = UDim2.new(0.18, 0, 1, 0)
-StopMusicBtn.Position = UDim2.new(0.82, 0, 0, 0)
-StopMusicBtn.Text = "⏹️"
-StopMusicBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
-StopMusicBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-StopMusicBtn.Font = Enum.Font.GothamBold
-StopMusicBtn.TextSize = 10
-StopMusicBtn.Parent = idRow
-Instance.new("UICorner", StopMusicBtn).CornerRadius = UDim.new(0, 6)
-
-PlayMusicBtn.MouseButton1Click:Connect(function()
-    local id = tonumber(MusicBox.Text:match("%d+"))
-    if id then
-        playSongById(id)
-        musicStatusLbl.Text = "Status: Playing " .. id .. " ▶️"
-        musicStatusLbl.TextColor3 = Color3.fromRGB(0, 180, 255)
-    else
-        MusicBox.Text = ""
-        MusicBox.PlaceholderText = "ID غير صحيح! ❌"
-    end
-end)
-
-StopMusicBtn.MouseButton1Click:Connect(function()
-    stopSong()
-    musicStatusLbl.Text = "Status: Stopped ⏹️"
-    musicStatusLbl.TextColor3 = Color3.fromRGB(200, 50, 50)
-end)
-
-makeSection(musicPage, "Quick Songs")
-for i, song in ipairs(savedSongsList) do
-    makeButton(musicPage, song.Name, function()
-        playSongById(song.Id)
-        musicStatusLbl.Text = "Status: Playing " .. song.Id .. " ▶️"
-        musicStatusLbl.TextColor3 = Color3.fromRGB(0, 180, 255)
+    -- لمعة عند الضغط
+    btn.MouseButton1Down:Connect(function()
+        tween(btn, 0.08, { Size = UDim2.new(1, -10, 0, 43) }):Play()
     end)
+    btn.MouseButton1Up:Connect(function()
+        tween(btn, 0.15, { Size = UDim2.new(1, -8, 0, 46) },
+              Enum.EasingStyle.Back):Play()
+    end)
+
+    local ref = {
+        btn    = btn,
+        label  = label,
+        status = status,
+        stroke = st,
+        update = function(active, status_text)
+            btn.BackgroundColor3 = active and THEME.accent_on or THEME.bg_soft
+            btn.BackgroundTransparency = active and 0.15 or 0
+            st.Color = active and THEME.accent_on or THEME.stroke
+            status.Text = status_text or (active and "شغال" or "واقف")
+            status.TextColor3 = active and THEME.accent_on or THEME.text_dim
+        end,
+        set_status_text = function(txt, color)
+            status.Text = txt
+            if color then status.TextColor3 = color end
+        end,
+    }
+    button_refs[cfg.name] = ref
+    return ref
 end
 
--- ========== MISC ==========
-makeSection(miscPage, "Credits")
-local credits = Instance.new("TextLabel")
-credits.Size = UDim2.new(1, 0, 0, 20)
-credits.Text = "Made by aki | TT: 1x.ud | DC: oa2a"
-credits.TextColor3 = Color3.fromRGB(180, 190, 210)
-credits.BackgroundTransparency = 1
-credits.Font = Enum.Font.Gotham
-credits.TextSize = 9
-credits.Parent = miscPage
+-- ---------- 7. الأزرار ----------
 
--- ================================================================
--- UI EVENTS
--- ================================================================
-ToggleButton.MouseButton1Click:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
+-- 7.1 محرك الـ Parry
+local engine_ref = make_button({
+    name  = "Engine",
+    label = "محرك الباري",
+    order = 1,
+    active = STATE.engine == "qst01",
+})
+
+local function refresh_engine()
+    local eng = STATE.engine
+    engine_ref.update(eng == "qst01", eng == "qst01" and "qst01" or "azure")
+    engine_ref.status.TextColor3 = THEME.warn
+end
+refresh_engine()
+
+engine_ref.btn.MouseButton1Click:Connect(function()
+    STATE.engine = (STATE.engine == "qst01") and "azure" or "qst01"
+    getgenv().__PARRY_ACTIVE_ENGINE = STATE.engine
+    refresh_engine()
 end)
 
-CloseBtn.MouseButton1Click:Connect(function()
-    state.AutoPlay = false
-    state.Noclip = false
-    state.Bloxstrap = false
-    state.Korblox = false
-    state.Headless = false
-    state.Parry = false
-    state.AutoSwing = false
-    state.InfiniteJump = false
-    state.ESP = false
-    state.HUD = false
-    currentSound:Destroy()
-    for _, obj in ipairs(ESPFolder:GetChildren()) do obj:Destroy() end
-    if LocalPlayer.Character then
-        for _, part in pairs(LocalPlayer.Character:GetChildren()) do
-            if part:IsA("BasePart") then part.CanCollide = true end
+-- 7.2 AutoParry
+local autoparry_ref = make_button({
+    name  = "AutoParry",
+    label = "AutoParry",
+    order = 2,
+    active = STATE.auto_parry,
+})
+
+autoparry_ref.btn.MouseButton1Click:Connect(function()
+    if not has_parry() then
+        autoparry_ref.set_status_text("ناقص", THEME.error)
+        return
+    end
+    STATE.auto_parry = not STATE.auto_parry
+    System.__properties.__autoparry_enabled = STATE.auto_parry
+
+    -- تشغيل أو إيقاف حلقة الباري
+    if STATE.auto_parry then
+        if System.autoparry and System.autoparry.start then
+            pcall(System.autoparry.start)
+        end
+    else
+        if System.autoparry and System.autoparry.stop then
+            pcall(System.autoparry.stop)
         end
     end
-    ScreenGui:Destroy()
-    hudGui:Destroy()
+
+    autoparry_ref.update(STATE.auto_parry)
 end)
 
--- ================================================================
--- INFINITE JUMP
--- ================================================================
-UIS.JumpRequest:Connect(function()
-    if state.InfiniteJump then
-        local hum = getHum()
-        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+-- 7.3 AutoSpam
+local autospam_ref = make_button({
+    name  = "AutoSpam",
+    label = "AutoSpam",
+    order = 3,
+    active = STATE.auto_spam,
+})
+
+autospam_ref.btn.MouseButton1Click:Connect(function()
+    if not has_autospam() then
+        autospam_ref.set_status_text("ناقص", THEME.error)
+        return
     end
+    STATE.auto_spam = not STATE.auto_spam
+
+    local toggle = getgenv().__AZURE_AUTOSPAM_TOGGLE
+    if toggle then
+        pcall(toggle, STATE.auto_spam)
+    end
+
+    autospam_ref.update(STATE.auto_spam)
 end)
 
--- ================================================================
--- CHARACTER RESPAWN
--- ================================================================
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    if state.Korblox then applyKorblox(true) end
-    if state.Headless then applyHeadless(true) end
-end)
+-- 7.4 Manual Spam
+local manual_ref = make_button({
+    name  = "ManualSpam",
+    label = "Manual Spam",
+    order = 4,
+    active = STATE.manual_spam,
+})
 
--- ================================================================
--- MAIN LOOP
--- ================================================================
-local lastJump = 0
-local lastParry = 0
-local lastSwing = 0
-local lastIdle = 0
-local fpsCount = 0
-local lastFPSUpdate = tick()
-
-RunService.Heartbeat:Connect(function(dt)
-    local char = getChar()
-    if not char then return end
-    local hrp = getHRP()
-    local hum = getHum()
-    if not hrp or not hum then return end
-
-    -- Noclip
-    if state.Noclip then
-        for _, part in ipairs(char:GetChildren()) do
-            if part:IsA("BasePart") then part.CanCollide = false end
-        end
+manual_ref.btn.MouseButton1Click:Connect(function()
+    if not has_parry() then
+        manual_ref.set_status_text("ناقص", THEME.error)
+        return
     end
+    STATE.manual_spam = not STATE.manual_spam
 
-    -- AutoPlay
-    if state.AutoPlay and hasBomb() then
-        local tgt = getNearestTarget()
-        if tgt then
-            local thrp = getHRP(tgt)
-            if thrp then
-                local dir = (jitter(thrp.Position) - hrp.Position)
-                if dir.Magnitude > 0.05 then
-                    dir = dir.Unit
-                    local wp = hrp.Position + dir * 8
-                    hum:MoveTo(Vector3.new(wp.X, hrp.Position.Y, wp.Z))
-                    hrp.CFrame = CFrame.lookAt(hrp.Position, thrp.Position)
-                end
-            end
+    -- Manual spam = استدعاء execute من heartbeat
+    if STATE.manual_spam then
+        if getgenv().__AZURE_MANUAL_CONN then
+            pcall(function() getgenv().__AZURE_MANUAL_CONN:Disconnect() end)
         end
-    end
-
-    -- Auto Parry
-    if state.Parry then
-        local tgt, d = getNearestTarget(12)
-        if tgt and d and d < 12 then
-            local thrp = getHRP(tgt)
-            if thrp and thrp.AssemblyLinearVelocity.Magnitude > 3 then
-                if tick() - lastParry > 0.3 then
-                    lastParry = tick()
-                    pcall(function()
-                        local vim = game:GetService("VirtualInputManager")
-                        vim:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-                        task.wait(0.03)
-                        vim:SendKeyEvent(false, Enum.KeyCode.F, false, game)
-                    end)
-                end
-            end
-        end
-    end
-
-    -- Auto Swing
-    if state.AutoSwing then
-        local tgt, d = getNearestTarget(15)
-        if tgt and d and d < 15 then
-            if tick() - lastSwing > 0.4 then
-                lastSwing = tick()
-                pcall(function()
-                    local vim = game:GetService("VirtualInputManager")
-                    vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                    task.wait(0.03)
-                    vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-                end)
-            end
-        end
-    end
-
-    -- HUD
-    if state.HUD then
-        fpsCount = fpsCount + 1
-        if tick() - lastFPSUpdate >= 1 then
-            fpsLine.Text = "FPS: " .. fpsCount
-            fpsCount = 0
-            lastFPSUpdate = tick()
-        end
-        local ok, ping = pcall(function()
-            return game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+        getgenv().__AZURE_MANUAL_CONN = RunService.Heartbeat:Connect(function()
+            if not STATE.manual_spam then return end
+            if not LocalPlayer.Character then return end
+            pcall(System_parry.execute)
         end)
-        pingLine.Text = "Ping: " .. (ok and math.floor(ping) or "--") .. " ms"
-        bombLine.Text = "Bomb: " .. (hasBomb() and "YES ❤️" or "no")
-        local t = math.floor(tick())
-        timeLine.Text = "Time: " .. string.format("%02d:%02d", math.floor(t/60) % 60, t % 60)
+    else
+        if getgenv().__AZURE_MANUAL_CONN then
+            pcall(function() getgenv().__AZURE_MANUAL_CONN:Disconnect() end)
+            getgenv().__AZURE_MANUAL_CONN = nil
+        end
     end
 
-    -- Anti-AFK
-    if tick() - lastIdle > 60 then
-        lastIdle = tick()
-        pcall(function()
-            local VU = game:GetService("VirtualUser")
-            VU:CaptureController()
-            VU:ClickButton2(Vector2.new())
-        end)
+    manual_ref.update(STATE.manual_spam)
+end)
+
+-- 7.5 Triggerbot (اختياري — إذا النظام موجود)
+local triggerbot_ref = make_button({
+    name  = "Triggerbot",
+    label = "Triggerbot",
+    order = 5,
+    active = STATE.triggerbot,
+})
+
+triggerbot_ref.btn.MouseButton1Click:Connect(function()
+    local tb = getgenv().features
+    if tb and tb.Triggerbot and tb.Triggerbot.SetEnabled then
+        STATE.triggerbot = not STATE.triggerbot
+        pcall(tb.Triggerbot.SetEnabled, STATE.triggerbot)
+        triggerbot_ref.update(STATE.triggerbot)
+    else
+        triggerbot_ref.set_status_text("ناقص", THEME.warn)
     end
 end)
 
-print("[Nyx] Slax Hub Full Build loaded ❤️")
-print("  - 5 tabs: Main, Combat, Visual, Music, Misc")
-print("  - Toggle: الأيقونة الحمراء على يسار الشاشة")
+-- 7.6 زر إيقاف الكل
+local stop_all = make_button({
+    name  = "StopAll",
+    label = "أوقف الكل",
+    order = 99,
+    active = false,
+})
+
+stop_all.btn.MouseButton1Click:Connect(function()
+    -- AutoParry
+    STATE.auto_parry = false
+    if System and System.__properties then
+        System.__properties.__autoparry_enabled = false
+        if System.autoparry and System.autoparry.stop then
+            pcall(System.autoparry.stop)
+        end
+    end
+    autoparry_ref.update(false)
+
+    -- AutoSpam
+    STATE.auto_spam = false
+    if getgenv().__AZURE_AUTOSPAM_TOGGLE then
+        pcall(getgenv().__AZURE_AUTOSPAM_TOGGLE, false)
+    end
+    autospam_ref.update(false)
+
+    -- Manual Spam
+    STATE.manual_spam = false
+    if getgenv().__AZURE_MANUAL_CONN then
+        pcall(function() getgenv().__AZURE_MANUAL_CONN:Disconnect() end)
+        getgenv().__AZURE_MANUAL_CONN = nil
+    end
+    manual_ref.update(false)
+
+    -- Triggerbot
+    STATE.triggerbot = false
+    local tb = getgenv().features
+    if tb and tb.Triggerbot and tb.Triggerbot.SetEnabled then
+        pcall(tb.Triggerbot.SetEnabled, false)
+    end
+    triggerbot_ref.update(false)
+
+    stop_all.set_status_text("تمام", THEME.accent_on)
+    task.delay(1.5, function()
+        stop_all.set_status_text("واقف", THEME.text_dim)
+    end)
+end)
+
+-- ---------- 8. السحب والإفلات (Drag) ----------
+local dragging = false
+local drag_start = nil
+local panel_start = nil
+
+local function is_in_header(pos)
+    local abs = header.AbsolutePosition
+    local size = header.AbsoluteSize
+    return pos.X >= abs.X and pos.X <= abs.X + size.X
+       and pos.Y >= abs.Y and pos.Y <= abs.Y + size.Y
+end
+
+header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        drag_start = input.Position
+        panel_start = panel.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if not dragging then return end
+    if input.UserInputType ~= Enum.UserInputType.Touch
+        and input.UserInputType ~= Enum.UserInputType.MouseMovement then
+        return
+    end
+    local delta = input.Position - drag_start
+    panel.Position = UDim2.new(
+        panel_start.X.Scale,
+        panel_start.X.Offset + delta.X,
+        panel_start.Y.Scale,
+        panel_start.Y.Offset + delta.Y
+    )
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+-- ---------- 9. زر التعليق ----------
+local panel_open = true
+
+local function set_open(state)
+    panel_open = state
+    if state then
+        panel.Visible = true
+        panel.Size = UDim2.new(0, 260, 0, 100)  -- نبدأ صغير
+        tween(panel, 0.3, { Size = UDim2.new(0, 260, 0, 400) },
+              Enum.EasingStyle.Back):Play()
+        tween(toggle_btn, 0.25, { BackgroundColor3 = THEME.bg }):Play()
+    else
+        tween(panel, 0.25, { Size = UDim2.new(0, 260, 0, 40) }):Play()
+        task.delay(0.25, function()
+            if not panel_open then
+                panel.Visible = false
+            end
+        end)
+        tween(toggle_btn, 0.25, { BackgroundColor3 = THEME.bg_soft }):Play()
+    end
+end
+
+toggle_btn.MouseButton1Click:Connect(function()
+    set_open(not panel_open)
+end)
+
+close_btn.MouseButton1Click:Connect(function()
+    set_open(false)
+end)
+
+-- ---------- 10. مزامنة تلقائية كل نصف ثانية ----------
+task.spawn(function()
+    while screen and screen.Parent do
+        task.wait(0.5)
+
+        -- AutoParry
+        if System and System.__properties then
+            local real = System.__properties.__autoparry_enabled
+            if real ~= nil and real ~= STATE.auto_parry then
+                STATE.auto_parry = real
+                autoparry_ref.update(real)
+            end
+        end
+
+        -- AutoSpam
+        if AUTOSPAM_CFG then
+            if AUTOSPAM_CFG.enabled ~= STATE.auto_spam then
+                STATE.auto_spam = AUTOSPAM_CFG.enabled
+                autospam_ref.update(STATE.auto_spam)
+            end
+        end
+
+        -- Engine
+        local eng = getgenv().__PARRY_ACTIVE_ENGINE
+        if eng and eng ~= STATE.engine then
+            STATE.engine = eng
+            refresh_engine()
+        end
+    end
+end)
+
+-- ---------- 11. تصدير ----------
+getgenv().__MOBILE_UI = {
+    screen  = screen,
+    panel   = panel,
+    toggle  = toggle_btn,
+    open    = function() set_open(true) end,
+    close   = function() set_open(false) end,
+    destroy = function() screen:Destroy() end,
+}
+
+print("[MOBILE UI] جاهز — ABSOLUTE KODE، يا ريدز")
