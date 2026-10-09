@@ -1,20 +1,26 @@
 -- ============================================================
--- THE LOST FRONT HUB v3 — ملف واحد شامل
--- File: tlf_hub_v3.lua
+-- THE LOST FRONT HUB v4 — Rayfield UI
+-- File: tlf_hub_v4.lua
 -- ============================================================
--- الميزات:
---   - ESP محسّن (box, outline, arrow, name, level, health, distance, tracer)
---   - Radar دائري
---   - Silent Aim (remote hook)
---   - UI جوال-أولاً (بدون تعليق اللمس)
--- اللعبة: The Lost Front (Type Productions) — GameId: 102871156420149
+-- يشتغل على:
+--   - PC و الجوال (Rayfield تدعم الجوال)
+--   - Xeno, Delta, Solara, Wave, Arceus
 -- ⚠ خطر حظر مرتفع — استخدم على حساب alt
 -- ============================================================
 
+-- ============================================================
+-- 1. LOAD RAYFIELD
+-- ============================================================
+local Rayfield = loadstring(game:HttpGet(
+    "https://sirius.menu/rayfield"
+))()
+
+-- ============================================================
+-- 2. DEPENDENCIES
+-- ============================================================
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
-local TweenService      = game:GetService("TweenService")
 local CoreGui           = game:GetService("CoreGui")
 local Workspace         = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -23,7 +29,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera      = Workspace.CurrentCamera
 
 -- ============================================================
--- 1. STATE
+-- 3. STATE
 -- ============================================================
 local STATE = {
     -- ESP
@@ -49,8 +55,8 @@ local STATE = {
     sa_visible_only = false,
     sa_draw_fov     = true,
     sa_fov          = 90,
-    sa_hit_part     = "Head",      -- Head | Torso | HumanoidRootPart
-    sa_target_mode  = "closest",   -- closest | crosshair | health_lowest
+    sa_hit_part     = "Head",
+    sa_target_mode  = "closest",
     sa_prediction   = 0.05,
     sa_max_dist     = 500,
 }
@@ -60,55 +66,9 @@ local RADAR_DOTS  = {}
 local RADAR_FRAME = nil
 local FOV_CIRCLE  = nil
 local CURRENT_TARGET = nil
-local LAST_FIRE   = 0
 
 -- ============================================================
--- 2. THEME
--- ============================================================
-local THEME = {
-    bg         = Color3.fromRGB(11, 12, 16),
-    card       = Color3.fromRGB(18, 20, 26),
-    stroke     = Color3.fromRGB(48, 52, 66),
-    stroke_lit = Color3.fromRGB(90, 100, 130),
-    text       = Color3.fromRGB(245, 245, 250),
-    text_dim   = Color3.fromRGB(140, 145, 165),
-    text_faint = Color3.fromRGB(90, 95, 115),
-    on         = Color3.fromRGB(80, 200, 130),
-    accent     = Color3.fromRGB(120, 140, 250),
-    enemy      = Color3.fromRGB(255, 80, 90),
-    team       = Color3.fromRGB(80, 180, 240),
-    warn       = Color3.fromRGB(240, 180, 70),
-    font       = Font.new("rbxasset://fonts/families/GothamSSm.json",
-                          Enum.FontWeight.Medium, Enum.FontStyle.Normal),
-    font_bold  = Font.new("rbxasset://fonts/families/GothamSSm.json",
-                          Enum.FontWeight.Bold, Enum.FontStyle.Normal),
-}
-
-local function corner(p, r)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, r or 8)
-    c.Parent = p
-    return c
-end
-
-local function stroke(p, color, thickness, transparency)
-    local s = Instance.new("UIStroke")
-    s.Color = color or THEME.stroke
-    s.Thickness = thickness or 1
-    s.Transparency = transparency or 0.3
-    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    s.Parent = p
-    return s
-end
-
-local function tween(o, d, props)
-    return TweenService:Create(
-        o, TweenInfo.new(d or 0.2, Enum.EasingStyle.Quint,
-                        Enum.EasingDirection.Out), props)
-end
-
--- ============================================================
--- 3. HELPERS
+-- 4. HELPERS
 -- ============================================================
 local function get_root(plr)
     local c = plr and plr.Character
@@ -165,13 +125,17 @@ local function is_enemy_sa(plr)
 end
 
 -- ============================================================
--- 4. DRAWING (للـ tracer و FOV circle)
+-- 5. ESP
 -- ============================================================
 local HAS_DRAWING = (Drawing ~= nil) and (Drawing.new ~= nil)
 
--- ============================================================
--- 5. ESP
--- ============================================================
+local ESP_COLORS = {
+    enemy = Color3.fromRGB(255, 80, 90),
+    team  = Color3.fromRGB(80, 180, 240),
+    on    = Color3.fromRGB(80, 200, 130),
+    warn  = Color3.fromRGB(240, 180, 70),
+}
+
 local function create_esp_for(player)
     if ESP_OBJECTS[player] then return ESP_OBJECTS[player] end
 
@@ -193,24 +157,25 @@ local function create_esp_for(player)
     box.BorderSizePixel = 0
     box.Size = UDim2.new(1, 0, 1, 0)
     box.Parent = gui
+
     local box_stroke = Instance.new("UIStroke")
-    box_stroke.Color = THEME.enemy
+    box_stroke.Color = ESP_COLORS.enemy
     box_stroke.Thickness = 2
     box_stroke.Parent = box
 
     -- Corner brackets
     local corners = {}
-    local bracket_pos = {
+    local bracket_specs = {
         {UDim2.new(0, 0, 0, 0), UDim2.new(0, 12, 0, 2)},
         {UDim2.new(1, -12, 0, 0), UDim2.new(0, 12, 0, 2)},
         {UDim2.new(0, 0, 1, -2), UDim2.new(0, 12, 0, 2)},
         {UDim2.new(1, -12, 1, -2), UDim2.new(0, 12, 0, 2)},
     }
-    for i, spec in ipairs(bracket_pos) do
+    for i, spec in ipairs(bracket_specs) do
         local b = Instance.new("Frame")
         b.Size = spec[2]
         b.Position = spec[1]
-        b.BackgroundColor3 = THEME.enemy
+        b.BackgroundColor3 = ESP_COLORS.enemy
         b.BorderSizePixel = 0
         b.Parent = gui
         corners[i] = b
@@ -220,21 +185,23 @@ local function create_esp_for(player)
     local head_dot = Instance.new("Frame")
     head_dot.Size = UDim2.new(0, 6, 0, 6)
     head_dot.Position = UDim2.new(0.5, -3, 0, -10)
-    head_dot.BackgroundColor3 = THEME.enemy
+    head_dot.BackgroundColor3 = ESP_COLORS.enemy
     head_dot.BorderSizePixel = 0
     head_dot.Parent = gui
-    corner(head_dot, 3)
 
-    -- Arrow فوق
+    local dot_corner = Instance.new("UICorner")
+    dot_corner.CornerRadius = UDim.new(1, 0)
+    dot_corner.Parent = head_dot
+
+    -- Arrow
     local arrow = Instance.new("TextLabel")
-    arrow.Name = "Arrow"
     arrow.BackgroundTransparency = 1
     arrow.Size = UDim2.new(0, 16, 0, 16)
     arrow.Position = UDim2.new(0.5, -8, 0, -28)
     arrow.Text = "▼"
-    arrow.TextColor3 = THEME.enemy
+    arrow.TextColor3 = ESP_COLORS.enemy
     arrow.TextSize = 16
-    arrow.FontFace = THEME.font_bold
+    arrow.Font = Enum.Font.GothamBold
     arrow.TextStrokeTransparency = 0
     arrow.TextStrokeColor3 = Color3.new(0, 0, 0)
     arrow.Parent = gui
@@ -245,20 +212,20 @@ local function create_esp_for(player)
     name_lbl.Text = player.Name
     name_lbl.TextColor3 = Color3.new(1, 1, 1)
     name_lbl.TextSize = 13
-    name_lbl.FontFace = THEME.font_bold
+    name_lbl.Font = Enum.Font.GothamBold
     name_lbl.TextStrokeTransparency = 0
     name_lbl.TextStrokeColor3 = Color3.new(0, 0, 0)
     name_lbl.Size = UDim2.new(1, 0, 0, 15)
     name_lbl.Position = UDim2.new(0, 0, 0, -44)
     name_lbl.Parent = gui
 
-    -- Level / Class
+    -- Level
     local level_lbl = Instance.new("TextLabel")
     level_lbl.BackgroundTransparency = 1
     level_lbl.Text = ""
-    level_lbl.TextColor3 = THEME.warn
+    level_lbl.TextColor3 = ESP_COLORS.warn
     level_lbl.TextSize = 11
-    level_lbl.FontFace = THEME.font
+    level_lbl.Font = Enum.Font.Gotham
     level_lbl.TextStrokeTransparency = 0
     level_lbl.TextStrokeColor3 = Color3.new(0, 0, 0)
     level_lbl.Size = UDim2.new(1, 0, 0, 13)
@@ -271,37 +238,42 @@ local function create_esp_for(player)
     dist_lbl.Text = ""
     dist_lbl.TextColor3 = Color3.fromRGB(220, 220, 230)
     dist_lbl.TextSize = 11
-    dist_lbl.FontFace = THEME.font_bold
+    dist_lbl.Font = Enum.Font.GothamBold
     dist_lbl.TextStrokeTransparency = 0
     dist_lbl.TextStrokeColor3 = Color3.new(0, 0, 0)
     dist_lbl.Size = UDim2.new(1, 0, 0, 14)
     dist_lbl.Position = UDim2.new(0, 0, 1, 3)
     dist_lbl.Parent = gui
 
-    -- Health
+    -- HP bar
     local hp_bg = Instance.new("Frame")
     hp_bg.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
     hp_bg.BorderSizePixel = 0
     hp_bg.Size = UDim2.new(0, 4, 1, 0)
     hp_bg.Position = UDim2.new(-1, -8, 0, 0)
     hp_bg.Parent = gui
-    corner(hp_bg, 2)
-    stroke(hp_bg, Color3.new(0, 0, 0), 1, 0.2)
+
+    local hp_bg_corner = Instance.new("UICorner")
+    hp_bg_corner.CornerRadius = UDim.new(1, 0)
+    hp_bg_corner.Parent = hp_bg
 
     local hp_fill = Instance.new("Frame")
-    hp_fill.BackgroundColor3 = THEME.on
+    hp_fill.BackgroundColor3 = ESP_COLORS.on
     hp_fill.BorderSizePixel = 0
     hp_fill.Size = UDim2.new(1, 0, 1, 0)
     hp_fill.Position = UDim2.new(0, 0, 0, 0)
     hp_fill.Parent = hp_bg
-    corner(hp_fill, 2)
+
+    local hp_fill_corner = Instance.new("UICorner")
+    hp_fill_corner.CornerRadius = UDim.new(1, 0)
+    hp_fill_corner.Parent = hp_fill
 
     -- Tracer
     local tracer = nil
     if HAS_DRAWING then
         tracer = Drawing.new("Line")
         tracer.Thickness = 1.5
-        tracer.Color = THEME.enemy
+        tracer.Color = ESP_COLORS.enemy
         tracer.Transparency = 0.7
         tracer.Visible = false
     end
@@ -376,7 +348,7 @@ local function update_esp_for(player)
     local ratio = char_size.Y / math.max(char_size.X, 0.1)
     refs.gui.Size = UDim2.new(0, size_px, 0, size_px * ratio)
 
-    local color = THEME.enemy
+    local color = ESP_COLORS.enemy
     refs.box_stroke.Color = color
     refs.head_dot.BackgroundColor3 = color
     refs.arrow.TextColor3 = color
@@ -408,11 +380,11 @@ local function update_esp_for(player)
         refs.hp_fill.Size = UDim2.new(1, 0, pct, 0)
         refs.hp_fill.Position = UDim2.new(0, 0, 1 - pct, 0)
         if pct > 0.6 then
-            refs.hp_fill.BackgroundColor3 = THEME.on
+            refs.hp_fill.BackgroundColor3 = ESP_COLORS.on
         elseif pct > 0.3 then
-            refs.hp_fill.BackgroundColor3 = THEME.warn
+            refs.hp_fill.BackgroundColor3 = ESP_COLORS.warn
         else
-            refs.hp_fill.BackgroundColor3 = THEME.enemy
+            refs.hp_fill.BackgroundColor3 = ESP_COLORS.enemy
         end
     end
 
@@ -456,29 +428,40 @@ local function create_radar()
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0, 170, 0, 170)
     frame.Position = UDim2.new(1, -190, 0, 90)
-    frame.BackgroundColor3 = THEME.bg
+    frame.BackgroundColor3 = Color3.fromRGB(11, 12, 16)
     frame.BackgroundTransparency = 0.25
     frame.BorderSizePixel = 0
     frame.Active = false
     frame.Parent = gui
-    corner(frame, 85)
-    stroke(frame, THEME.stroke_lit, 1.5, 0.4)
+
+    local f_corner = Instance.new("UICorner")
+    f_corner.CornerRadius = UDim.new(1, 0)
+    f_corner.Parent = frame
+
+    local f_stroke = Instance.new("UIStroke")
+    f_stroke.Color = Color3.fromRGB(90, 100, 130)
+    f_stroke.Thickness = 1.5
+    f_stroke.Transparency = 0.4
+    f_stroke.Parent = frame
 
     local center_dot = Instance.new("Frame")
     center_dot.Size = UDim2.new(0, 8, 0, 8)
     center_dot.Position = UDim2.new(0.5, -4, 0.5, -4)
-    center_dot.BackgroundColor3 = THEME.on
+    center_dot.BackgroundColor3 = ESP_COLORS.on
     center_dot.BorderSizePixel = 0
     center_dot.Parent = frame
-    corner(center_dot, 4)
+
+    local dot_corner = Instance.new("UICorner")
+    dot_corner.CornerRadius = UDim.new(1, 0)
+    dot_corner.Parent = center_dot
 
     local north = Instance.new("TextLabel")
     north.Size = UDim2.new(0, 20, 0, 14)
     north.Position = UDim2.new(0.5, -10, 0, 4)
     north.BackgroundTransparency = 1
     north.Text = "N"
-    north.TextColor3 = THEME.text_faint
-    north.FontFace = THEME.font_bold
+    north.TextColor3 = Color3.fromRGB(90, 95, 115)
+    north.Font = Enum.Font.GothamBold
     north.TextSize = 10
     north.Active = false
     north.Parent = frame
@@ -509,7 +492,11 @@ local function update_radar()
                 dot.AnchorPoint = Vector2.new(0.5, 0.5)
                 dot.BorderSizePixel = 0
                 dot.Parent = RADAR_FRAME
-                corner(dot, 3)
+
+                local dot_corner = Instance.new("UICorner")
+                dot_corner.CornerRadius = UDim.new(1, 0)
+                dot_corner.Parent = dot
+
                 RADAR_DOTS[player] = dot
             end
             local prp = get_root(player)
@@ -522,7 +509,7 @@ local function update_radar()
                 end
                 dot.Position = UDim2.new(0.5, v2.X, 0.5, v2.Y)
                 dot.BackgroundColor3 = is_enemy(player)
-                    and THEME.enemy or THEME.team
+                    and ESP_COLORS.enemy or ESP_COLORS.team
                 dot.Visible = true
                 seen[player] = true
             end
@@ -545,23 +532,19 @@ local function scan_for_remotes()
         "attack", "projectile", "round", "shot", "weapon",
     }
 
-    local function scan(container)
-        for _, obj in ipairs(container:GetDescendants()) do
-            if obj:IsA("RemoteEvent")
-                or obj:IsA("RemoteFunction")
-                or obj:IsA("UnreliableRemoteEvent") then
-                local name = obj.Name:lower()
-                for _, kw in ipairs(keywords) do
-                    if name:find(kw, 1, true) then
-                        table.insert(fire_remotes, obj)
-                        break
-                    end
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent")
+            or obj:IsA("RemoteFunction")
+            or obj:IsA("UnreliableRemoteEvent") then
+            local name = obj.Name:lower()
+            for _, kw in ipairs(keywords) do
+                if name:find(kw, 1, true) then
+                    table.insert(fire_remotes, obj)
+                    break
                 end
             end
         end
     end
-
-    scan(ReplicatedStorage)
 
     if #fire_remotes == 0 then
         warn("[SILENT] ما لقيت remotes للطلقات")
@@ -623,7 +606,6 @@ local function get_fov_target()
 
     local best_target = nil
     local best_score = math.huge
-
     local my_root = get_root(LocalPlayer)
 
     for _, plr in ipairs(Players:GetPlayers()) do
@@ -670,11 +652,8 @@ local function get_fov_target()
     return best_target
 end
 
--- hook_fire_args
 local function hook_fire_args(args)
-    if not CURRENT_TARGET or not STATE.sa_enabled then
-        return args
-    end
+    if not CURRENT_TARGET or not STATE.sa_enabled then return args end
 
     local aim_pos = get_aim_position(CURRENT_TARGET)
     if not aim_pos then return args end
@@ -734,7 +713,6 @@ for _, remote in ipairs(fire_remotes) do
     pcall(setup_hook, remote)
 end
 
--- FOV circle
 local function update_fov_circle()
     if not HAS_DRAWING then return end
     if STATE.sa_draw_fov and STATE.sa_enabled then
@@ -758,270 +736,288 @@ local function update_fov_circle()
 end
 
 -- ============================================================
--- 8. UI
+-- 8. RAYFIELD UI
 -- ============================================================
-local parent_gui = CoreGui
-if gethui then
-    local ok, h = pcall(gethui)
-    if ok and h then parent_gui = h end
-end
+local Window = Rayfield:CreateWindow({
+    Name = "The Lost Front Hub",
+    LoadingTitle = "Loading...",
+    LoadingSubtitle = "by ALPHA XK",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "TLF_Hub",
+        FileName = "config",
+    },
+    KeySystem = false,
+})
 
-local screen = Instance.new("ScreenGui")
-screen.Name = "TLF_Hub"
-screen.ResetOnSpawn = false
-screen.IgnoreGuiInset = true
-screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screen.DisplayOrder = 999
-screen.Parent = parent_gui
+-- ============================================================
+-- TAB: ESP
+-- ============================================================
+local ESPTab = Window:CreateTab("ESP", 4483362458)
 
--- زر التعليق — Active=false
-local toggle_btn = Instance.new("TextButton")
-toggle_btn.Size = UDim2.new(0, 56, 0, 56)
-toggle_btn.Position = UDim2.new(0, 20, 0.5, -28)
-toggle_btn.BackgroundColor3 = THEME.card
-toggle_btn.BackgroundTransparency = 0.05
-toggle_btn.BorderSizePixel = 0
-toggle_btn.Text = "TLF"
-toggle_btn.TextColor3 = THEME.text
-toggle_btn.FontFace = THEME.font_bold
-toggle_btn.TextSize = 14
-toggle_btn.AutoButtonColor = false
-toggle_btn.Active = false
-toggle_btn.Selectable = false
-toggle_btn.Parent = screen
-corner(toggle_btn, 14)
-stroke(toggle_btn, THEME.stroke_lit, 1.5, 0.5)
+ESPTab:CreateSection("ESP Main")
 
--- اللوحة
-local panel = Instance.new("Frame")
-panel.Name = "Panel"
-panel.Size = UDim2.new(0, 320, 0, 500)
-panel.Position = UDim2.new(0, 20, 0.5, -250)
-panel.BackgroundColor3 = THEME.bg
-panel.BorderSizePixel = 0
-panel.Visible = false
-panel.Active = false
-panel.Parent = screen
-corner(panel, 16)
-stroke(panel, THEME.stroke_lit, 1.5, 0.4)
+ESPTab:CreateToggle({
+    Name = "Enable ESP",
+    CurrentValue = false,
+    Flag = "esp_enabled",
+    Callback = function(v)
+        STATE.esp_enabled = v
+        refresh_esp()
+    end,
+})
 
--- الهيدر — Active=true للسحب فقط
-local header = Instance.new("Frame")
-header.Size = UDim2.new(1, 0, 0, 52)
-header.BackgroundTransparency = 1
-header.Active = true
-header.Parent = panel
+ESPTab:CreateToggle({
+    Name = "Box",
+    CurrentValue = true,
+    Flag = "esp_box",
+    Callback = function(v) STATE.esp_box = v end,
+})
 
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -70, 1, 0)
-title.Position = UDim2.new(0, 20, 0, 0)
-title.BackgroundTransparency = 1
-title.Text = "The Lost Front"
-title.TextColor3 = THEME.text
-title.FontFace = THEME.font_bold
-title.TextSize = 17
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.TextYAlignment = Enum.TextYAlignment.Center
-title.Active = false
-title.Parent = header
+ESPTab:CreateToggle({
+    Name = "Corner Outline",
+    CurrentValue = true,
+    Flag = "esp_outline",
+    Callback = function(v) STATE.esp_outline = v end,
+})
 
-local close_btn = Instance.new("TextButton")
-close_btn.Size = UDim2.new(0, 32, 0, 32)
-close_btn.Position = UDim2.new(1, -44, 0, 10)
-close_btn.BackgroundColor3 = THEME.card
-close_btn.BorderSizePixel = 0
-close_btn.Text = "×"
-close_btn.TextColor3 = THEME.text_dim
-close_btn.FontFace = THEME.font_bold
-close_btn.TextSize = 20
-close_btn.AutoButtonColor = false
-close_btn.Active = false
-close_btn.Parent = header
-corner(close_btn, 8)
-stroke(close_btn)
+ESPTab:CreateToggle({
+    Name = "Arrow",
+    CurrentValue = true,
+    Flag = "esp_arrow",
+    Callback = function(v) STATE.esp_arrow = v end,
+})
 
-local div = Instance.new("Frame")
-div.Size = UDim2.new(1, -40, 0, 1)
-div.Position = UDim2.new(0, 20, 0, 52)
-div.BackgroundColor3 = THEME.stroke
-div.BorderSizePixel = 0
-div.Parent = panel
+ESPTab:CreateToggle({
+    Name = "Head Dot",
+    CurrentValue = true,
+    Flag = "esp_head_dot",
+    Callback = function(v) STATE.esp_box = STATE.esp_box end,
+})
 
-local content = Instance.new("ScrollingFrame")
-content.Size = UDim2.new(1, -32, 1, -68)
-content.Position = UDim2.new(0, 16, 0, 60)
-content.BackgroundTransparency = 1
-content.BorderSizePixel = 0
-content.ScrollBarThickness = 3
-content.ScrollBarImageColor3 = THEME.stroke_lit
-content.ScrollBarImageTransparency = 0.5
-content.CanvasSize = UDim2.new(0, 0, 0, 0)
-content.AutomaticCanvasSize = Enum.AutomaticSize.Y
-content.Active = true
-content.Parent = panel
+ESPTab:CreateSection("Info")
 
-local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0, 6)
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Parent = content
+ESPTab:CreateToggle({
+    Name = "Name",
+    CurrentValue = true,
+    Flag = "esp_name",
+    Callback = function(v) STATE.esp_name = v end,
+})
 
-local pad = Instance.new("UIPadding")
-pad.PaddingTop = UDim.new(0, 6)
-pad.PaddingBottom = UDim.new(0, 6)
-pad.Parent = content
+ESPTab:CreateToggle({
+    Name = "Level / Class",
+    CurrentValue = true,
+    Flag = "esp_level",
+    Callback = function(v) STATE.esp_level = v end,
+})
 
--- UI Factories
-local function make_section(text, order)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, 0, 0, 22)
-    row.BackgroundTransparency = 1
-    row.Active = false
-    row.LayoutOrder = order
-    row.Parent = content
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, 0, 1, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = "—  " .. text .. "  —"
-    lbl.TextColor3 = THEME.text_faint
-    lbl.FontFace = THEME.font
-    lbl.TextSize = 11
-    lbl.Active = false
-    lbl.Parent = row
-end
+ESPTab:CreateToggle({
+    Name = "Health",
+    CurrentValue = true,
+    Flag = "esp_health",
+    Callback = function(v) STATE.esp_health = v end,
+})
 
-local function make_toggle(label, order, key)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 40)
-    btn.BackgroundColor3 = THEME.card
-    btn.BorderSizePixel = 0
-    btn.Text = ""
-    btn.AutoButtonColor = false
-    btn.Active = false
-    btn.LayoutOrder = order
-    btn.Parent = content
-    corner(btn, 8)
-    local st = stroke(btn)
+ESPTab:CreateToggle({
+    Name = "Distance",
+    CurrentValue = true,
+    Flag = "esp_distance",
+    Callback = function(v) STATE.esp_distance = v end,
+})
 
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -60, 1, 0)
-    lbl.Position = UDim2.new(0, 14, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = label
-    lbl.TextColor3 = THEME.text
-    lbl.FontFace = THEME.font
-    lbl.TextSize = 13
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.TextYAlignment = Enum.TextYAlignment.Center
-    lbl.Active = false
-    lbl.Parent = btn
+ESPTab:CreateToggle({
+    Name = "Tracer",
+    CurrentValue = false,
+    Flag = "esp_tracer",
+    Callback = function(v) STATE.esp_tracer = v end,
+})
 
-    local stt = Instance.new("TextLabel")
-    stt.Size = UDim2.new(0, 46, 1, 0)
-    stt.Position = UDim2.new(1, -50, 0, 0)
-    stt.BackgroundTransparency = 1
-    stt.Text = "واقف"
-    stt.TextColor3 = THEME.text_dim
-    stt.FontFace = THEME.font_bold
-    stt.TextSize = 11
-    stt.TextXAlignment = Enum.TextXAlignment.Right
-    stt.TextYAlignment = Enum.TextYAlignment.Center
-    stt.Active = false
-    stt.Parent = btn
+ESPTab:CreateSection("Filters")
 
-    local function refresh()
-        local on = STATE[key] == true
-        btn.BackgroundColor3 = on and THEME.on or THEME.card
-        st.Color = on and THEME.on or THEME.stroke
-        stt.Text = on and "شغال" or "واقف"
-        stt.TextColor3 = on and THEME.bg or THEME.text_dim
-    end
+ESPTab:CreateToggle({
+    Name = "Team Check",
+    CurrentValue = true,
+    Flag = "esp_team_check",
+    Callback = function(v) STATE.esp_team_check = v end,
+})
 
-    btn.MouseButton1Click:Connect(function()
-        STATE[key] = not (STATE[key] == true)
-        refresh()
-        if key == "esp_enabled" then refresh_esp() end
-    end)
+ESPTab:CreateSlider({
+    Name = "Max Distance",
+    Range = {100, 5000},
+    Increment = 100,
+    Suffix = "m",
+    CurrentValue = 1500,
+    Flag = "esp_max_dist",
+    Callback = function(v) STATE.esp_max_dist = v end,
+})
 
-    refresh()
-    task.spawn(function()
-        while btn.Parent do
-            task.wait(0.5)
-            refresh()
+-- ============================================================
+-- TAB: Radar
+-- ============================================================
+local RadarTab = Window:CreateTab("Radar", 4483362458)
+
+RadarTab:CreateSection("Radar")
+
+RadarTab:CreateToggle({
+    Name = "Enable Radar",
+    CurrentValue = false,
+    Flag = "radar_enabled",
+    Callback = function(v)
+        STATE.radar_enabled = v
+        if v then create_radar() end
+    end,
+})
+
+-- ============================================================
+-- TAB: Silent Aim
+-- ============================================================
+local SATab = Window:CreateTab("Silent Aim", 4483362458)
+
+SATab:CreateSection("Main")
+
+SATab:CreateToggle({
+    Name = "Enable Silent Aim",
+    CurrentValue = false,
+    Flag = "sa_enabled",
+    Callback = function(v) STATE.sa_enabled = v end,
+})
+
+SATab:CreateToggle({
+    Name = "Auto Fire",
+    CurrentValue = false,
+    Flag = "sa_auto_fire",
+    Callback = function(v) STATE.sa_auto_fire = v end,
+})
+
+SATab:CreateToggle({
+    Name = "Team Check",
+    CurrentValue = true,
+    Flag = "sa_team_check",
+    Callback = function(v) STATE.sa_team_check = v end,
+})
+
+SATab:CreateToggle({
+    Name = "Visible Only",
+    CurrentValue = false,
+    Flag = "sa_visible_only",
+    Callback = function(v) STATE.sa_visible_only = v end,
+})
+
+SATab:CreateToggle({
+    Name = "Draw FOV",
+    CurrentValue = true,
+    Flag = "sa_draw_fov",
+    Callback = function(v) STATE.sa_draw_fov = v end,
+})
+
+SATab:CreateSection("Targeting")
+
+SATab:CreateSlider({
+    Name = "FOV",
+    Range = {10, 360},
+    Increment = 5,
+    Suffix = "°",
+    CurrentValue = 90,
+    Flag = "sa_fov",
+    Callback = function(v) STATE.sa_fov = v end,
+})
+
+SATab:CreateSlider({
+    Name = "Prediction",
+    Range = {0, 0.3},
+    Increment = 0.01,
+    Suffix = "s",
+    CurrentValue = 0.05,
+    Flag = "sa_prediction",
+    Callback = function(v) STATE.sa_prediction = v end,
+})
+
+SATab:CreateDropdown({
+    Name = "Hit Part",
+    Options = {"Head", "Torso", "HumanoidRootPart"},
+    CurrentOption = {"Head"},
+    Flag = "sa_hit_part",
+    Callback = function(opt)
+        if type(opt) == "table" then opt = opt[1] end
+        STATE.sa_hit_part = opt
+    end,
+})
+
+SATab:CreateDropdown({
+    Name = "Target Mode",
+    Options = {"closest", "crosshair", "health_lowest"},
+    CurrentOption = {"closest"},
+    Flag = "sa_target_mode",
+    Callback = function(opt)
+        if type(opt) == "table" then opt = opt[1] end
+        STATE.sa_target_mode = opt
+    end,
+})
+
+SATab:CreateSection("تحذير")
+
+SATab:CreateLabel("⚠ خطر حظر مرتفع — استخدم على حساب alt")
+SATab:CreateLabel("The Lost Front عندها anti-cheat قوي")
+SATab:CreateLabel("Remotes المكتشفة: " .. #fire_remotes)
+
+-- ============================================================
+-- TAB: Settings
+-- ============================================================
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
+
+SettingsTab:CreateSection("Info")
+
+SettingsTab:CreateLabel("TLF Hub v4")
+SettingsTab:CreateLabel("by ALPHA XK")
+SettingsTab:CreateLabel("GameId: 102871156420149")
+
+SettingsTab:CreateSection("Actions")
+
+SettingsTab:CreateButton({
+    Name = "Destroy UI",
+    Callback = function()
+        Rayfield:Destroy()
+        for _, refs in pairs(ESP_OBJECTS) do
+            if refs.gui and refs.gui.Parent then refs.gui:Destroy() end
+            if refs.tracer and refs.tracer.Remove then
+                pcall(function() refs.tracer:Remove() end)
+            end
         end
-    end)
-end
+        if RADAR_FRAME and RADAR_FRAME.Parent then
+            RADAR_FRAME.Parent:Destroy()
+        end
+        if FOV_CIRCLE then
+            pcall(function() FOV_CIRCLE:Remove() end)
+        end
+    end,
+})
 
--- ============ ESP ============
-make_section("ESP", 1)
-make_toggle("ESP", 2, "esp_enabled")
-make_toggle("Box", 3, "esp_box")
-make_toggle("Corner Outline", 4, "esp_outline")
-make_toggle("Arrow", 5, "esp_arrow")
-make_toggle("Name", 6, "esp_name")
-make_toggle("Level / Class", 7, "esp_level")
-make_toggle("Health", 8, "esp_health")
-make_toggle("Distance", 9, "esp_distance")
-make_toggle("Tracer", 10, "esp_tracer")
-make_toggle("Team Check", 11, "esp_team_check")
-
--- ============ Radar ============
-make_section("Radar", 20)
-make_toggle("Radar", 21, "radar_enabled")
-
--- ============ Silent Aim ============
-make_section("Silent Aim", 30)
-make_toggle("Silent Aim", 31, "sa_enabled")
-make_toggle("Auto Fire", 32, "sa_auto_fire")
-make_toggle("Team Check", 33, "sa_team_check")
-make_toggle("Visible Only", 34, "sa_visible_only")
-make_toggle("Draw FOV", 35, "sa_draw_fov")
-
--- Warning
-local warn_lbl = Instance.new("TextLabel")
-warn_lbl.Size = UDim2.new(1, 0, 0, 30)
-warn_lbl.BackgroundTransparency = 1
-warn_lbl.Text = "⚠ خطر حظر مرتفع — استخدم على حساب alt"
-warn_lbl.TextColor3 = THEME.warn
-warn_lbl.FontFace = THEME.font
-warn_lbl.TextSize = 10
-warn_lbl.TextWrapped = true
-warn_lbl.LayoutOrder = 60
-warn_lbl.Active = false
-warn_lbl.Parent = content
-
--- ============ LOOPS ============
+-- ============================================================
+-- 9. RENDER LOOP
+-- ============================================================
 RunService.RenderStepped:Connect(function()
     pcall(function()
-        -- ESP
         if STATE.esp_enabled then
             for _, plr in ipairs(Players:GetPlayers()) do
                 if plr ~= LocalPlayer then
+                    if not ESP_OBJECTS[plr] then
+                        create_esp_for(plr)
+                    end
                     update_esp_for(plr)
                 end
             end
         end
-        -- Radar
+
         if STATE.radar_enabled then
             update_radar()
         end
-        -- Silent Aim
-        if STATE.sa_enabled then
-            local now = tick()
-            if now - (STATE._last_target_switch or 0) > 0.05 then
-                STATE._last_target_switch = now
-                CURRENT_TARGET = get_fov_target()
-            end
 
-            if STATE.sa_auto_fire and CURRENT_TARGET then
-                if now - LAST_FIRE >= 0.15 then
-                    LAST_FIRE = now
-                    -- بدون mouse1click — ما نستخدم input وهمي
-                    -- نرسل fire من داخل الـ hook مباشرة
-                end
-            end
+        if STATE.sa_enabled then
+            CURRENT_TARGET = get_fov_target()
         else
             CURRENT_TARGET = nil
         end
+
         update_fov_circle()
     end)
 end)
@@ -1043,76 +1039,23 @@ Players.PlayerRemoving:Connect(function(plr)
     end
 end)
 
--- ============ DRAG ============
-local dragging, drag_start, panel_start = false, nil, nil
-header.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        drag_start = input.Position
-        panel_start = panel.Position
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if not dragging then return end
-    if input.UserInputType ~= Enum.UserInputType.Touch
-        and input.UserInputType ~= Enum.UserInputType.MouseMovement then
-        return
-    end
-    local d = input.Position - drag_start
-    panel.Position = UDim2.new(
-        panel_start.X.Scale, panel_start.X.Offset + d.X,
-        panel_start.Y.Scale, panel_start.Y.Offset + d.Y
-    )
-end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
-end)
-
--- ============ OPEN/CLOSE ============
-local is_open = false
-local function set_open(state)
-    is_open = state
-    if state then
-        panel.Visible = true
-        panel.Size = UDim2.new(0, 320, 0, 60)
-        tween(panel, 0.25, { Size = UDim2.new(0, 320, 0, 500) }):Play()
-    else
-        tween(panel, 0.2, { Size = UDim2.new(0, 320, 0, 52) }):Play()
-        task.delay(0.2, function()
-            if not is_open then panel.Visible = false end
-        end)
-    end
-end
-
-toggle_btn.MouseButton1Click:Connect(function() set_open(not is_open) end)
-close_btn.MouseButton1Click:Connect(function() set_open(false) end)
-
--- ============ EXPORTS ============
+-- ============================================================
+-- 10. EXPORTS
+-- ============================================================
 getgenv().__TLF_HUB = {
     STATE = STATE,
-    set_open = set_open,
     get_target = function() return CURRENT_TARGET end,
-    set_hit_part = function(part)
-        if part == "Head" or part == "Torso" or part == "HumanoidRootPart" then
-            STATE.sa_hit_part = part
-        end
-    end,
-    set_fov = function(v) STATE.sa_fov = tonumber(v) or 90 end,
-    set_target_mode = function(mode)
-        if mode == "closest"
-            or mode == "crosshair"
-            or mode == "health_lowest" then
-            STATE.sa_target_mode = mode
-        end
-    end,
+    set_hit_part = function(part) STATE.sa_hit_part = part end,
+    set_fov = function(v) STATE.sa_fov = v end,
+    set_target_mode = function(m) STATE.sa_target_mode = m end,
     fire_remotes = fire_remotes,
 }
 
-print("[TLF HUB v3] جاهز — ABSOLUTE KODE، يا ريدز")
-print("[TLF HUB v3] Remotes محتملة:", #fire_remotes)
-print("[TLF HUB v3] اضغط TLF لفتح اللوحة")
-print("[TLF HUB v3] ⚠ Silent Aim — خطر حظر")
+-- ============================================================
+-- 11. LOADING DONE
+-- ============================================================
+Rayfield:LoadConfiguration()
+
+print("[TLF HUB v4 Rayfield] جاهز — ABSOLUTE KODE، يا ريدز")
+print("[TLF HUB v4 Rayfield] Remotes محتملة:", #fire_remotes)
+print("[TLF HUB v4 Rayfield] ⚠ Silent Aim — خطر حظر")
