@@ -1,967 +1,1118 @@
--- ALPHA SYSTEM | Blade Ball — Auto Parry + Auto Spam + UI
--- مستخرج من الملف الأصلي
+--[[
+    OXY UI — Standalone Shell
+    Roblox UI framework, draggable, tabbed, sectioned.
+    No external libraries. No combat logic. Pure interface.
+    
+    Usage:
+        local ui = OxyUI.new("oxy")
+        local combat = ui:Tab("combat", "rbxassetid://10734951847")
+        local parry  = combat:Section("parry", "left")
+        parry:Button("reset", function() print("hi") end)
+        parry:Toggle("enabled", false, function(v) print(v) end)
+        parry:Slider("accuracy", 1, 100, 50, function(v) print(v) end)
+        parry:Dropdown("method", {"camera","dot"}, "camera", function(v) print(v) end)
+        parry:Keybind("triggerbot", Enum.KeyCode.T, function(k) print(k) end)
+    
+    Warnings:
+        * Draggable header uses UserInputService.InputChanged — throttle if >60hz input.
+        * Dropdown popup closes on outside click via a full-screen invisible button; parent must be ScreenGui, not a Frame.
+        * Notification queue caps at 6 visible — older ones drop silently.
+--]]
 
--- ══════════════════════════════════════════
+local OxyUI = {}
+OxyUI.__index = OxyUI
+
+--================================================================
 -- SERVICES
--- ══════════════════════════════════════════
+--================================================================
+local Players         = game:GetService("Players")
+local UserInputService= game:GetService("UserInputService")
+local TweenService    = game:GetService("TweenService")
+local RunService      = game:GetService("RunService")
+local CoreGui         = game:GetService("CoreGui")
+local LocalPlayer     = Players.LocalPlayer
 
-local Players            = cloneref(game:GetService('Players'))
-local RunService         = cloneref(game:GetService('RunService'))
-local UIS                = cloneref(game:GetService('UserInputService'))
-local TweenService       = cloneref(game:GetService('TweenService'))
-local workspace_s        = cloneref(game:GetService('Workspace'))
-local ReplicatedStorage  = cloneref(game:GetService('ReplicatedStorage'))
-local CoreGui            = cloneref(game:GetService('CoreGui'))
-local Stats              = cloneref(game:GetService('Stats'))
-
-local LocalPlayer = Players.LocalPlayer
-local isMobile    = UIS.TouchEnabled and not UIS.MouseEnabled
-
--- ══════════════════════════════════════════
--- PARRY PATCH CORE
--- ══════════════════════════════════════════
-
-local _PARRY_PATCH = {
-    keyTable    = nil,
-    transformFn = nil,
-    parryHash   = nil,
-    parryRemote = nil,
-    ready       = false,
+--================================================================
+-- CONSTANTS
+--================================================================
+local COLORS = {
+    bg          = Color3.fromRGB(12, 12, 12),
+    panel       = Color3.fromRGB(18, 18, 18),
+    section     = Color3.fromRGB(22, 22, 22),
+    element     = Color3.fromRGB(28, 28, 28),
+    element_hov = Color3.fromRGB(36, 36, 36),
+    border      = Color3.fromRGB(45, 45, 45),
+    border_act  = Color3.fromRGB(255, 255, 255),
+    text        = Color3.fromRGB(240, 240, 240),
+    text_dim    = Color3.fromRGB(150, 150, 150),
+    text_mute   = Color3.fromRGB(100, 100, 100),
+    accent      = Color3.fromRGB(255, 255, 255),
+    success     = Color3.fromRGB(80, 220, 120),
+    danger      = Color3.fromRGB(230, 70, 70),
 }
 
-task.spawn(function()
-    local ok, err = pcall(function()
-        local RS          = game:GetService("ReplicatedStorage")
-        local Controllers = RS:WaitForChild("Controllers", 15)
-        if not Controllers then return end
-        local SC
-        for _, child in ipairs(Controllers:GetChildren()) do
-            if child.Name:sub(1, 16) == "SwordsController" then SC = child break end
-        end
-        if not SC then warn("[PARRY] SwordsController not found") return end
-        local PRY = SC:WaitForChild("PRY", 15)
-        if not PRY then warn("[PARRY] PRY not found") return end
-        local Parry_Function = require(PRY)
-        local getupvals = debug.getupvalues or getupvalues
-        if not getupvals then warn("[PARRY] missing getupvalues") return end
-        local ups = getupvals(Parry_Function)
-        if not ups or #ups < 8 then warn("[PARRY] unexpected upvalue count") return end
-        _PARRY_PATCH.keyTable    = ups[3]
-        _PARRY_PATCH.transformFn = ups[4]
-        _PARRY_PATCH.parryHash   = ups[8]
-        _PARRY_PATCH.ready       = true
-        print("[PARRY] PRY loaded")
-    end)
-    if not ok then warn("[PARRY] init error:", tostring(err)) end
-end)
+local FONT       = Enum.Font.GothamMedium
+local FONT_BOLD  = Enum.Font.GothamBold
+local FONT_MONO  = Enum.Font.Code
+local TS         = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-local _reverted = {}
-local _original = {}
-
-local function _is_valid(args)
-    return #args == 8
-        and type(args[2])   == "string"
-        and type(args[3])   == "string"
-        and type(args[4])   == "number"
-        and typeof(args[5]) == "CFrame"
-        and type(args[6])   == "table"
-        and type(args[7])   == "table"
-        and type(args[8])   == "boolean"
-end
-
-local function _hook(remote)
-    if _reverted[remote] then return end
-    if _original[getrawmetatable(remote)] then return end
-    _original[getrawmetatable(remote)] = true
-    local _meta = getrawmetatable(remote)
-    setreadonly(_meta, false)
-    local _old = _meta.__index
-    _meta.__index = function(self, key)
-        if (key == 'FireServer' and self:IsA('RemoteEvent')) or
-           (key == 'InvokeServer' and self:IsA('RemoteFunction')) then
-            return function(_, ...)
-                local _arguments = {...}
-                if _is_valid(_arguments) and not _reverted[self] then
-                    _reverted[self]          = _arguments
-                    _PARRY_PATCH.ready       = true
-                    _PARRY_PATCH.parryRemote = self
-                end
-                return _old(self, key)(_, unpack(_arguments))
-            end
-        end
-        return _old(self, key)
-    end
-    setreadonly(_meta, true)
-end
-
-for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-    if remote:IsA('RemoteEvent') or remote:IsA('RemoteFunction') then
-        _hook(remote)
-    end
-end
-
-_PARRY_PATCH.fire = function(curveCFrame, screenPositions, mouseLocation)
-    if not _PARRY_PATCH.ready then return false end
-    local kt = _PARRY_PATCH.keyTable
-    if not kt then return false end
-    local keyIndex   = kt[1]
-    local currentKey = kt[2] and kt[2][keyIndex]
-    if not currentKey then return false end
-    local tok, transformed = pcall(_PARRY_PATCH.transformFn, currentKey, "TIME")
-    if not tok or not transformed then
-        tok, transformed = pcall(_PARRY_PATCH.transformFn, currentKey)
-        if not tok or not transformed then return false end
-    end
-    local serverTime = workspace_s:GetServerTimeNow() * 100
-    local timeStr    = tostring(math.floor(serverTime))
-    local tc = {}
-    for i = 1, #timeStr do
-        local ki = (i - 1) % #transformed + 1
-        local kb = string.byte(transformed, ki)
-        local tb = (string.byte(timeStr, i) + i) % 256
-        tc[i]    = string.char(bit32.bxor(tb, kb))
-    end
-    local token = table.concat(tc)
-    local fok = pcall(function()
-        _PARRY_PATCH.parryRemote:FireServer(
-            _PARRY_PATCH.parryHash, currentKey, token,
-            0.5, curveCFrame, screenPositions, mouseLocation, false
-        )
-    end)
-    return fok
-end
-
--- ══════════════════════════════════════════
--- SYSTEM CORE (من الملف)
--- ══════════════════════════════════════════
-
-local Alive = workspace_s:FindFirstChild("Alive") or workspace_s:WaitForChild("Alive", 10)
-
-local System = {
-    __properties = {
-        __autoparry_enabled    = false,
-        __manual_spam_enabled  = false,
-        __auto_spam_enabled    = false,
-        __parries              = 0,
-        __spam_accumulator     = 0,
-        __spam_rate            = 1000,
-        __spam_threshold       = 1.5,
-        __curve_mode           = 1,
-        __connections          = {},
-        __is_mobile            = isMobile,
-        __slashesoffury_active = false,
-    }
-}
-
--- ─────────────────────────────────────────
--- BALL
--- ─────────────────────────────────────────
-
-System.ball = {}
-
-function System.ball.get()
-    local balls = workspace_s:FindFirstChild('Balls')
-    if not balls then return nil end
-    for _, ball in pairs(balls:GetChildren()) do
-        if ball:GetAttribute('realBall') then
-            ball.CanCollide = false
-            return ball
+--================================================================
+-- UTIL
+--================================================================
+local function new(class, props)
+    local inst = Instance.new(class)
+    for k, v in pairs(props) do
+        if k ~= "Parent" then
+            inst[k] = v
         end
     end
-    return nil
-end
-
--- ─────────────────────────────────────────
--- PLAYER
--- ─────────────────────────────────────────
-
-System.player = {}
-local Closest_Entity = nil
-
-function System.player.get_closest()
-    local max_dist = math.huge
-    local closest  = nil
-    if not Alive then return nil end
-    for _, entity in pairs(Alive:GetChildren()) do
-        if entity ~= LocalPlayer.Character and entity.PrimaryPart then
-            local dist = LocalPlayer:DistanceFromCharacter(entity.PrimaryPart.Position)
-            if dist < max_dist then
-                max_dist = dist
-                closest  = entity
-            end
-        end
+    if props.Parent then
+        inst.Parent = props.Parent
     end
-    Closest_Entity = closest
-    return closest
+    return inst
 end
 
-function System.player.get_closest_to_cursor()
-    if not LocalPlayer.Character then return nil end
-    local closest_player = nil
-    local minimal_dot    = -math.huge
-    local camera         = workspace_s.CurrentCamera
-    if not Alive then return nil end
-    local ok, mouse_location = pcall(function() return UIS:GetMouseLocation() end)
-    if not ok then return nil end
-    local ray = camera:ScreenPointToRay(mouse_location.X, mouse_location.Y)
-    local pointer = CFrame.lookAt(ray.Origin, ray.Origin + ray.Direction)
-    for _, player in pairs(Alive:GetChildren()) do
-        if player == LocalPlayer.Character then continue end
-        if not player:FindFirstChild('HumanoidRootPart') then continue end
-        local direction = (player.HumanoidRootPart.Position - camera.CFrame.Position).Unit
-        local dot = pointer.LookVector:Dot(direction)
-        if dot > minimal_dot then
-            minimal_dot    = dot
-            closest_player = player
-        end
-    end
-    return closest_player
+local function corner(parent, radius)
+    return new("UICorner", { CornerRadius = UDim.new(0, radius or 4), Parent = parent })
 end
 
--- ─────────────────────────────────────────
--- CURVE
--- ─────────────────────────────────────────
-
-System.curve = {}
-
-function System.curve.get_cframe()
-    local camera = workspace_s.CurrentCamera
-    local root   = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('HumanoidRootPart')
-    if not root then return camera.CFrame end
-    local closest   = System.player.get_closest_to_cursor()
-    local targetPart = closest and closest:FindFirstChild('HumanoidRootPart')
-    local target_pos = targetPart and targetPart.Position or (root.Position + camera.CFrame.LookVector * 100)
-    local funcs = {
-        function() return camera.CFrame end,
-        function()
-            local direction = (target_pos - root.Position).Unit
-            local offset, attempts = Vector3.new(), 0
-            repeat
-                offset = Vector3.new(math.random(-4000,4000),math.random(-4000,4000),math.random(-4000,4000))
-                attempts += 1
-            until direction:Dot((target_pos + offset - root.Position).Unit) < 0.95 or attempts > 10
-            return CFrame.new(root.Position, target_pos + offset)
-        end,
-        function() return CFrame.new(root.Position, target_pos + Vector3.new(0,5,0)) end,
-        function()
-            local dir = (root.Position - target_pos).Unit
-            return CFrame.new(camera.CFrame.Position, root.Position + dir * 10000 + Vector3.new(0,1000,0))
-        end,
-        function() return CFrame.new(root.Position, target_pos + Vector3.new(0,-9e18,0)) end,
-        function() return CFrame.new(root.Position, target_pos + Vector3.new(0,9e18,0)) end,
-        function() return CFrame.new(root.Position, root.Position + (-camera.CFrame.RightVector * 10000)) end,
-        function() return CFrame.new(root.Position, root.Position + (camera.CFrame.RightVector * 10000)) end,
-    }
-    return funcs[System.__properties.__curve_mode]()
-end
-
--- ─────────────────────────────────────────
--- PARRY EXECUTE
--- ─────────────────────────────────────────
-
-System.parry = {}
-
-function System.parry.execute()
-    if System.__properties.__parries > 10000 then return end
-    if not LocalPlayer.Character then return end
-    if not _PARRY_PATCH.ready then return end
-    local camera = workspace_s.CurrentCamera
-    local screenPositions = {}
-    if Alive then
-        for _, entity in pairs(Alive:GetChildren()) do
-            if entity.PrimaryPart then
-                local ok, sp = pcall(function()
-                    return camera:WorldToScreenPoint(entity.PrimaryPart.Position)
-                end)
-                if ok then screenPositions[entity.Name] = sp end
-            end
-        end
-    end
-    local curveCF = System.curve.get_cframe()
-    local mouseLocation
-    if isMobile then
-        local vp = camera.ViewportSize
-        mouseLocation = {vp.X/2, vp.Y/2}
-    else
-        local ok, mouse = pcall(function() return UIS:GetMouseLocation() end)
-        mouseLocation = ok and mouse and {mouse.X, mouse.Y} or {camera.ViewportSize.X/2, camera.ViewportSize.Y/2}
-    end
-    _PARRY_PATCH.fire(curveCF, screenPositions, mouseLocation)
-    System.__properties.__parries += 1
-    task.delay(0.5, function()
-        if System.__properties.__parries > 0 then
-            System.__properties.__parries -= 1
-        end
-    end)
-end
-
--- ─────────────────────────────────────────
--- MANUAL SPAM (Heartbeat — يفاير بناءً على CPS)
--- ─────────────────────────────────────────
-
-System.manual_spam = {}
-
-getgenv().ManualSpamCPS        = getgenv().ManualSpamCPS        or 20
-getgenv().ManualSpamCPSEnabled = getgenv().ManualSpamCPSEnabled or true
-
-local function get_manual_interval()
-    local cps = math.clamp(getgenv().ManualSpamCPS or 20, 1, isMobile and 60 or 2000)
-    return 1 / cps
-end
-
-function System.manual_spam.loop(delta)
-    if not System.__properties.__manual_spam_enabled then return end
-    if not LocalPlayer.Character then return end
-    if not Alive or LocalPlayer.Character.Parent ~= Alive then return end
-    System.__properties.__spam_accumulator = (System.__properties.__spam_accumulator or 0) + delta
-    local interval = get_manual_interval()
-    if System.__properties.__spam_accumulator < interval then return end
-    System.__properties.__spam_accumulator = 0
-    System.parry.execute()
-end
-
-function System.manual_spam.start()
-    local conns = System.__properties.__connections
-    if conns.__manual_spam then conns.__manual_spam:Disconnect() end
-    System.__properties.__manual_spam_enabled = true
-    conns.__manual_spam = RunService.Heartbeat:Connect(System.manual_spam.loop)
-end
-
-function System.manual_spam.stop()
-    System.__properties.__manual_spam_enabled = false
-    local conn = System.__properties.__connections.__manual_spam
-    if conn then conn:Disconnect() System.__properties.__connections.__manual_spam = nil end
-end
-
--- ─────────────────────────────────────────
--- AUTO SPAM (PreSimulation — ذكي، يقيّم المسافة والكرة)
--- ─────────────────────────────────────────
-
-System.auto_spam = {}
-
-getgenv().AutoSpamMode         = getgenv().AutoSpamMode or "Remote"
-getgenv().AutoSpamAnimationFix = getgenv().AutoSpamAnimationFix or false
-
-function System.auto_spam:get_ball_properties()
-    local ball = System.ball.get()
-    if not ball then return false end
-    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-    local vel     = ball.AssemblyLinearVelocity or Vector3.new()
-    local dir_vec = LocalPlayer.Character.PrimaryPart.Position - ball.Position
-    local dist    = dir_vec.Magnitude
-    local dir     = dist > 0 and dir_vec.Unit or Vector3.new()
-    local dot     = (dist > 0 and vel.Magnitude > 0) and dir:Dot(vel.Unit) or 0
-    return { Velocity = vel, Direction = dir, Distance = dist, Dot = dot }
-end
-
-function System.auto_spam:get_entity_properties()
-    System.player.get_closest()
-    if not Closest_Entity or not Closest_Entity.PrimaryPart then return false end
-    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return false end
-    local vel  = Closest_Entity.PrimaryPart.Velocity
-    local dir  = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Unit
-    local dist = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Magnitude
-    return { Velocity = vel, Direction = dir, Distance = dist }
-end
-
-function System.auto_spam.spam_service(self)
-    local ball   = System.ball.get()
-    local entity = System.player.get_closest()
-    if not ball or not entity or not entity.PrimaryPart then return 5 end
-    if not LocalPlayer.Character or not LocalPlayer.Character.PrimaryPart then return 5 end
-    local D   = 5
-    local vel = ball.AssemblyLinearVelocity or Vector3.new()
-    local n   = vel.Magnitude
-    if n == 0 then return D end
-    local to_ball = LocalPlayer.Character.PrimaryPart.Position - ball.Position
-    if to_ball.Magnitude == 0 then return D end
-    local r = to_ball.Unit
-    local t = (n > 0) and r:Dot(vel.Unit) or 0
-    local X = LocalPlayer:DistanceFromCharacter(entity.PrimaryPart.Position)
-    -- ping-based threshold
-    local ping = 50
-    pcall(function()
-        ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue()
-    end)
-    local ping_threshold = math.clamp(ping / 10, 1, 16)
-    local B = ping_threshold * 0.7 + math.min(n / 1.2, 80)
-    if X > B then return D end
-    if (self.Entity_Properties and self.Entity_Properties.Distance or math.huge) > B then return D end
-    if (self.Ball_Properties   and self.Ball_Properties.Distance   or math.huge) > B then return D end
-    local U = math.clamp(-t, 0, 1)
-    local q = math.clamp(U * (n / 40), 0, 4)
-    D = B - q
-    return D
-end
-
-function System.auto_spam.start()
-    local conns = System.__properties.__connections
-    if conns.__auto_spam then conns.__auto_spam:Disconnect() end
-    System.__properties.__auto_spam_enabled = true
-    conns.__auto_spam = RunService.PreSimulation:Connect(function()
-        local ball = System.ball.get()
-        if not ball then return end
-        if System.__properties.__slashesoffury_active then return end
-        local zoomies = ball:FindFirstChild('zoomies')
-        if not zoomies then return end
-        if zoomies.VectorVelocity.Magnitude == 0 then return end
-        System.player.get_closest()
-        if not Closest_Entity or not Closest_Entity.PrimaryPart then return end
-        local ball_props   = System.auto_spam:get_ball_properties()
-        local entity_props = System.auto_spam:get_entity_properties()
-        if not ball_props or not entity_props then return end
-        local accuracy = System.auto_spam.spam_service({
-            Ball_Properties   = ball_props,
-            Entity_Properties = entity_props,
-        })
-        local target_dist = LocalPlayer:DistanceFromCharacter(Closest_Entity.PrimaryPart.Position)
-        local ball_dist   = LocalPlayer:DistanceFromCharacter(ball.Position)
-        local ball_target = ball:GetAttribute('target')
-        if not ball_target then return end
-        if target_dist > accuracy or ball_dist > accuracy then return end
-        local pulsed = LocalPlayer.Character and LocalPlayer.Character:GetAttribute('Pulsed')
-        if pulsed then return end
-        if ball_target == LocalPlayer.Name and target_dist > 30 and ball_dist > 30 then return end
-        if ball_dist <= accuracy and System.__properties.__parries > System.__properties.__spam_threshold then
-            System.parry.execute()
-        end
-    end)
-end
-
-function System.auto_spam.stop()
-    System.__properties.__auto_spam_enabled = false
-    local conn = System.__properties.__connections.__auto_spam
-    if conn then conn:Disconnect() System.__properties.__connections.__auto_spam = nil end
-end
-
--- ══════════════════════════════════════════
--- AUTO PARRY LOOP
--- ══════════════════════════════════════════
-
-local autoParryEnabled = false
-local lastAutoParry    = 0
-local autoParryRange   = 13
-local autoParryDelay   = 0.10
-local autoParryCount   = 0
-
-RunService.Heartbeat:Connect(function()
-    if not autoParryEnabled then return end
-    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-    local now = tick()
-    if (now - lastAutoParry) < 0.1 then return end
-    if not _PARRY_PATCH.ready then return end
-    local ball = System.ball.get()
-    if not ball then return end
-    local dist = (ball.Position - root.Position).Magnitude
-    if dist <= autoParryRange then
-        lastAutoParry = now
-        if autoParryDelay > 0 then task.wait(autoParryDelay) end
-        System.parry.execute()
-        autoParryCount += 1
-    end
-end)
-
--- ══════════════════════════════════════════
--- UI
--- ══════════════════════════════════════════
-
-local oldGui = CoreGui:FindFirstChild("AlphaSystemUI")
-if oldGui then oldGui:Destroy() end
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name           = "AlphaSystemUI"
-ScreenGui.ResetOnSpawn   = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.IgnoreGuiInset = true
-ScreenGui.Parent         = CoreGui
-
--- THEME
-local T = {
-    bg       = Color3.fromRGB(10,  10,  14),
-    panel    = Color3.fromRGB(18,  18,  24),
-    card     = Color3.fromRGB(24,  24,  32),
-    border   = Color3.fromRGB(45,  45,  60),
-    accent   = Color3.fromRGB(120, 80, 255),
-    accentDm = Color3.fromRGB(70,  45, 160),
-    green    = Color3.fromRGB(50,  220, 120),
-    red      = Color3.fromRGB(220, 70,  80),
-    orange   = Color3.fromRGB(255, 160, 60),
-    text     = Color3.fromRGB(220, 220, 235),
-    sub      = Color3.fromRGB(130, 130, 155),
-    white    = Color3.fromRGB(255, 255, 255),
-}
-
-local ti_fast   = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local ti_medium = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-local function make(cls, props, parent)
-    local obj = Instance.new(cls)
-    for k, v in pairs(props) do obj[k] = v end
-    if parent then obj.Parent = parent end
-    return obj
-end
-local function tween(obj, info, props) TweenService:Create(obj, info, props):Play() end
-local function corner(r, p) make("UICorner", {CornerRadius = UDim.new(0, r)}, p) end
-local function stroke(t, c, p) make("UIStroke", {Thickness = t, Color = c, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, p) end
-local function pad(l, r, t, b, p)
-    make("UIPadding", {
-        PaddingLeft   = UDim.new(0, l), PaddingRight  = UDim.new(0, r),
-        PaddingTop    = UDim.new(0, t), PaddingBottom = UDim.new(0, b),
-    }, p)
-end
-
-local W      = isMobile and 300 or 340
-local H_base = isMobile and 480 or 530
-
--- WINDOW
-local Window = make("Frame", {
-    Size             = UDim2.new(0, W, 0, H_base),
-    Position         = UDim2.new(0, 20, 0.5, -H_base/2),
-    BackgroundColor3 = T.bg,
-    BorderSizePixel  = 0,
-    ClipsDescendants = true,
-}, ScreenGui)
-corner(16, Window)
-stroke(1, T.border, Window)
-
--- GLOW
-make("ImageLabel", {
-    Size = UDim2.new(1,80,1,80), Position = UDim2.new(0,-40,0,-40),
-    BackgroundTransparency = 1, Image = "rbxassetid://5028857472",
-    ImageColor3 = T.accent, ImageTransparency = 0.85, ZIndex = -1,
-}, Window)
-
--- TITLE BAR
-local TH = isMobile and 52 or 58
-local TitleBar = make("Frame", {
-    Size = UDim2.new(1,0,0,TH), BackgroundColor3 = T.panel, BorderSizePixel = 0,
-}, Window)
-corner(16, TitleBar)
-make("Frame", {
-    Size = UDim2.new(1,0,0,16), Position = UDim2.new(0,0,1,-16),
-    BackgroundColor3 = T.panel, BorderSizePixel = 0,
-}, TitleBar)
-local Strip = make("Frame", {
-    Size = UDim2.new(0,4,0,28), Position = UDim2.new(0,14,0.5,-14),
-    BackgroundColor3 = T.accent, BorderSizePixel = 0,
-}, TitleBar)
-corner(4, Strip)
-make("TextLabel", {
-    Size = UDim2.new(1,-40,1,0), Position = UDim2.new(0,28,0,0),
-    BackgroundTransparency = 1, Text = "ALPHA SYSTEM",
-    TextColor3 = T.white, Font = Enum.Font.GothamBold,
-    TextSize = isMobile and 15 or 17, TextXAlignment = Enum.TextXAlignment.Left,
-}, TitleBar)
-make("TextLabel", {
-    Size = UDim2.new(0,90,1,0), Position = UDim2.new(1,-98,0,0),
-    BackgroundTransparency = 1, Text = "Blade Ball",
-    TextColor3 = T.sub, Font = Enum.Font.Gotham,
-    TextSize = isMobile and 11 or 12, TextXAlignment = Enum.TextXAlignment.Right,
-}, TitleBar)
-
--- CONTENT
-local Content = make("ScrollingFrame", {
-    Size = UDim2.new(1,0,1,-TH), Position = UDim2.new(0,0,0,TH),
-    BackgroundTransparency = 1, BorderSizePixel = 0,
-    ScrollBarThickness = 3, ScrollBarImageColor3 = T.accentDm,
-    CanvasSize = UDim2.new(0,0,0,0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-    ScrollingDirection = Enum.ScrollingDirection.Y,
-}, Window)
-pad(14,14,14,14,Content)
-make("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0,10)}, Content)
-
--- ─────────────────────────────────────────
--- STATUS CARD
--- ─────────────────────────────────────────
-
-local StatusCard = make("Frame", {
-    Size = UDim2.new(1,0,0,isMobile and 70 or 78),
-    BackgroundColor3 = T.card, BorderSizePixel = 0, LayoutOrder = 1,
-}, Content)
-corner(12, StatusCard) stroke(1, T.border, StatusCard)
-
-local StatusDot = make("Frame", {
-    Size = UDim2.new(0,10,0,10), Position = UDim2.new(0,16,0.5,-5),
-    BackgroundColor3 = T.red, BorderSizePixel = 0,
-}, StatusCard)
-corner(99, StatusDot)
-
-local StatusLabel = make("TextLabel", {
-    Size = UDim2.new(1,-40,0,22), Position = UDim2.new(0,34,0,12),
-    BackgroundTransparency = 1, Text = "System  —  Idle",
-    TextColor3 = T.text, Font = Enum.Font.GothamBold,
-    TextSize = isMobile and 13 or 14, TextXAlignment = Enum.TextXAlignment.Left,
-}, StatusCard)
-
-local CountLabel = make("TextLabel", {
-    Size = UDim2.new(1,-34,0,18), Position = UDim2.new(0,34,0,36),
-    BackgroundTransparency = 1, Text = "Parries: 0",
-    TextColor3 = T.sub, Font = Enum.Font.Gotham,
-    TextSize = isMobile and 10 or 11, TextXAlignment = Enum.TextXAlignment.Left,
-}, StatusCard)
-
-local ReadyLabel = make("TextLabel", {
-    Size = UDim2.new(0,85,0,18), Position = UDim2.new(1,-93,0,12),
-    BackgroundTransparency = 1, Text = "● Waiting",
-    TextColor3 = T.sub, Font = Enum.Font.Gotham,
-    TextSize = isMobile and 10 or 11, TextXAlignment = Enum.TextXAlignment.Right,
-}, StatusCard)
-
-local function updateCount()
-    CountLabel.Text = "Parries: " .. autoParryCount
-end
-
--- ─────────────────────────────────────────
--- TOGGLE BUILDER
--- ─────────────────────────────────────────
-
-local function makeToggle(parent, order, label_on, label_off, color_on, onEnable, onDisable)
-    local Btn = make("TextButton", {
-        Size = UDim2.new(1,0,0,isMobile and 48 or 54),
-        BackgroundColor3 = T.accentDm, BorderSizePixel = 0,
-        Text = label_off, TextColor3 = T.white,
-        Font = Enum.Font.GothamBold, TextSize = isMobile and 13 or 14,
-        LayoutOrder = order, AutoButtonColor = false,
-    }, parent)
-    corner(12, Btn)
-    local active = false
-    local function refresh()
-        if active then
-            tween(Btn, ti_fast, {BackgroundColor3 = color_on})
-            Btn.Text = label_on
-        else
-            tween(Btn, ti_fast, {BackgroundColor3 = T.accentDm})
-            Btn.Text = label_off
-        end
-    end
-    Btn.MouseEnter:Connect(function()
-        tween(Btn, ti_fast, {BackgroundColor3 = active and color_on or Color3.fromRGB(90,55,200)})
-    end)
-    Btn.MouseLeave:Connect(function()
-        tween(Btn, ti_fast, {BackgroundColor3 = active and color_on or T.accentDm})
-    end)
-    Btn.MouseButton1Click:Connect(function()
-        active = not active
-        refresh()
-        tween(Btn, TweenInfo.new(0.07), {BackgroundColor3 = T.white})
-        task.wait(0.07)
-        tween(Btn, ti_fast, {BackgroundColor3 = active and color_on or T.accentDm})
-        if active then onEnable() else onDisable() end
-    end)
-    return Btn, function() return active end, function(v) active = v refresh() end
-end
-
--- SECTION LABEL
-local function sectionLbl(txt, order)
-    make("TextLabel", {
-        Size = UDim2.new(1,0,0,18), BackgroundTransparency = 1,
-        Text = txt, TextColor3 = T.sub, Font = Enum.Font.GothamBold,
-        TextSize = isMobile and 10 or 11, TextXAlignment = Enum.TextXAlignment.Left,
-        LayoutOrder = order,
-    }, Content)
-end
-
--- ─────────────────────────────────────────
--- AUTO PARRY SECTION
--- ─────────────────────────────────────────
-
-sectionLbl("AUTO PARRY", 2)
-
-local autoParryBtn
-autoParryBtn = make("TextButton", {
-    Size = UDim2.new(1,0,0,isMobile and 48 or 54),
-    BackgroundColor3 = T.accentDm, BorderSizePixel = 0,
-    Text = "Enable Auto Parry", TextColor3 = T.white,
-    Font = Enum.Font.GothamBold, TextSize = isMobile and 13 or 14,
-    LayoutOrder = 3, AutoButtonColor = false,
-}, Content)
-corner(12, autoParryBtn)
-
-local apActive = false
-local function refreshAutoParry()
-    if apActive then
-        tween(autoParryBtn, ti_fast, {BackgroundColor3 = T.accent})
-        autoParryBtn.Text    = "Disable Auto Parry"
-        StatusLabel.Text     = "Auto Parry  —  ON"
-        StatusLabel.TextColor3 = T.green
-        tween(StatusDot, ti_fast, {BackgroundColor3 = T.green})
-    else
-        tween(autoParryBtn, ti_fast, {BackgroundColor3 = T.accentDm})
-        autoParryBtn.Text    = "Enable Auto Parry"
-        StatusLabel.Text     = "System  —  Idle"
-        StatusLabel.TextColor3 = T.text
-        tween(StatusDot, ti_fast, {BackgroundColor3 = T.red})
-    end
-end
-
-autoParryBtn.MouseButton1Click:Connect(function()
-    apActive       = not apActive
-    autoParryEnabled = apActive
-    refreshAutoParry()
-    tween(autoParryBtn, TweenInfo.new(0.07), {BackgroundColor3 = T.white})
-    task.wait(0.07)
-    tween(autoParryBtn, ti_fast, {BackgroundColor3 = apActive and T.accent or T.accentDm})
-end)
-
--- ─────────────────────────────────────────
--- SLIDER BUILDER
--- ─────────────────────────────────────────
-
-local function makeSlider(parent, title, min, max, val, decimals, order, onChange)
-    local Card = make("Frame", {
-        Size = UDim2.new(1,0,0,isMobile and 66 or 74),
-        BackgroundColor3 = T.card, BorderSizePixel = 0, LayoutOrder = order,
-    }, parent)
-    corner(12, Card) stroke(1, T.border, Card) pad(14,14,10,10,Card)
-
-    make("TextLabel", {
-        Size = UDim2.new(1,-60,0,20), BackgroundTransparency = 1,
-        Text = title, TextColor3 = T.text, Font = Enum.Font.GothamBold,
-        TextSize = isMobile and 11 or 12, TextXAlignment = Enum.TextXAlignment.Left,
-    }, Card)
-
-    local ValLbl = make("TextLabel", {
-        Size = UDim2.new(0,55,0,20), Position = UDim2.new(1,-55,0,0),
-        BackgroundTransparency = 1, Text = tostring(val),
-        TextColor3 = T.accent, Font = Enum.Font.GothamBold,
-        TextSize = isMobile and 11 or 12, TextXAlignment = Enum.TextXAlignment.Right,
-    }, Card)
-
-    local Track = make("Frame", {
-        Size = UDim2.new(1,0,0,6), Position = UDim2.new(0,0,0,isMobile and 36 or 40),
-        BackgroundColor3 = T.border, BorderSizePixel = 0,
-    }, Card)
-    corner(99, Track)
-
-    local Fill = make("Frame", {
-        Size = UDim2.new((val-min)/(max-min),0,1,0),
-        BackgroundColor3 = T.accent, BorderSizePixel = 0,
-    }, Track)
-    corner(99, Fill)
-
-    local Knob = make("Frame", {
-        Size = UDim2.new(0,18,0,18),
-        Position = UDim2.new((val-min)/(max-min),-9,0.5,-9),
-        BackgroundColor3 = T.white, BorderSizePixel = 0,
-    }, Track)
-    corner(99, Knob) stroke(2, T.accent, Knob)
-
-    local dragging = false
-    local curVal   = val
-
-    local function setVal(ax)
-        local rel = math.clamp((ax - Track.AbsolutePosition.X) / Track.AbsoluteSize.X, 0, 1)
-        curVal = min + (max - min) * rel
-        if decimals == 0 then curVal = math.round(curVal) end
-        local fmt = decimals > 0 and ("%." .. decimals .. "f") or "%d"
-        ValLbl.Text = string.format(fmt, curVal)
-        tween(Fill,  ti_fast, {Size     = UDim2.new(rel,0,1,0)})
-        tween(Knob,  ti_fast, {Position = UDim2.new(rel,-9,0.5,-9)})
-        onChange(curVal)
-    end
-
-    Track.InputBegan:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1
-        or inp.UserInputType == Enum.UserInputType.Touch then
-            dragging = true setVal(inp.Position.X)
-        end
-    end)
-    UIS.InputChanged:Connect(function(inp)
-        if not dragging then return end
-        if inp.UserInputType == Enum.UserInputType.MouseMovement
-        or inp.UserInputType == Enum.UserInputType.Touch then
-            setVal(inp.Position.X)
-        end
-    end)
-    UIS.InputEnded:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1
-        or inp.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-end
-
-makeSlider(Content, "Parry Range (studs)", 5, 40, autoParryRange, 0, 4, function(v) autoParryRange = v end)
-makeSlider(Content, "Reaction Delay (s)",  0, 0.5, autoParryDelay, 2, 5, function(v) autoParryDelay = v end)
-
--- ─────────────────────────────────────────
--- SPAM SECTION
--- ─────────────────────────────────────────
-
-sectionLbl("SPAM", 6)
-
--- Manual Spam
-local _, getMS, setMS = makeToggle(Content, 7,
-    "Disable Manual Spam", "Enable Manual Spam",
-    T.orange,
-    function()
-        StatusLabel.Text       = "Manual Spam  —  ON"
-        StatusLabel.TextColor3 = T.orange
-        tween(StatusDot, ti_fast, {BackgroundColor3 = T.orange})
-        System.manual_spam.start()
-    end,
-    function()
-        System.manual_spam.stop()
-        StatusLabel.Text       = "System  —  Idle"
-        StatusLabel.TextColor3 = T.text
-        tween(StatusDot, ti_fast, {BackgroundColor3 = T.red})
-    end
-)
-
-makeSlider(Content, "Spam CPS", 1, isMobile and 60 or 500, getgenv().ManualSpamCPS, 0, 8, function(v)
-    getgenv().ManualSpamCPS = v
-end)
-
--- Auto Spam
-local _, getAS, setAS = makeToggle(Content, 9,
-    "Disable Auto Spam", "Enable Auto Spam",
-    Color3.fromRGB(220, 80, 180),
-    function()
-        StatusLabel.Text       = "Auto Spam  —  ON"
-        StatusLabel.TextColor3 = Color3.fromRGB(220, 80, 180)
-        tween(StatusDot, ti_fast, {BackgroundColor3 = Color3.fromRGB(220, 80, 180)})
-        System.auto_spam.start()
-    end,
-    function()
-        System.auto_spam.stop()
-        StatusLabel.Text       = "System  —  Idle"
-        StatusLabel.TextColor3 = T.text
-        tween(StatusDot, ti_fast, {BackgroundColor3 = T.red})
-    end
-)
-
-makeSlider(Content, "Spam Threshold", 0, 5, System.__properties.__spam_threshold, 1, 10, function(v)
-    System.__properties.__spam_threshold = v
-end)
-
--- ─────────────────────────────────────────
--- KEYBINDS CARD
--- ─────────────────────────────────────────
-
-sectionLbl("KEYBINDS", 11)
-
-local KeyCard = make("Frame", {
-    Size = UDim2.new(1,0,0,isMobile and 70 or 80),
-    BackgroundColor3 = T.card, BorderSizePixel = 0, LayoutOrder = 12,
-}, Content)
-corner(12, KeyCard) stroke(1, T.border, KeyCard) pad(14,14,10,10,KeyCard)
-make("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0,6)}, KeyCard)
-
-local function keyRow(key, desc, order)
-    local Row = make("Frame", {
-        Size = UDim2.new(1,0,0,18), BackgroundTransparency = 1, LayoutOrder = order,
-    }, KeyCard)
-    local Tag = make("TextLabel", {
-        Size = UDim2.new(0,26,1,0), BackgroundColor3 = T.accentDm,
-        Text = key, TextColor3 = T.white, Font = Enum.Font.GothamBold,
-        TextSize = 10, TextXAlignment = Enum.TextXAlignment.Center,
-    }, Row)
-    corner(6, Tag)
-    make("TextLabel", {
-        Size = UDim2.new(1,-34,1,0), Position = UDim2.new(0,34,0,0),
-        BackgroundTransparency = 1, Text = desc,
-        TextColor3 = T.sub, Font = Enum.Font.Gotham,
-        TextSize = isMobile and 10 or 11, TextXAlignment = Enum.TextXAlignment.Left,
-    }, Row)
-end
-
-keyRow("P",   "Toggle Auto Parry",  1)
-keyRow("M",   "Toggle Manual Spam", 2)
-keyRow("H",   "Hide / Show UI",     3)
-
--- ─────────────────────────────────────────
--- READY INDICATOR UPDATE
--- ─────────────────────────────────────────
-
-RunService.Heartbeat:Connect(function()
-    if _PARRY_PATCH.ready then
-        ReadyLabel.Text       = "● Ready"
-        ReadyLabel.TextColor3 = T.green
-    else
-        ReadyLabel.Text       = "● Waiting"
-        ReadyLabel.TextColor3 = T.sub
-    end
-    updateCount()
-end)
-
--- ─────────────────────────────────────────
--- DRAGGABLE
--- ─────────────────────────────────────────
-
-local draggingWin, dragStart, startPos
-
-TitleBar.InputBegan:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1
-    or inp.UserInputType == Enum.UserInputType.Touch then
-        draggingWin = true dragStart = inp.Position startPos = Window.Position
-    end
-end)
-UIS.InputChanged:Connect(function(inp)
-    if draggingWin and (
-        inp.UserInputType == Enum.UserInputType.MouseMovement or
-        inp.UserInputType == Enum.UserInputType.Touch
-    ) then
-        local d = inp.Position - dragStart
-        Window.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + d.X,
-            startPos.Y.Scale, startPos.Y.Offset + d.Y
-        )
-    end
-end)
-UIS.InputEnded:Connect(function(inp)
-    if inp.UserInputType == Enum.UserInputType.MouseButton1
-    or inp.UserInputType == Enum.UserInputType.Touch then
-        draggingWin = false
-    end
-end)
-
--- ─────────────────────────────────────────
--- HIDE / SHOW ANIMATION
--- ─────────────────────────────────────────
-
-local visible = true
-local function toggleUI()
-    visible = not visible
-    tween(Window, ti_medium, {
-        Size = visible and UDim2.new(0,W,0,H_base) or UDim2.new(0,W,0,TH)
+local function stroke(parent, color, thickness)
+    return new("UIStroke", {
+        Color = color or COLORS.border,
+        Thickness = thickness or 1,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+        Parent = parent,
     })
 end
 
--- ─────────────────────────────────────────
--- KEYBINDS
--- ─────────────────────────────────────────
+local function padding(parent, l, r, t, b)
+    return new("UIPadding", {
+        PaddingLeft = UDim.new(0, l or 0),
+        PaddingRight = UDim.new(0, r or l or 0),
+        PaddingTop = UDim.new(0, t or l or 0),
+        PaddingBottom = UDim.new(0, b or l or 0),
+        Parent = parent,
+    })
+end
 
-UIS.InputBegan:Connect(function(inp, gpe)
-    if gpe then return end
-    if inp.KeyCode == Enum.KeyCode.P then
-        apActive         = not apActive
-        autoParryEnabled = apActive
-        refreshAutoParry()
+local function findGuiParent()
+    if gethui then
+        local ok, hui = pcall(gethui)
+        if ok and hui then return hui end
     end
-    if inp.KeyCode == Enum.KeyCode.M then
-        if System.__properties.__manual_spam_enabled then
-            System.manual_spam.stop() setMS(false)
-        else
-            System.manual_spam.start() setMS(true)
+    if CoreGui then
+        return CoreGui
+    end
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+--================================================================
+-- NOTIFICATION SYSTEM
+--================================================================
+local NotifyGui = nil
+local notifyQueue = {}
+local MAX_NOTIFS = 6
+
+local function getNotifyGui()
+    if NotifyGui and NotifyGui.Parent then return NotifyGui end
+    NotifyGui = new("ScreenGui", {
+        Name = "oxy_notify",
+        ResetOnSpawn = false,
+        IgnoreGuiInset = true,
+        DisplayOrder = 100,
+        Parent = findGuiParent(),
+    })
+    return NotifyGui
+end
+
+local function pushNotification(title, content, duration, color)
+    local gui = getNotifyGui()
+    duration = duration or 4
+    color = color or COLORS.border_act
+
+    local card = new("Frame", {
+        Name = "Notify",
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -20, 0, -80), -- start off-screen top
+        Size = UDim2.new(0, 280, 0, 0),
+        BackgroundColor3 = COLORS.panel,
+        BorderSizePixel = 0,
+        AutomaticSize = Enum.AutomaticSize.Y,
+        Parent = gui,
+    })
+    corner(card, 6)
+    stroke(card, COLORS.border, 1)
+
+    local accentBar = new("Frame", {
+        Size = UDim2.new(0, 3, 1, 0),
+        BackgroundColor3 = color,
+        BorderSizePixel = 0,
+        Parent = card,
+    })
+    corner(accentBar, 6)
+
+    local titleLabel = new("TextLabel", {
+        Position = UDim2.new(0, 16, 0, 10),
+        Size = UDim2.new(1, -28, 0, 18),
+        BackgroundTransparency = 1,
+        Font = FONT_BOLD,
+        Text = title,
+        TextColor3 = COLORS.text,
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = card,
+    })
+
+    local contentLabel = new("TextLabel", {
+        Position = UDim2.new(0, 16, 0, 30),
+        Size = UDim2.new(1, -28, 0, 16),
+        BackgroundTransparency = 1,
+        Font = FONT,
+        Text = content,
+        TextColor3 = COLORS.text_dim,
+        TextSize = 12,
+        TextWrapped = true,
+        AutomaticSize = Enum.AutomaticSize.Y,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = card,
+    })
+    padding(card, 0, 0, 0, 10)
+
+    -- push existing up
+    table.insert(notifyQueue, 1, card)
+    if #notifyQueue > MAX_NOTIFS then
+        local old = table.remove(notifyQueue, #notifyQueue)
+        if old then old:Destroy() end
+    end
+
+    -- layout
+    local y = 20
+    for i, c in ipairs(notifyQueue) do
+        local h = c.AbsoluteSize.Y
+        if h == 0 then h = 60 end
+        c.Position = UDim2.new(1, -20, 0, y)
+        y = y + h + 8
+    end
+
+    -- tween in
+    card.Size = UDim2.new(0, 280, 0, 0)
+    TweenService:Create(card, TS, {
+        Position = UDim2.new(1, -20, 0, (y - card.AbsoluteSize.Y - 8) or 20),
+        Size = UDim2.new(0, 280, 0, card.AbsoluteSize.Y),
+    }):Play()
+
+    task.delay(duration, function()
+        if card and card.Parent then
+            TweenService:Create(card, TS, {
+                BackgroundTransparency = 1,
+            }):Play()
+            for _, d in ipairs(card:GetDescendants()) do
+                if d:IsA("TextLabel") then
+                    TweenService:Create(d, TS, { TextTransparency = 1 }):Play()
+                elseif d:IsA("Frame") then
+                    TweenService:Create(d, TS, { BackgroundTransparency = 1 }):Play()
+                elseif d:IsA("UIStroke") then
+                    TweenService:Create(d, TS, { Transparency = 1 }):Play()
+                end
+            end
+            task.wait(0.2)
+            card:Destroy()
+            for i, c in ipairs(notifyQueue) do
+                if c == card then table.remove(notifyQueue, i) break end
+            end
+        end
+    end)
+end
+
+--================================================================
+-- INPUT HELPERS
+--================================================================
+local function makeDraggable(frame, handle)
+    handle = handle or frame
+    local dragging = false
+    local dragStart, startPos
+    local dragInput
+
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input == dragInput then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+--================================================================
+-- BASE ELEMENT WRAPPER
+--================================================================
+local Element = {}
+Element.__index = Element
+
+function Element.new(parent, height)
+    local root = new("Frame", {
+        Name = "Element",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, height or 32),
+        Parent = parent,
+    })
+    return setmetatable({ _root = root, _parent = parent }, Element)
+end
+
+--================================================================
+-- SECTION
+--================================================================
+local Section = {}
+Section.__index = Section
+
+function Section.new(parent, name, side)
+    side = side or "left"
+    local frame = new("Frame", {
+        Name = "Section",
+        BackgroundColor3 = COLORS.section,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0.5, -6, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        Parent = parent,
+    })
+    corner(frame, 6)
+    stroke(frame, COLORS.border, 1)
+    padding(frame, 8, 8, 8, 8)
+
+    local layout = new("UIListLayout", {
+        Padding = UDim.new(0, 6),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = frame,
+    })
+
+    local title = new("TextLabel", {
+        Name = "SectionTitle",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 18),
+        Font = FONT_BOLD,
+        Text = string.upper(name),
+        TextColor3 = COLORS.text_dim,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        LayoutOrder = -1,
+        Parent = frame,
+    })
+
+    local self = setmetatable({
+        _frame = frame,
+        _layout = layout,
+        _side = side,
+        _contentOrder = 0,
+    }, Section)
+
+    return self
+end
+
+function Section:_addChild(inst)
+    self._contentOrder = self._contentOrder + 1
+    inst.LayoutOrder = self._contentOrder
+    inst.Parent = self._frame
+    return inst
+end
+
+function Section:Button(text, callback)
+    local el = Element.new(self._frame, 30)
+    self:_addChild(el._root)
+
+    local btn = new("TextButton", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundColor3 = COLORS.element,
+        BorderSizePixel = 0,
+        Font = FONT,
+        Text = text,
+        TextColor3 = COLORS.text,
+        TextSize = 13,
+        AutoButtonColor = false,
+        Parent = el._root,
+    })
+    corner(btn, 4)
+    local s = stroke(btn, COLORS.border, 1)
+
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TS, { BackgroundColor3 = COLORS.element_hov }):Play()
+        TweenService:Create(s, TS, { Color = COLORS.border_act }):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TS, { BackgroundColor3 = COLORS.element }):Play()
+        TweenService:Create(s, TS, { Color = COLORS.border }):Play()
+    end)
+    btn.MouseButton1Click:Connect(function()
+        task.spawn(callback or function() end)
+    end)
+
+    return {
+        SetText = function(_, t) btn.Text = t end,
+        SetVisible = function(_, v) el._root.Visible = v end,
+    }
+end
+
+function Section:Toggle(text, default, callback)
+    local el = Element.new(self._frame, 30)
+    self:_addChild(el._root)
+
+    local state = default == true
+
+    local label = new("TextLabel", {
+        Position = UDim2.new(0, 0, 0, 0),
+        Size = UDim2.new(0.7, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Font = FONT,
+        Text = text,
+        TextColor3 = COLORS.text,
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = el._root,
+    })
+
+    local pill = new("TextButton", {
+        AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, 0, 0.5, 0),
+        Size = UDim2.new(0, 40, 0, 20),
+        BackgroundColor3 = state and COLORS.accent or COLORS.element,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+        Parent = el._root,
+    })
+    corner(pill, 10)
+    local pillStroke = stroke(pill, state and COLORS.border_act or COLORS.border, 1)
+
+    local dot = new("Frame", {
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position = state and UDim2.new(1, -3, 0.5, 0) or UDim2.new(0, 3, 0.5, 0),
+        Size = UDim2.new(0, 14, 0, 14),
+        BackgroundColor3 = state and COLORS.bg or COLORS.text_dim,
+        BorderSizePixel = 0,
+        Parent = pill,
+    })
+    corner(dot, 7)
+
+    local function render()
+        TweenService:Create(pill, TS, {
+            BackgroundColor3 = state and COLORS.accent or COLORS.element,
+        }):Play()
+        TweenService:Create(pillStroke, TS, {
+            Color = state and COLORS.border_act or COLORS.border,
+        }):Play()
+        TweenService:Create(dot, TS, {
+            Position = state and UDim2.new(1, -3, 0.5, 0) or UDim2.new(0, 3, 0.5, 0),
+            BackgroundColor3 = state and COLORS.bg or COLORS.text_dim,
+        }):Play()
+    end
+
+    pill.MouseButton1Click:Connect(function()
+        state = not state
+        render()
+        task.spawn(callback, state)
+    end)
+
+    return {
+        Value = function(_, v)
+            if v ~= nil then
+                state = v == true
+                render()
+            end
+            return state
+        end,
+    }
+end
+
+function Section:Slider(text, minVal, maxVal, default, callback)
+    local el = Element.new(self._frame, 46)
+    self:_addChild(el._root)
+
+    local state = default or minVal
+
+    new("TextLabel", {
+        Size = UDim2.new(0.7, 0, 0, 18),
+        BackgroundTransparency = 1,
+        Font = FONT,
+        Text = text,
+        TextColor3 = COLORS.text,
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = el._root,
+    })
+
+    local valueLabel = new("TextLabel", {
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, 0, 0, 0),
+        Size = UDim2.new(0.3, 0, 0, 18),
+        BackgroundTransparency = 1,
+        Font = FONT_MONO,
+        Text = tostring(state),
+        TextColor3 = COLORS.text_dim,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Parent = el._root,
+    })
+
+    local track = new("Frame", {
+        Position = UDim2.new(0, 0, 0, 28),
+        Size = UDim2.new(1, 0, 0, 8),
+        BackgroundColor3 = COLORS.element,
+        BorderSizePixel = 0,
+        Parent = el._root,
+    })
+    corner(track, 4)
+
+    local fill = new("Frame", {
+        Size = UDim2.new((state - minVal) / (maxVal - minVal), 0, 1, 0),
+        BackgroundColor3 = COLORS.accent,
+        BorderSizePixel = 0,
+        Parent = track,
+    })
+    corner(fill, 4)
+
+    local knob = new("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new((state - minVal) / (maxVal - minVal), 0, 0.5, 0),
+        Size = UDim2.new(0, 14, 0, 14),
+        BackgroundColor3 = COLORS.text,
+        BorderSizePixel = 0,
+        Parent = track,
+    })
+    corner(knob, 7)
+
+    local dragging = false
+    local function setFromInput(input)
+        local relX = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+        local val = math.floor(minVal + (maxVal - minVal) * relX + 0.5)
+        state = val
+        TweenService:Create(fill, TS, { Size = UDim2.new(relX, 0, 1, 0) }):Play()
+        TweenService:Create(knob, TS, { Position = UDim2.new(relX, 0, 0.5, 0) }):Play()
+        valueLabel.Text = tostring(val)
+        task.spawn(callback, val)
+    end
+
+    track.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            setFromInput(input)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch) then
+            setFromInput(input)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    return {
+        Value = function(_, v)
+            if v ~= nil then
+                state = math.clamp(v, minVal, maxVal)
+                local relX = (state - minVal) / (maxVal - minVal)
+                fill.Size = UDim2.new(relX, 0, 1, 0)
+                knob.Position = UDim2.new(relX, 0, 0.5, 0)
+                valueLabel.Text = tostring(state)
+            end
+            return state
+        end,
+    }
+end
+
+function Section:Dropdown(text, options, default, callback)
+    options = options or {}
+    local state = default or options[1]
+
+    local el = Element.new(self._frame, 46)
+    self:_addChild(el._root)
+
+    new("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 16),
+        BackgroundTransparency = 1,
+        Font = FONT,
+        Text = text,
+        TextColor3 = COLORS.text,
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = el._root,
+    })
+
+    local btn = new("TextButton", {
+        Position = UDim2.new(0, 0, 0, 20),
+        Size = UDim2.new(1, 0, 0, 26),
+        BackgroundColor3 = COLORS.element,
+        BorderSizePixel = 0,
+        Font = FONT,
+        Text = "  " .. tostring(state),
+        TextColor3 = COLORS.text,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        AutoButtonColor = false,
+        Parent = el._root,
+    })
+    corner(btn, 4)
+    local btnStroke = stroke(btn, COLORS.border, 1)
+
+    -- arrow
+    new("TextLabel", {
+        AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, -8, 0.5, 0),
+        Size = UDim2.new(0, 12, 0, 12),
+        BackgroundTransparency = 1,
+        Font = FONT_BOLD,
+        Text = "▾",
+        TextColor3 = COLORS.text_dim,
+        TextSize = 12,
+        Parent = btn,
+    })
+
+    local popup = nil
+    local listHolder = nil
+
+    local function closePopup()
+        if popup then
+            popup:Destroy()
+            popup = nil
+        end
+        TweenService:Create(btnStroke, TS, { Color = COLORS.border }):Play()
+    end
+
+    local function openPopup()
+        if popup then return end
+        TweenService:Create(btnStroke, TS, { Color = COLORS.border_act }):Play()
+
+        local guiRoot = btn:FindFirstAncestorOfClass("ScreenGui")
+        if not guiRoot then return end
+
+        -- click-catcher
+        popup = new("TextButton", {
+            Name = "DropdownClose",
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text = "",
+            AutoButtonColor = false,
+            ZIndex = 998,
+            Parent = guiRoot,
+        })
+        popup.MouseButton1Click:Connect(closePopup)
+
+        local h = math.min(#options * 26 + 8, 180)
+        listHolder = new("Frame", {
+            Position = UDim2.new(0, btn.AbsolutePosition.X,
+                0, btn.AbsolutePosition.Y + btn.AbsoluteSize.Y + 4),
+            Size = UDim2.new(0, btn.AbsoluteSize.X, 0, h),
+            BackgroundColor3 = COLORS.panel,
+            BorderSizePixel = 0,
+            ZIndex = 999,
+            Parent = guiRoot,
+        })
+        corner(listHolder, 4)
+        stroke(listHolder, COLORS.border, 1)
+
+        local scroll = new("ScrollingFrame", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            ScrollBarThickness = 2,
+            ScrollBarImageColor3 = COLORS.border,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            ZIndex = 999,
+            Parent = listHolder,
+        })
+        padding(scroll, 4)
+        new("UIListLayout", {
+            Padding = UDim.new(0, 2),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = scroll,
+        })
+
+        for i, opt in ipairs(options) do
+            local optBtn = new("TextButton", {
+                Size = UDim2.new(1, 0, 0, 24),
+                BackgroundColor3 = (tostring(opt) == tostring(state)) and COLORS.element_hov or COLORS.element,
+                BorderSizePixel = 0,
+                Font = FONT,
+                Text = "  " .. tostring(opt),
+                TextColor3 = COLORS.text,
+                TextSize = 12,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                AutoButtonColor = false,
+                LayoutOrder = i,
+                ZIndex = 999,
+                Parent = scroll,
+            })
+            corner(optBtn, 3)
+
+            optBtn.MouseEnter:Connect(function()
+                TweenService:Create(optBtn, TS, { BackgroundColor3 = COLORS.element_hov }):Play()
+            end)
+            optBtn.MouseLeave:Connect(function()
+                local isCur = tostring(opt) == tostring(state)
+                TweenService:Create(optBtn, TS, {
+                    BackgroundColor3 = isCur and COLORS.element_hov or COLORS.element,
+                }):Play()
+            end)
+            optBtn.MouseButton1Click:Connect(function()
+                state = opt
+                btn.Text = "  " .. tostring(opt)
+                closePopup()
+                task.spawn(callback, opt)
+            end)
         end
     end
-    if inp.KeyCode == Enum.KeyCode.H then toggleUI() end
-end)
 
--- ══════════════════════════════════════════
--- EXPORT
--- ══════════════════════════════════════════
+    btn.MouseButton1Click:Connect(function()
+        if popup then closePopup() else openPopup() end
+    end)
 
-getgenv().AlphaSystem = {
-    Config      = {
-        AutoParry  = function(v) autoParryEnabled = v apActive = v refreshAutoParry() end,
-        ParryRange = function(v) autoParryRange = v end,
-        Delay      = function(v) autoParryDelay = v end,
-    },
-    System      = System,
-    ParryPatch  = _PARRY_PATCH,
-    ToggleUI    = toggleUI,
-}
+    return {
+        Value = function(_, v)
+            if v ~= nil then
+                state = v
+                btn.Text = "  " .. tostring(v)
+            end
+            return state
+        end,
+        Refresh = function(_, newOptions)
+            options = newOptions or options
+            if popup then closePopup() end
+        end,
+    }
+end
 
-print("[ALPHA SYSTEM] Loaded | P = Auto Parry | M = Manual Spam | H = Hide")
+function Section:Keybind(text, default, callback)
+    local el = Element.new(self._frame, 30)
+    self:_addChild(el._root)
+
+    local state = default or Enum.KeyCode.Unknown
+    local listening = false
+
+    new("TextLabel", {
+        Size = UDim2.new(0.6, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Font = FONT,
+        Text = text,
+        TextColor3 = COLORS.text,
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = el._root,
+    })
+
+    local btn = new("TextButton", {
+        AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, 0, 0.5, 0),
+        Size = UDim2.new(0, 80, 0, 24),
+        BackgroundColor3 = COLORS.element,
+        BorderSizePixel = 0,
+        Font = FONT_MONO,
+        Text = state.Name,
+        TextColor3 = COLORS.text,
+        TextSize = 12,
+        AutoButtonColor = false,
+        Parent = el._root,
+    })
+    corner(btn, 4)
+    local btnStroke = stroke(btn, COLORS.border, 1)
+
+    btn.MouseButton1Click:Connect(function()
+        listening = true
+        btn.Text = "..."
+        TweenService:Create(btnStroke, TS, { Color = COLORS.border_act }):Play()
+    end)
+
+    UserInputService.InputBegan:Connect(function(input, gp)
+        if not listening then return end
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            state = input.KeyCode
+            btn.Text = state.Name
+            listening = false
+            TweenService:Create(btnStroke, TS, { Color = COLORS.border }):Play()
+            task.spawn(callback, state)
+        end
+    end)
+
+    return {
+        Value = function(_, v)
+            if v ~= nil then
+                state = v
+                btn.Text = v.Name
+            end
+            return state
+        end,
+    }
+end
+
+function Section:Textbox(text, placeholder, default, multiline, callback)
+    local h = multiline and 142 or 52
+    local el = Element.new(self._frame, h)
+    self:_addChild(el._root)
+
+    new("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 16),
+        BackgroundTransparency = 1,
+        Font = FONT,
+        Text = text,
+        TextColor3 = COLORS.text,
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = el._root,
+    })
+
+    local box = new("TextBox", {
+        Position = UDim2.new(0, 0, 0, 20),
+        Size = UDim2.new(1, 0, 0, multiline and 114 or 28),
+        BackgroundColor3 = COLORS.element,
+        BorderSizePixel = 0,
+        Font = FONT_MONO,
+        Text = tostring(default or ""),
+        PlaceholderText = placeholder or "",
+        PlaceholderColor3 = COLORS.text_mute,
+        TextColor3 = COLORS.text,
+        TextSize = multiline and 12 or 13,
+        ClearTextOnFocus = false,
+        MultiLine = multiline,
+        TextWrapped = multiline,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = multiline and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
+        Parent = el._root,
+    })
+    corner(box, 4)
+    local boxStroke = stroke(box, COLORS.border, 1)
+    padding(box, 8, 8, multiline and 6 or 0, multiline and 6 or 0)
+
+    box.Focused:Connect(function()
+        TweenService:Create(boxStroke, TS, { Color = COLORS.border_act }):Play()
+    end)
+    box.FocusLost:Connect(function()
+        TweenService:Create(boxStroke, TS, { Color = COLORS.border }):Play()
+        task.spawn(callback, box.Text)
+    end)
+
+    return {
+        Get = function() return box.Text end,
+        Set = function(_, v, fire)
+            box.Text = tostring(v or "")
+            if fire then task.spawn(callback, box.Text) end
+        end,
+    }
+end
+
+function Section:Label(text)
+    local el = Element.new(self._frame, 18)
+    self:_addChild(el._root)
+
+    new("TextLabel", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Font = FONT,
+        Text = text,
+        TextColor3 = COLORS.text_dim,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = el._root,
+    })
+end
+
+--================================================================
+-- TAB
+--================================================================
+local Tab = {}
+Tab.__index = Tab
+
+function Tab.new(parent, name, icon)
+    local page = new("Frame", {
+        Name = "Page_" .. name,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+        Visible = false,
+        Parent = parent._content,
+    })
+
+    local leftHolder = new("Frame", {
+        Name = "Left",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.5, 0, 1, 0),
+        Parent = page,
+    })
+    new("UIListLayout", {
+        Padding = UDim.new(0, 10),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = leftHolder,
+    })
+
+    local rightHolder = new("Frame", {
+        Name = "Right",
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0.5, 0, 0, 0),
+        Size = UDim2.new(0.5, 0, 1, 0),
+        Parent = page,
+    })
+    padding(rightHolder, 10, 0, 0, 0)
+    new("UIListLayout", {
+        Padding = UDim.new(0, 10),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = rightHolder,
+    })
+
+    local self = setmetatable({
+        _page = page,
+        _leftHolder = leftHolder,
+        _rightHolder = rightHolder,
+        _leftOrder = 0,
+        _rightOrder = 0,
+        _name = name,
+    }, Tab)
+
+    return self
+end
+
+function Tab:Section(name, side)
+    side = side or "left"
+    local holder = side == "right" and self._rightHolder or self._leftHolder
+    local sec = Section.new(holder, name, side)
+
+    if side == "right" then
+        self._rightOrder = self._rightOrder + 1
+        sec._frame.LayoutOrder = self._rightOrder
+    else
+        self._leftOrder = self._leftOrder + 1
+        sec._frame.LayoutOrder = self._leftOrder
+    end
+
+    return sec
+end
+
+--================================================================
+-- WINDOW
+--================================================================
+local Window = {}
+Window.__index = Window
+
+function Window.new(name, subtitle)
+    local gui = new("ScreenGui", {
+        Name = "oxy",
+        ResetOnSpawn = false,
+        IgnoreGuiInset = true,
+        DisplayOrder = 50,
+        Parent = findGuiParent(),
+    })
+
+    local main = new("Frame", {
+        Name = "Main",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Size = UDim2.new(0, 620, 0, 460),
+        BackgroundColor3 = COLORS.bg,
+        BorderSizePixel = 0,
+        Parent = gui,
+    })
+    corner(main, 8)
+    stroke(main, COLORS.border, 1)
+
+    -- Header
+    local header = new("Frame", {
+        Name = "Header",
+        Size = UDim2.new(1, 0, 0, 40),
+        BackgroundColor3 = COLORS.panel,
+        BorderSizePixel = 0,
+        Parent = main,
+    })
+    corner(header, 8)
+    new("Frame", { -- square off bottom corners of header
+        Position = UDim2.new(0, 0, 1, -8),
+        Size = UDim2.new(1, 0, 0, 8),
+        BackgroundColor3 = COLORS.panel,
+        BorderSizePixel = 0,
+        Parent = header,
+    })
+
+    new("TextLabel", {
+        Position = UDim2.new(0, 14, 0, 0),
+        Size = UDim2.new(0.5, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Font = FONT_BOLD,
+        Text = name,
+        TextColor3 = COLORS.text,
+        TextSize = 15,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = header,
+    })
+
+    if subtitle and subtitle ~= "" then
+        new("TextLabel", {
+            AnchorPoint = Vector2.new(1, 0.5),
+            Position = UDim2.new(1, -50, 0.5, 0),
+            Size = UDim2.new(0.5, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Font = FONT,
+            Text = subtitle,
+            TextColor3 = COLORS.text_mute,
+            TextSize = 11,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            Parent = header,
+        })
+    end
+
+    -- Close button
+    local closeBtn = new("TextButton", {
+        AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, -10, 0.5, 0),
+        Size = UDim2.new(0, 20, 0, 20),
+        BackgroundColor3 = COLORS.element,
+        BorderSizePixel = 0,
+        Font = FONT_BOLD,
+        Text = "×",
+        TextColor3 = COLORS.text_dim,
+        TextSize = 14,
+        AutoButtonColor = false,
+        Parent = header,
+    })
+    corner(closeBtn, 4)
+    closeBtn.MouseButton1Click:Connect(function()
+        gui.Enabled = false
+    end)
+    closeBtn.MouseEnter:Connect(function()
+        TweenService:Create(closeBtn, TS, { BackgroundColor3 = COLORS.danger, TextColor3 = COLORS.text }):Play()
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        TweenService:Create(closeBtn, TS, { BackgroundColor3 = COLORS.element, TextColor3 = COLORS.text_dim }):Play()
+    end)
+
+    -- Tab bar
+    local tabBar = new("ScrollingFrame", {
+        Position = UDim2.new(0, 0, 0, 40),
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundColor3 = COLORS.panel,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 0,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.X,
+        Parent = main,
+    })
+    padding(tabBar, 10, 10, 4, 4)
+    new("UIListLayout", {
+        FillDirection = Enum.FillDirection.Horizontal,
+        Padding = UDim.new(0, 6),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = tabBar,
+    })
+
+    -- Content
+    local content = new("Frame", {
+        Name = "Content",
+        Position = UDim2.new(0, 0, 0, 74),
+        Size = UDim2.new(1, 0, 1, -74),
+        BackgroundTransparency = 1,
+        Parent = main,
+    })
+    padding(content, 10, 10, 10, 10)
+
+    makeDraggable(main, header)
+
+    local self = setmetatable({
+        _gui = gui,
+        _main = main,
+        _header = header,
+        _tabBar = tabBar,
+        _content = content,
+        _tabs = {},
+        _activeTab = nil,
+        _tabOrder = 0,
+    }, Window)
+
+    return self
+end
+
+function Window:Tab(name, icon)
+    self._tabOrder = self._tabOrder + 1
+
+    local btn = new("TextButton", {
+        Name = "Tab_" .. name,
+        Size = UDim2.new(0, 100, 1, 0),
+        BackgroundColor3 = COLORS.bg,
+        BorderSizePixel = 0,
+        Font = FONT,
+        Text = string.upper(name),
+        TextColor3 = COLORS.text_dim,
+        TextSize = 12,
+        AutoButtonColor = false,
+        LayoutOrder = self._tabOrder,
+        Parent = self._tabBar,
+    })
+    corner(btn, 4)
+
+    local tabObj = Tab.new(self, name, icon)
+
+    local function activate()
+        if self._activeTab == name then return end
+        self._activeTab = name
+        for tn, t in pairs(self._tabs) do
+            t.page.Visible = (tn == name)
+        end
+        for tn, b in pairs(self._tabButtons) do
+            TweenService:Create(b, TS, {
+                BackgroundColor3 = (tn == name) and COLORS.element or COLORS.bg,
+                TextColor3 = (tn == name) and COLORS.text or COLORS.text_dim,
+            }):Play()
+        end
+    end
+
+    if not self._tabButtons then self._tabButtons = {} end
+    self._tabButtons[name] = btn
+    self._tabs[name] = { page = tabObj._page }
+
+    btn.MouseButton1Click:Connect(activate)
+
+    if not self._activeTab then
+        activate()
+    end
+
+    return tabObj
+end
+
+--================================================================
+-- PUBLIC API
+--================================================================
+function OxyUI.new(name, subtitle)
+    return Window.new(name or "oxy", subtitle)
+end
+
+function OxyUI:Notify(title, content, duration)
+    pushNotification(title, content, duration, COLORS.border_act)
+end
+
+-- expose for direct use
+OxyUI.Notify = pushNotification
+OxyUI.Colors = COLORS
+
+return OxyUI
