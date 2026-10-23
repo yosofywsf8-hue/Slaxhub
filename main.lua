@@ -1,6 +1,12 @@
--- =========================================================
--- UI: angeli (Fluent) | ENGINE: byte (hook + Auto Parry + Auto Spam)
--- =========================================================
+--[[
+    ██╗   ██╗██╗██╗   ██╗ ██████╗
+    ██║   ██║██║██║   ██║██╔═══██╗
+    ██║   ██║██║██║   ██║██║   ██║
+    ╚██╗ ██╔╝██║╚██╗ ██╔╝██║   ██║
+     ╚████╔╝ ██║ ╚████╔╝ ╚██████╔╝
+      ╚═══╝  ╚═╝  ╚═══╝   ╚═════╝
+    UI: angeli (Fluent) | ENGINE: byte (VFX fix)
+]]
 if not IB_OBFUSCATED then
     function IB_NO_VIRTUALIZE(Function) return Function end
 end
@@ -85,11 +91,10 @@ end
 local sendParry = createParrySender()
 
 -- =========================================================
--- BYTE: Connections + Auto_Parry state
+-- BYTE: state + Connections
 -- =========================================================
 local Connections_Manager = {}
 local Auto_Parry = {}
-local FinishersController = require(game.ReplicatedStorage.Controllers.FinishersController)
 local RunService = game:GetService("RunService")
 local VirtualInputManager = Instance.new("VirtualInputManager")
 local balls = workspace:WaitForChild("Balls")
@@ -101,6 +106,7 @@ local Swords = require(ReplicatedInstances:WaitForChild("Swords"))
 local Saved_Sword_Model = Swords:GetSword(Player:GetAttribute("CurrentlyEquippedSword"))
 
 local Play_Parry, Sword_Function, Block_Keybind, Real_Ball_Position, Tracked_Ball
+
 do
     Play_Parry = nil
     local swordsController
@@ -116,9 +122,7 @@ do
                         end
                     end
                 end
-                if swordsController then
-                    break
-                end
+                if swordsController then break end
             end
         end
         if swordsController then
@@ -128,9 +132,12 @@ do
 
     do
         local net = ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"].net
-        Block_Keybind = playerGui.Settings.Frame.Frame["Keybinds/Block"].Keybind1.TextBox.Text or playerGui.Settings.Frame.Frame["Keybinds/Block"].Keybind2.TextBox.Text or playerGui.Settings.Frame.Frame["Keybinds/Block"].Keybind3.TextBox.Text
+        Block_Keybind = playerGui.Settings.Frame.Frame["Keybinds/Block"].Keybind1.TextBox.Text
+            or playerGui.Settings.Frame.Frame["Keybinds/Block"].Keybind2.TextBox.Text
+            or playerGui.Settings.Frame.Frame["Keybinds/Block"].Keybind3.TextBox.Text
         Real_Ball_Position = nil
         Tracked_Ball = nil
+
         for _, child in net:GetChildren() do
             if child:IsA("UnreliableRemoteEvent") and child.Name ~= "URE/ReplicateBallPosition" then
                 Connections_Manager["Real Ball Position"] = child.OnClientEvent:Connect(function(arg, arg2)
@@ -163,7 +170,7 @@ for _, connection in getconnections(ReplicatedStorage.Remotes.ParrySuccessAll.On
 end
 
 -- =========================================================
--- BYTE: state
+-- BYTE: state variables
 -- =========================================================
 local Parry_Abilities, Ignored_VFX, Infinity_Ball, Tornado_Time, Parries, Speed_Divisor_Multiplier
 local Last_Parry, Parried
@@ -192,6 +199,40 @@ do
     Parries = 0
     Speed_Divisor_Multiplier = 1.1
 end
+
+-- =========================================================
+-- ★ VFX FIX — Weapon Changer Event (byte)
+-- =========================================================
+Connections_Manager["Weapon Changer Event"] = ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(...)
+    local varargs = { ... }
+    local name = Player.Name
+    if tostring(varargs[4]) == name then
+        local sword2 = Swords:GetSword(Player:GetAttribute("CurrentlyEquippedSword"))
+        if sword2 and sword2.SlashName then
+            varargs[1] = sword2.SlashName
+            varargs[3] = sword2.Name
+        end
+    end
+    return Play_Parry(unpack(varargs))
+end)
+
+-- =========================================================
+-- ★ VFX FIX — Parry Animation Fix (byte)
+-- =========================================================
+Connections_Manager["Parry Animation Fix"] = ReplicatedStorage.Remotes.ParrySuccess.OnClientEvent:Connect(function()
+    Bypass_Cd = true
+    local character = Player.Character
+    local humanoid = character and character:FindFirstChild("Humanoid")
+    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+    if animator then
+        for _, track in animator:GetPlayingAnimationTracks() do
+            local n = track.Name
+            if track:GetAttribute("GrabParry") or track:GetAttribute("Parry") or n == "GrabParry" or n == "Grab" then
+                track:Stop(track:GetAttribute("StopFadeTime") or 0.1)
+            end
+        end
+    end
+end)
 
 -- =========================================================
 -- BYTE: ball finders
@@ -253,7 +294,6 @@ do
         local closestCharacter = nil
         for _, child in alive:GetChildren() do
             if child ~= Player.Character and child.PrimaryPart then
-                child:FindFirstChildOfClass("Humanoid")
                 local dot = currentCamera.CFrame.LookVector:Dot((child.PrimaryPart.Position - currentCamera.CFrame.Position).Unit)
                 local screenPoint, onScreen = currentCamera:WorldToViewportPoint(child.PrimaryPart.Position)
                 if onScreen and dot > n41 then
@@ -365,7 +405,7 @@ do
 end
 
 -- =========================================================
--- BYTE: parry data payload
+-- BYTE: Parry_Data
 -- =========================================================
 Auto_Parry.Parry_Data = function(arg)
     if touchEnabled then
@@ -384,67 +424,35 @@ Auto_Parry.Parry_Data = function(arg)
     end
 
     if arg == "Camera" then
-        local parryPayload = {}
         local cframe = CFrame.new(workspace.CurrentCamera.CFrame.Position, workspace.CurrentCamera.CFrame.Position + workspace.CurrentCamera.CFrame.LookVector)
-        parryPayload[1] = 0
-        parryPayload[2] = cframe
-        parryPayload[3] = screenPositions
-        parryPayload[4] = Vector2_Mouse_Location
-        return parryPayload
+        return { 0, cframe, screenPositions, Vector2_Mouse_Location }
     end
-
     if arg == "Random" then
-        local parryPayload2 = {}
         local cframe = CFrame.new(workspace.CurrentCamera.CFrame.Position, Vector3.new(math.random(-3000, 3000), math.random(-3000, 3000), math.random(-3000, 3000)))
-        parryPayload2[1] = 0
-        parryPayload2[2] = cframe
-        parryPayload2[3] = screenPositions
-        parryPayload2[4] = Vector2_Mouse_Location
-        return parryPayload2
+        return { 0, cframe, screenPositions, Vector2_Mouse_Location }
     end
-
     if arg == "Backwards" then
         local n41 = -workspace.CurrentCamera.CFrame.LookVector * 10000
-        local parryPayload3 = {}
         local cframe = CFrame.new(workspace.CurrentCamera.CFrame.Position, workspace.CurrentCamera.CFrame.Position + Vector3.new(n41.X, 100, n41.Z))
-        parryPayload3[1] = 0
-        parryPayload3[2] = cframe
-        parryPayload3[3] = screenPositions
-        parryPayload3[4] = Vector2_Mouse_Location
-        return parryPayload3
+        return { 0, cframe, screenPositions, Vector2_Mouse_Location }
     end
-
     if arg == "High" then
-        local parryPayload4 = {}
         local cframe = CFrame.new(workspace.CurrentCamera.CFrame.Position, workspace.CurrentCamera.CFrame.Position + Vector3.new(0, 10000, 0))
-        parryPayload4[1] = 0
-        parryPayload4[2] = cframe
-        parryPayload4[3] = screenPositions
-        parryPayload4[4] = Vector2_Mouse_Location
-        return parryPayload4
+        return { 0, cframe, screenPositions, Vector2_Mouse_Location }
     end
-
     if arg == "Dot" then
         local crosshairTarget = Auto_Parry.Get_Crosshair_Target()
         if crosshairTarget then
-            local screenData = crosshairTarget.Screen_Data
             return {
                 0,
                 CFrame.new(Player.Character.PrimaryPart.Position, crosshairTarget.Character.PrimaryPart.Position + Vector3.new(0, 1.75, 0)),
                 screenPositions,
-                screenData,
+                crosshairTarget.Screen_Data,
             }
         end
-        local keypoints = {}
-        local constant = 0
         local cframe = CFrame.new(workspace.CurrentCamera.CFrame.Position, workspace.CurrentCamera.CFrame.Position + workspace.CurrentCamera.CFrame.LookVector)
-        keypoints[1] = constant
-        keypoints[2] = cframe
-        keypoints[3] = screenPositions
-        keypoints[4] = Vector2_Mouse_Location
-        return keypoints
+        return { 0, cframe, screenPositions, Vector2_Mouse_Location }
     end
-
     if arg == "Dot Pointer" then
         local currentCamera = workspace.CurrentCamera
         local mouseTarget = Auto_Parry.select_target_by_mouse()
@@ -456,52 +464,37 @@ Auto_Parry.Parry_Data = function(arg)
             Vector2_Mouse_Location,
         }
     end
-
     if arg == "Closest" then
         local forcedTarget = Auto_Parry.Force_Target()
         if forcedTarget then
-            local screenData = forcedTarget.Screen_Data
             return {
                 0,
                 CFrame.new(Player.Character.PrimaryPart.Position, forcedTarget.Character.PrimaryPart.Position),
                 screenPositions,
-                screenData,
+                forcedTarget.Screen_Data,
             }
         end
-        local parryPayload5 = {}
         local cframe = CFrame.new(workspace.CurrentCamera.CFrame.Position, workspace.CurrentCamera.CFrame.Position + workspace.CurrentCamera.CFrame.LookVector)
-        parryPayload5[1] = 0
-        parryPayload5[2] = cframe
-        parryPayload5[3] = screenPositions
-        parryPayload5[4] = Vector2_Mouse_Location
-        return parryPayload5
+        return { 0, cframe, screenPositions, Vector2_Mouse_Location }
     end
-
     if arg == "FFA" then
         local ffaTarget = Auto_Parry.FFA()
         if ffaTarget then
-            local screenData = ffaTarget.Screen_Data
             return {
                 0,
                 CFrame.new(Player.Character.PrimaryPart.Position, ffaTarget.Character.PrimaryPart.Position),
                 screenPositions,
-                screenData,
+                ffaTarget.Screen_Data,
             }
         end
-        local parryPayload6 = {}
         local cframe = CFrame.new(workspace.CurrentCamera.CFrame.Position, workspace.CurrentCamera.CFrame.Position + workspace.CurrentCamera.CFrame.LookVector)
-        parryPayload6[1] = 0
-        parryPayload6[2] = cframe
-        parryPayload6[3] = screenPositions
-        parryPayload6[4] = Vector2_Mouse_Location
-        return parryPayload6
+        return { 0, cframe, screenPositions, Vector2_Mouse_Location }
     end
-
     return arg
 end
 
 -- =========================================================
--- BYTE: parry execution + animation
+-- BYTE: Parry + Animation
 -- =========================================================
 do
     Auto_Parry.Parry = function(arg)
@@ -573,7 +566,6 @@ Auto_Parry.Get_Curve = function(ball)
         Returned = false, Target_Count = 0,
     }
     Is_Curved_Data[ball] = data
-
     local function update()
         local from = ball:GetAttribute("from")
         local clone = Auto_Parry.Encrypted_Clone()
@@ -585,7 +577,6 @@ Auto_Parry.Get_Curve = function(ball)
             data.Returned = false
         end
     end
-
     data.From = ball:GetAttributeChangedSignal("from"):Connect(update)
     data.Target = ball:GetAttributeChangedSignal("target"):Connect(function()
         Parried = false
@@ -655,7 +646,6 @@ function Auto_Parry.Is_Curved(Ball)
         end
         Curve_Data.Flip_Time = Time
     end
-
     Curve_Data.Dot = Dot
     Curve_Data.Lerp_Radians = Auto_Parry.Linear_Interpolation(Curve_Data.Lerp_Radians, Radians, 0.8)
 
@@ -850,25 +840,10 @@ do
 end
 
 -- =========================================================
--- BYTE: workspace events (tornado, balls, phantom, finisher)
+-- BYTE: workspace events
 -- =========================================================
 Connections_Manager["Infinity Ball"] = ReplicatedStorage.Remotes.InfinityBall.OnClientEvent:Connect(function(arg, arg2)
     Infinity_Ball = arg2
-end)
-
-Connections_Manager["Parry Animation Fix"] = ReplicatedStorage.Remotes.ParrySuccess.OnClientEvent:Connect(function()
-    Bypass_Cd = true
-    local character = Player.Character
-    local humanoid = character and character:FindFirstChild("Humanoid")
-    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
-    if animator then
-        for _, track in animator:GetPlayingAnimationTracks() do
-            local n = track.Name
-            if track:GetAttribute("GrabParry") or track:GetAttribute("Parry") or n == "GrabParry" or n == "Grab" then
-                track:Stop(track:GetAttribute("StopFadeTime") or 0.1)
-            end
-        end
-    end
 end)
 
 ReplicatedStorage.Remotes.Phantom.OnClientEvent:Connect(function(arg, arg2)
@@ -932,11 +907,11 @@ Connections_Manager["Ball Removed"] = workspace.Balls.ChildRemoved:Connect(funct
 end)
 
 -- =========================================================
--- UI: angeli (Fluent) فقط
+-- UI: angeli (Fluent) — فقط
 -- =========================================================
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local Window = Fluent:CreateWindow({
-    Title = "byte",
+    Title = "Vivo",
     SubTitle = "",
     TabWidth = 100,
     Size = UDim2.fromOffset(440, 315),
@@ -948,8 +923,16 @@ local Window = Fluent:CreateWindow({
 local MainTab = Window:AddTab({ Title = "main", Icon = "shield" })
 local VisualTab = Window:AddTab({ Title = "visual", Icon = "eye" })
 
+-- defaults byte
+Library.Flags.Parry_Type = "Camera"
+Library.Flags.Parry_Options = "Remote"
+Library.Flags.Clashing_Threshold = "1"
+Library.Flags.Parry_Range = 0
+Library.Flags.Parry_Accuracy = 72
+Speed_Divisor_Multiplier = 0.8 + (72 - 1) * 0.0030303030303030303
+
 -- =========================================================
--- UI: Hook toggles (byte flags → Fluent)
+-- Auto Parry — byte exact
 -- =========================================================
 MainTab:AddToggle("AutoParryToggle", {
     Title = "auto parry",
@@ -957,15 +940,23 @@ MainTab:AddToggle("AutoParryToggle", {
     Callback = function(arg)
         Library.Flags.Auto_Parry = arg
         if arg then
+            if Connections_Manager["Auto Parry"] then
+                Connections_Manager["Auto Parry"]:Disconnect()
+                Connections_Manager["Auto Parry"] = nil
+            end
             Connections_Manager["Auto Parry"] = RunService.PreSimulation:Connect(function()
                 local alive = workspace.Alive
                 if (Player.Character or Player.CharacterAdded:Wait()).Parent ~= alive then return end
                 local ball = Auto_Parry.Get_Ball()
+
                 for _, ball2 in Auto_Parry.Get_Balls() do
                     if not ball2 then return end
                     local zoomies = ball2:FindFirstChild("zoomies")
                     if not zoomies then return end
+
+                    getgenv().Time_View = os.clock() - Last_Parry
                     local n41 = os.clock() - Last_Parry
+
                     local maxShield = Player.Character.PrimaryPart:FindFirstChild("MaxShield")
                     local tornado = workspace.Runtime:FindFirstChild("Tornado")
                     local abilities = Player.Character and Player.Character:FindFirstChild("Abilities")
@@ -976,17 +967,29 @@ MainTab:AddToggle("AutoParryToggle", {
                     infinity = visible and infinity and Infinity_Ball
                     abilities = abilities and abilities:FindFirstChild("Time Hole")
                     abilities = abilities and abilities.Enabled
+
                     local singularityCape = Player.Character.PrimaryPart:FindFirstChild("SingularityCape")
                     local uiGradient = Player.PlayerGui.Hotbar.Block.UIGradient
+                    getgenv().Parry_Cooldown = uiGradient
+                    local uiGradient2 = Player.PlayerGui.Hotbar.Ability.UIGradient
                     local attribute = ball2:GetAttribute("target")
+                    ball:GetAttribute("target")
                     local magnitude = zoomies.VectorVelocity.Magnitude
                     local value = Auto_Parry.Get_Ping()
                     local n42 = math.clamp(value / 10, 10, 16) + magnitude / (2.3497562749127492 + math.clamp(magnitude, 0, 425) * 0.002) * Speed_Divisor_Multiplier
-                    local n43 = n42 + Library.Flags.Parry_Range
-                    local position = (ball2 == Tracked_Ball and Real_Ball_Position) or ball2.Position
+                    local n43 = n42 + Library.Flags.Parry_Range or 0
+                    local position
+
+                    if ball2 == Tracked_Ball and Real_Ball_Position then
+                        position = Real_Ball_Position
+                    else
+                        position = ball2.Position
+                    end
+
                     local magnitude2 = (Player.Character.PrimaryPart.Position - position).Magnitude
                     local curved = Auto_Parry.Is_Curved(ball2)
                     local curvedMore = Auto_Parry.Is_Curved2(ball2)
+
                     if infinity or visible and abilities then
                         Parries = 0
                         return
@@ -995,6 +998,7 @@ MainTab:AddToggle("AutoParryToggle", {
                         Parries = 0
                         return
                     end
+
                     if attribute == Player.Name and tornado then
                         local n44 = (tornado:GetAttribute("TornadoTime") or 1) + 0.314159
                         if Tornado_Time then
@@ -1003,6 +1007,7 @@ MainTab:AddToggle("AutoParryToggle", {
                             Tornado_Time = nil
                         end
                     end
+
                     if attribute == Player.Name and getgenv().Cooldown_Protection and n41 > 0.5 and (uiGradient.Offset.Y <= 0.4 and magnitude2 <= n42 or uiGradient.Offset.Y > 0 and uiGradient.Offset.Y <= -0.15) then
                         for _, abilityName in Parry_Abilities do
                             if Player.Character.Abilities[abilityName].Enabled then
@@ -1012,7 +1017,8 @@ MainTab:AddToggle("AutoParryToggle", {
                             end
                         end
                     end
-                    if attribute == Player.Name and uiGradient.Offset.Y == 0.5 and magnitude2 <= n42 and getgenv().Auto_Ability and n41 > 0.5 then
+
+                    if attribute == Player.Name and uiGradient2.Offset.Y == 0.5 and magnitude2 <= n42 and getgenv().Auto_Ability and n41 > 0.5 then
                         for _, abilityName in Parry_Abilities do
                             if Player.Character.Abilities[abilityName].Enabled then
                                 Parried = true
@@ -1021,15 +1027,18 @@ MainTab:AddToggle("AutoParryToggle", {
                             end
                         end
                     end
+
                     if attribute == Player.Name and curved then return end
                     if attribute == Player.Name and n41 > 0.5 and curvedMore and game.PlaceId ~= 15264892126 then return end
                     if Library.Flags.Phantom_Detection and attribute == Player.Name and Got_Phantomed then return end
+
                     if attribute == Player.Name and magnitude2 <= n43 and not Parried then
                         Auto_Parry.Play_Animation()
                         Auto_Parry.Parry(Library.Flags.Parry_Type)
                         Last_Parry = os.clock()
                         Parried = true
                         local now3 = os.clock()
+
                         task.spawn(function()
                             local n44 = math.clamp(value / 10, 5, 17)
                             local ballProperties = Auto_Parry:Get_Ball_Properties(ball2)
@@ -1038,17 +1047,21 @@ MainTab:AddToggle("AutoParryToggle", {
                             if not entityProperties then return end
                             local spamResult = Auto_Parry.Spam_Service({ Ball = ball2, Ball_Properties = ballProperties, Entity_Properties = entityProperties, Ping = n44 })
                             if not spamResult or spamResult == 0 then return end
+
                             while true do
                                 RunService.Heartbeat:Wait()
                                 if not (os.clock() - now3 >= 0.65 or not Parried) then continue end
                                 break
                             end
+
                             Parried = false
                             if Parries >= 7 then return false end
                             Parries += 1
+
                             task.delay(0.5, function()
                                 if Parries > 0 then Parries -= 1 end
                             end)
+
                             Connections_Manager.Prevent_AP_Parry_When_Manual_Parried = uiGradient:GetPropertyChangedSignal("Offset"):Once(function()
                                 if uiGradient.Offset.Y < 0.5 and magnitude2 > spamResult then
                                     Parried = true
@@ -1068,20 +1081,29 @@ MainTab:AddToggle("AutoParryToggle", {
     end,
 })
 
+-- =========================================================
+-- Auto Spam — byte exact
+-- =========================================================
 MainTab:AddToggle("AutoSpamToggle", {
     Title = "auto spam",
     Default = false,
     Callback = function(arg)
         Library.Flags.Auto_Spam = arg
         if arg then
+            if Connections_Manager["Auto Spam"] then
+                Connections_Manager["Auto Spam"]:Disconnect()
+                Connections_Manager["Auto Spam"] = nil
+            end
             Connections_Manager["Auto Spam"] = RunService.PostSimulation:Connect(function()
                 if not Library.Flags.Auto_Parry then return end
                 local alive = workspace.Alive
                 local character = Player.Character or Player.CharacterAdded:Wait()
                 if character.Parent ~= alive then return end
+
                 local ball = Auto_Parry.Get_Ball()
                 if not ball then return end
                 if not ball:FindFirstChild("zoomies") then return end
+
                 local n41 = math.clamp(Auto_Parry.Get_Ping() / 10, 10, 16.5)
                 local ballProperties = Auto_Parry:Get_Ball_Properties(ball)
                 if not ballProperties then return end
@@ -1089,19 +1111,22 @@ MainTab:AddToggle("AutoSpamToggle", {
                 if not entityProperties then return end
                 local spamResult = Auto_Parry.Spam_Service({ Ball = ball, Ball_Properties = ballProperties, Entity_Properties = entityProperties, Ping = n41 })
                 if not spamResult or spamResult == 0 then return end
+
                 local hotbar = Player:FindFirstChild("PlayerGui") and Player.PlayerGui:FindFirstChild("Hotbar")
-                local abilities = character and character:FindFirstChild("Abilities")
+                character = character and character:FindFirstChild("Abilities")
                 local visible = hotbar and hotbar:FindFirstChild("Ability") and hotbar.Ability:FindFirstChild("Duration") and hotbar.Ability.Duration.Visible
-                local infinity = abilities and abilities:FindFirstChild("Infinity")
+                local infinity = character and character:FindFirstChild("Infinity")
                 infinity = infinity and infinity.Enabled
                 infinity = visible and infinity and Infinity_Ball
-                local timeHole = abilities and abilities:FindFirstChild("Time Hole")
-                timeHole = timeHole and timeHole.Enabled
+                character = character and character:FindFirstChild("Time Hole")
+                character = character and character.Enabled
+
                 if infinity then
                     Parries = 0
                     return
                 end
-                if not (visible and timeHole) then
+
+                if not (visible and character) then
                     local position = (ball == Tracked_Ball and Real_Ball_Position) or ball.Position
                     if (Player.Character.PrimaryPart.Position - position).Magnitude <= spamResult and Parries >= tonumber(Library.Flags.Clashing_Threshold) then
                         if Is_Mobile then
@@ -1123,6 +1148,9 @@ MainTab:AddToggle("AutoSpamToggle", {
     end,
 })
 
+-- =========================================================
+-- Triggerbot
+-- =========================================================
 MainTab:AddKeybind("TriggerbotKey", {
     Title = "triggerbot",
     Mode = "Toggle",
@@ -1133,14 +1161,15 @@ MainTab:AddKeybind("TriggerbotKey", {
     end,
 })
 
+-- =========================================================
+-- Dropdowns / Sliders
+-- =========================================================
 MainTab:AddDropdown("ParryTypeDropdown", {
     Title = "parry type",
     Values = { "Camera", "High", "FFA", "Dot", "Dot Pointer", "Closest", "Random", "Backwards" },
     Multi = false,
     Default = "Camera",
-    Callback = function(v)
-        Library.Flags.Parry_Type = v
-    end,
+    Callback = function(v) Library.Flags.Parry_Type = v end,
 })
 
 MainTab:AddDropdown("ParryOptionsDropdown", {
@@ -1148,9 +1177,7 @@ MainTab:AddDropdown("ParryOptionsDropdown", {
     Values = { "Remote", "Hardware", "Keyboard" },
     Multi = false,
     Default = "Remote",
-    Callback = function(v)
-        Library.Flags.Parry_Options = v
-    end,
+    Callback = function(v) Library.Flags.Parry_Options = v end,
 })
 
 MainTab:AddDropdown("ClashThresholdDropdown", {
@@ -1158,24 +1185,18 @@ MainTab:AddDropdown("ClashThresholdDropdown", {
     Values = { "1", "2", "3" },
     Multi = false,
     Default = "1",
-    Callback = function(v)
-        Library.Flags.Clashing_Threshold = tostring(v)
-    end,
+    Callback = function(v) Library.Flags.Clashing_Threshold = tostring(v) end,
 })
 
 MainTab:AddSlider("ParryRangeSlider", {
     Title = "parry range",
-    Default = 0,
-    Min = 0, Max = 10, Rounding = 1,
-    Callback = function(v)
-        Library.Flags.Parry_Range = tonumber(v)
-    end,
+    Default = 0, Min = 0, Max = 10, Rounding = 1,
+    Callback = function(v) Library.Flags.Parry_Range = tonumber(v) end,
 })
 
 MainTab:AddSlider("AccuracySlider", {
     Title = "parry accuracy",
-    Default = 72,
-    Min = 1, Max = 100, Rounding = 1,
+    Default = 72, Min = 1, Max = 100, Rounding = 1,
     Callback = function(v)
         Library.Flags.Parry_Accuracy = tonumber(v)
         if Library.Flags.Phantom_Detection then
@@ -1189,17 +1210,13 @@ MainTab:AddSlider("AccuracySlider", {
 MainTab:AddToggle("CooldownProtectionToggle", {
     Title = "cooldown protection",
     Default = false,
-    Callback = function(arg)
-        getgenv().Cooldown_Protection = arg
-    end,
+    Callback = function(arg) getgenv().Cooldown_Protection = arg end,
 })
 
 MainTab:AddToggle("AutoAbilityToggle", {
     Title = "auto ability",
     Default = false,
-    Callback = function(arg)
-        getgenv().Auto_Ability = arg
-    end,
+    Callback = function(arg) getgenv().Auto_Ability = arg end,
 })
 
 VisualTab:AddToggle("PhantomDetectionToggle", {
@@ -1215,16 +1232,8 @@ VisualTab:AddToggle("PhantomDetectionToggle", {
     end,
 })
 
--- defaults
-Library.Flags.Parry_Type = "Camera"
-Library.Flags.Parry_Options = "Remote"
-Library.Flags.Clashing_Threshold = "1"
-Library.Flags.Parry_Range = 0
-Library.Flags.Parry_Accuracy = 72
-Speed_Divisor_Multiplier = 0.8 + (72 - 1) * 0.0030303030303030303
-
 -- =========================================================
--- Keybinds (byte — hotkeys parry types)
+-- Hotkeys (byte)
 -- =========================================================
 Connections_Manager["Keybinds Parry Types"] = UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
@@ -1244,8 +1253,5 @@ Connections_Manager["Keybinds Parry Types"] = UserInputService.InputBegan:Connec
     end
     if parryType then
         Library.Flags.Parry_Type = parryType
-        local dd = Window:GetTab("main")
-        -- update dropdown display
-        for _, v in pairs(Fluent.Tabs or {}) do end
     end
 end)
