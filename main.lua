@@ -1111,4 +1111,141 @@ MainTab:AddToggle("AutoSpamToggle", {
                             Auto_Parry.Animation_Fix()
                         end
                         Auto_Parry.Parry(Library.Flags.Parry_Type)
-                    e
+                    end
+                    return
+                end
+                Parries = 0
+            end)
+        elseif Connections_Manager["Auto Spam"] then
+            Connections_Manager["Auto Spam"]:Disconnect()
+            Connections_Manager["Auto Spam"] = nil
+        end
+    end,
+})
+
+MainTab:AddKeybind("TriggerbotKey", {
+    Title = "triggerbot",
+    Mode = "Toggle",
+    Default = "T",
+    Callback = function(arg)
+        Library.Flags.Triggerbot = arg
+        Auto_Parry.Start_Triggerbot()
+    end,
+})
+
+MainTab:AddDropdown("ParryTypeDropdown", {
+    Title = "parry type",
+    Values = { "Camera", "High", "FFA", "Dot", "Dot Pointer", "Closest", "Random", "Backwards" },
+    Multi = false,
+    Default = "Camera",
+    Callback = function(v)
+        Library.Flags.Parry_Type = v
+    end,
+})
+
+MainTab:AddDropdown("ParryOptionsDropdown", {
+    Title = "parry options",
+    Values = { "Remote", "Hardware", "Keyboard" },
+    Multi = false,
+    Default = "Remote",
+    Callback = function(v)
+        Library.Flags.Parry_Options = v
+    end,
+})
+
+MainTab:AddDropdown("ClashThresholdDropdown", {
+    Title = "clashing threshold",
+    Values = { "1", "2", "3" },
+    Multi = false,
+    Default = "1",
+    Callback = function(v)
+        Library.Flags.Clashing_Threshold = tostring(v)
+    end,
+})
+
+MainTab:AddSlider("ParryRangeSlider", {
+    Title = "parry range",
+    Default = 0,
+    Min = 0, Max = 10, Rounding = 1,
+    Callback = function(v)
+        Library.Flags.Parry_Range = tonumber(v)
+    end,
+})
+
+MainTab:AddSlider("AccuracySlider", {
+    Title = "parry accuracy",
+    Default = 72,
+    Min = 1, Max = 100, Rounding = 1,
+    Callback = function(v)
+        Library.Flags.Parry_Accuracy = tonumber(v)
+        if Library.Flags.Phantom_Detection then
+            Speed_Divisor_Multiplier = 0.8 + (v - 1) * 0.024747474747474751
+        else
+            Speed_Divisor_Multiplier = 0.8 + (v - 1) * 0.0030303030303030303
+        end
+    end,
+})
+
+MainTab:AddToggle("CooldownProtectionToggle", {
+    Title = "cooldown protection",
+    Default = false,
+    Callback = function(arg)
+        getgenv().Cooldown_Protection = arg
+    end,
+})
+
+MainTab:AddToggle("AutoAbilityToggle", {
+    Title = "auto ability",
+    Default = false,
+    Callback = function(arg)
+        getgenv().Auto_Ability = arg
+    end,
+})
+
+VisualTab:AddToggle("PhantomDetectionToggle", {
+    Title = "phantom protection",
+    Default = false,
+    Callback = function(arg)
+        Library.Flags.Phantom_Detection = arg
+        if arg then
+            Speed_Divisor_Multiplier = 0.8 + ((Library.Flags.Parry_Accuracy or 72) - 1) * 0.024747474747474751
+        else
+            Speed_Divisor_Multiplier = 0.8 + ((Library.Flags.Parry_Accuracy or 72) - 1) * 0.0030303030303030303
+        end
+    end,
+})
+
+-- defaults
+Library.Flags.Parry_Type = "Camera"
+Library.Flags.Parry_Options = "Remote"
+Library.Flags.Clashing_Threshold = "1"
+Library.Flags.Parry_Range = 0
+Library.Flags.Parry_Accuracy = 72
+Speed_Divisor_Multiplier = 0.8 + (72 - 1) * 0.0030303030303030303
+
+-- =========================================================
+-- Keybinds (byte — hotkeys parry types)
+-- =========================================================
+Connections_Manager["Keybinds Parry Types"] = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    local keyCode = input.KeyCode
+    local parryType
+    if keyCode == Enum.KeyCode.Z or keyCode == Enum.KeyCode.One then
+        parryType = Library.Flags.Parry_Type == "Backwards" and "Camera" or "Backwards"
+    end
+    if keyCode == Enum.KeyCode.X or keyCode == Enum.KeyCode.Two then
+        parryType = Library.Flags.Parry_Type == "Dot Pointer" and "Camera" or "Dot Pointer"
+    end
+    if keyCode == Enum.KeyCode.C or keyCode == Enum.KeyCode.Three then
+        parryType = Library.Flags.Parry_Type == "Dot" and "Camera" or "Dot"
+    end
+    if keyCode == Enum.KeyCode.Four then
+        parryType = Library.Flags.Parry_Type == "FFA" and "Camera" or "FFA"
+    end
+    if parryType then
+        Library.Flags.Parry_Type = parryType
+        local dd = Window:GetTab("main")
+        -- update dropdown display
+        for _, v in pairs(Fluent.Tabs or {}) do end
+    end
+end)
