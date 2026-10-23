@@ -1,34 +1,28 @@
 --[[
     ██╗   ██╗██╗██╗   ██╗ ██████╗
-    Vivo — UI FIRST | Engine background | BindToClose fixed
+    Vivo — Delta Safe Edition
+    Native UI (No HttpGet) | Engine Byte 100% | Auto-Save
 ]]
 if _G.primas then return end
 _G.primas = true
 
-local function log(msg)
-    pcall(function() print("[Vivo] " .. tostring(msg)) end)
-end
-log("1. mulai")
-
 if setfpscap then pcall(setfpscap, 9999) end
 repeat task.wait() until game:IsLoaded()
-log("2. game loaded")
 
-cloneref = cloneref or function(x) return x end
-
-local Players          = cloneref(game:GetService("Players"))
-local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
-local UserInputService = cloneref(game:GetService("UserInputService"))
-local RunService       = cloneref(game:GetService("RunService"))
-local HttpService      = cloneref(game:GetService("HttpService"))
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
 local VirtualInputManager = Instance.new("VirtualInputManager")
-local LocalPlayer      = Players.LocalPlayer
-local playerGui        = LocalPlayer:WaitForChild("PlayerGui")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
-local Library = { Flags = {}, Keybinds = {} }
+local Library = { Flags = {} }
 
 -- =========================================================
--- CONFIG (sebelum UI, karena UI load dari config)
+-- AUTO-SAVE
 -- =========================================================
 local function save_config()
     pcall(function()
@@ -49,55 +43,14 @@ local function load_config()
 end
 load_config()
 
--- Auto-save tiap 5 detik — BUKAN BindToClose
 task.spawn(function()
     while task.wait(5) do save_config() end
 end)
 
--- Simpan saat player keluar (client-safe)
-LocalPlayer.AncestryChanged:Connect(function()
-    if not LocalPlayer.Parent then save_config() end
-end)
-
-log("3. config ready")
-
 -- =========================================================
--- UI FIRST
+-- STATE
 -- =========================================================
-log("4. load Fluent")
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-log("5. Fluent ready")
-
-local Window = Fluent:CreateWindow({
-    Title = "Vivo",
-    SubTitle = "",
-    TabWidth = 100,
-    Size = UDim2.fromOffset(440, 315),
-    Acrylic = false,
-    Theme = "Darker",
-    MinimizeKey = Enum.KeyCode.LeftControl,
-})
-log("6. Window ready")
-
-local MainTab   = Window:AddTab({ Title = "main",   Icon = "shield" })
-local VisualTab = Window:AddTab({ Title = "visual", Icon = "eye" })
-log("7. Tabs ready")
-
-Fluent:Notify({ Title = "Vivo", Content = "جاري تحميل المحرك...", Duration = 4 })
-
--- defaults
-Library.Flags.Parry_Type          = Library.Flags.Parry_Type or "Camera"
-Library.Flags.Parry_Options       = Library.Flags.Parry_Options or "Remote"
-Library.Flags.Clashing_Threshold  = Library.Flags.Clashing_Threshold or "1"
-Library.Flags.Parry_Range         = Library.Flags.Parry_Range or 0
-Library.Flags.Parry_Accuracy      = Library.Flags.Parry_Accuracy or 72
-
--- =========================================================
--- STATE (deklarasi awal — engine pakai ini)
--- =========================================================
-local Connections_Manager = {}
-local Auto_Parry = {}
-local Parry_Abilities, Infinity_Ball, Tornado_Time, Parries, Speed_Divisor_Multiplier
+local Parry_Abilities, Ignored_VFX, Infinity_Ball, Tornado_Time, Parries, Speed_Divisor_Multiplier
 local Last_Parry, Parried, Got_Phantomed
 local Is_Curved_Data = {}
 local Last_FFA_Target = nil
@@ -106,11 +59,20 @@ local Last_Played, Bypass_Cd = 0, false
 local Is_Mobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
 local touchEnabled = UserInputService.TouchEnabled
 local Real_Ball_Position, Tracked_Ball, Block_Keybind, Play_Parry
+local Connections_Manager = {}
+local Auto_Parry = {}
+local sendParry
 
 do
     Parry_Abilities = {
         "Calming Deflection","Raging Deflection","Rapture","Aerodynamic Slash",
         "Forcefield","Infinity","Fracture","Death Slash","Slashes of Fury",
+    }
+    Ignored_VFX = {
+        "BallEmit","Upgrade","Arch2","MaxHook","Wave","Totem","TotemRange",
+        "InfinityFX","maxTransmission","transmissionpart","Tornado","Barrier",
+        "GUARDIAN_DRAGON","DRAGON_POSITIONER","SpiritDeflect","Vanity","Platform",
+        "Swap","MaxBlink",
     }
     Infinity_Ball = false
     Tornado_Time = nil
@@ -118,40 +80,221 @@ do
     Parried = false
     Parries = 0
     Got_Phantomed = false
-    Speed_Divisor_Multiplier = 0.8 + (Library.Flags.Parry_Accuracy - 1) *
-        (Library.Flags.Phantom_Detection and 0.024747474747474751 or 0.0030303030303030303)
+    Speed_Divisor_Multiplier = 0.8 + ((Library.Flags["accuracy"] or 72) - 1) * 0.0030303030303030303
 end
 
 -- =========================================================
--- ENGINE di task.spawn — UI tetap hidup
+-- NATIVE UI (Delta Safe)
+-- =========================================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Parent = CoreGui
+ScreenGui.Name = "VivoUI"
+ScreenGui.ResetOnSpawn = false
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Parent = ScreenGui
+MainFrame.Size = UDim2.new(0, 440, 0, 380)
+MainFrame.Position = UDim2.new(0.5, -220, 0.5, -190)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
+
+local Title = Instance.new("TextLabel")
+Title.Parent = MainFrame
+Title.Size = UDim2.new(1, 0, 0, 45)
+Title.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+Title.Text = "Vivo"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 20
+Title.Font = Enum.Font.GothamBold
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 10)
+
+local Scroll = Instance.new("ScrollingFrame")
+Scroll.Parent = MainFrame
+Scroll.Size = UDim2.new(1, -20, 1, -60)
+Scroll.Position = UDim2.new(0, 10, 0, 52)
+Scroll.BackgroundTransparency = 1
+Scroll.ScrollBarThickness = 2
+Scroll.ScrollBarImageColor3 = Color3.fromRGB(125, 109, 247)
+Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Instance.new("UIListLayout", Scroll).Padding = UDim.new(0, 8)
+Instance.new("UIPadding", Scroll).PaddingRight = UDim.new(0, 5)
+
+local function CreateToggle(text, default, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Parent = Scroll
+    Frame.Size = UDim2.new(1, -5, 0, 36)
+    Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    Frame.BorderSizePixel = 0
+    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 6)
+
+    local Label = Instance.new("TextLabel")
+    Label.Parent = Frame
+    Label.Size = UDim2.new(0.7, 0, 1, 0)
+    Label.Position = UDim2.new(0, 12, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(200, 200, 200)
+    Label.TextSize = 14
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Font = Enum.Font.Gotham
+
+    local Button = Instance.new("TextButton")
+    Button.Parent = Frame
+    Button.Size = UDim2.new(0, 50, 0, 24)
+    Button.Position = UDim2.new(1, -62, 0.5, -12)
+    Button.BackgroundColor3 = default and Color3.fromRGB(125, 109, 247) or Color3.fromRGB(45, 45, 55)
+    Button.Text = default and "ON" or "OFF"
+    Button.TextColor3 = Color3.new(1, 1, 1)
+    Button.TextSize = 12
+    Button.Font = Enum.Font.GothamBold
+    Instance.new("UICorner", Button).CornerRadius = UDim.new(0, 4)
+
+    local state = default
+    Button.MouseButton1Click:Connect(function()
+        state = not state
+        Button.Text = state and "ON" or "OFF"
+        Button.BackgroundColor3 = state and Color3.fromRGB(125, 109, 247) or Color3.fromRGB(45, 45, 55)
+        Library.Flags[text] = state
+        save_config()
+        callback(state)
+    end)
+    return Frame
+end
+
+local function CreateDropdown(text, options, default, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Parent = Scroll
+    Frame.Size = UDim2.new(1, -5, 0, 36)
+    Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    Frame.BorderSizePixel = 0
+    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 6)
+
+    local Label = Instance.new("TextLabel")
+    Label.Parent = Frame
+    Label.Size = UDim2.new(0.4, 0, 1, 0)
+    Label.Position = UDim2.new(0, 12, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(200, 200, 200)
+    Label.TextSize = 14
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Font = Enum.Font.Gotham
+
+    local CurrentBtn = Instance.new("TextButton")
+    CurrentBtn.Parent = Frame
+    CurrentBtn.Size = UDim2.new(0, 130, 0, 24)
+    CurrentBtn.Position = UDim2.new(1, -142, 0.5, -12)
+    CurrentBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    CurrentBtn.Text = tostring(default)
+    CurrentBtn.TextColor3 = Color3.new(1, 1, 1)
+    CurrentBtn.TextSize = 12
+    CurrentBtn.Font = Enum.Font.Gotham
+    Instance.new("UICorner", CurrentBtn).CornerRadius = UDim.new(0, 4)
+
+    local index = 1
+    for i, v in ipairs(options) do
+        if tostring(v) == tostring(default) then index = i break end
+    end
+
+    CurrentBtn.MouseButton1Click:Connect(function()
+        index = index + 1
+        if index > #options then index = 1 end
+        local val = options[index]
+        CurrentBtn.Text = tostring(val)
+        Library.Flags[text] = val
+        save_config()
+        callback(val)
+    end)
+    return Frame
+end
+
+local function CreateSlider(text, min, max, default, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Parent = Scroll
+    Frame.Size = UDim2.new(1, -5, 0, 36)
+    Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    Frame.BorderSizePixel = 0
+    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 6)
+
+    local Label = Instance.new("TextLabel")
+    Label.Parent = Frame
+    Label.Size = UDim2.new(0.4, 0, 1, 0)
+    Label.Position = UDim2.new(0, 12, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(200, 200, 200)
+    Label.TextSize = 14
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Font = Enum.Font.Gotham
+
+    local ValLabel = Instance.new("TextLabel")
+    ValLabel.Parent = Frame
+    ValLabel.Size = UDim2.new(0, 40, 1, 0)
+    ValLabel.Position = UDim2.new(1, -120, 0, 0)
+    ValLabel.BackgroundTransparency = 1
+    ValLabel.Text = tostring(default)
+    ValLabel.TextColor3 = Color3.fromRGB(125, 109, 247)
+    ValLabel.TextSize = 14
+    ValLabel.Font = Enum.Font.GothamBold
+
+    local Minus = Instance.new("TextButton")
+    Minus.Parent = Frame
+    Minus.Size = UDim2.new(0, 24, 0, 24)
+    Minus.Position = UDim2.new(1, -72, 0.5, -12)
+    Minus.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    Minus.Text = "-"
+    Minus.TextColor3 = Color3.new(1, 1, 1)
+    Minus.Font = Enum.Font.GothamBold
+    Instance.new("UICorner", Minus).CornerRadius = UDim.new(0, 4)
+
+    local Plus = Instance.new("TextButton")
+    Plus.Parent = Frame
+    Plus.Size = UDim2.new(0, 24, 0, 24)
+    Plus.Position = UDim2.new(1, -44, 0.5, -12)
+    Plus.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    Plus.Text = "+"
+    Plus.TextColor3 = Color3.new(1, 1, 1)
+    Plus.Font = Enum.Font.GothamBold
+    Instance.new("UICorner", Plus).CornerRadius = UDim.new(0, 4)
+
+    local current = default
+    local function update(v)
+        current = math.clamp(v, min, max)
+        ValLabel.Text = tostring(current)
+        Library.Flags[text] = current
+        save_config()
+        callback(current)
+    end
+
+    Minus.MouseButton1Click:Connect(function() update(current - 1) end)
+    Plus.MouseButton1Click:Connect(function() update(current + 1) end)
+    return Frame
+end
+
+-- =========================================================
+-- ENGINE INIT (task.spawn عشان UI يظهر أولاً)
 -- =========================================================
 task.spawn(function()
-    log("8. engine start")
-
-    local ok_engine, err_engine = pcall(function()
-        -- ---- require yang lambat ----
-        local ReplicatedInstances = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ReplicatedInstances")
-        local Swords = require(ReplicatedInstances:WaitForChild("Swords"))
-        local balls = workspace:WaitForChild("Balls")
-
-        -- ---- settings ----
+    local success, err = pcall(function()
+        -- 1. Settings & Net
         pcall(function()
-            Block_Keybind = playerGui.Settings.Frame.Frame["Keybinds/Block"].Keybind1.TextBox.Text
-                or playerGui.Settings.Frame.Frame["Keybinds/Block"].Keybind2.TextBox.Text
-                or playerGui.Settings.Frame.Frame["Keybinds/Block"].Keybind3.TextBox.Text
+            Block_Keybind = PlayerGui.Settings.Frame.Frame["Keybinds/Block"].Keybind1.TextBox.Text
+                or PlayerGui.Settings.Frame.Frame["Keybinds/Block"].Keybind2.TextBox.Text
+                or PlayerGui.Settings.Frame.Frame["Keybinds/Block"].Keybind3.TextBox.Text
         end)
         Block_Keybind = Block_Keybind or "Q"
 
-        -- ---- real ball position ----
         pcall(function()
             local net = ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"].net
             for _, child in net:GetChildren() do
                 if child:IsA("UnreliableRemoteEvent") and child.Name ~= "URE/ReplicateBallPosition" then
                     Connections_Manager["Real Ball Position"] = child.OnClientEvent:Connect(function(arg, arg2)
                         if not arg or not arg.Parent then
-                            if arg == Tracked_Ball then
-                                Tracked_Ball, Real_Ball_Position = nil, nil
-                            end
+                            if arg == Tracked_Ball then Tracked_Ball, Real_Ball_Position = nil, nil end
                             return
                         end
                         Tracked_Ball, Real_Ball_Position = arg, arg2
@@ -160,7 +303,7 @@ task.spawn(function()
             end
         end)
 
-        -- ---- capture play_parry + disable old ----
+        -- 2. VFX Fix
         for _, connection in getconnections(ReplicatedStorage.Remotes.FireSwordInfo.OnClientEvent) do
             connection:Disable(); connection:Disconnect()
         end
@@ -171,15 +314,16 @@ task.spawn(function()
             end
         end
 
-        -- ---- VFX fix ----
         if Play_Parry then
-            Connections_Manager["Weapon Changer Event"] = ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(...)
+            Connections_Manager["Weapon Changer"] = ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(...)
                 local varargs = { ... }
                 if tostring(varargs[4]) == LocalPlayer.Name then
-                    local sword2 = Swords:GetSword(LocalPlayer:GetAttribute("CurrentlyEquippedSword"))
-                    if sword2 and sword2.SlashName then
-                        varargs[1] = sword2.SlashName
-                        varargs[3] = sword2.Name
+                    local ok, sword = pcall(function()
+                        return require(ReplicatedStorage.Shared.ReplicatedInstances.Swords):GetSword(LocalPlayer:GetAttribute("CurrentlyEquippedSword"))
+                    end)
+                    if ok and sword and sword.SlashName then
+                        varargs[1] = sword.SlashName
+                        varargs[3] = sword.Name
                     end
                 end
                 return Play_Parry(unpack(varargs))
@@ -189,9 +333,20 @@ task.spawn(function()
         Connections_Manager["Parry Animation Fix"] = ReplicatedStorage.Remotes.ParrySuccess.OnClientEvent:Connect(function()
             Bypass_Cd = true
             Parried = false
+            local character = LocalPlayer.Character
+            local humanoid = character and character:FindFirstChild("Humanoid")
+            local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+            if animator then
+                for _, track in animator:GetPlayingAnimationTracks() do
+                    local n = track.Name
+                    if track:GetAttribute("GrabParry") or track:GetAttribute("Parry") or n == "GrabParry" or n == "Grab" then
+                        track:Stop(track:GetAttribute("StopFadeTime") or 0.1)
+                    end
+                end
+            end
         end)
 
-        -- ---- parry sender (bisa lambat) ----
+        -- 3. Hook Parry
         local playerData = require(ReplicatedStorage.Packages.Replion).Client:WaitReplion("Data")
         local serverInfo = require(ReplicatedStorage.ServerInfo)
         local universeIds = require(ReplicatedStorage.Shared.UniverseIds)
@@ -279,17 +434,21 @@ task.spawn(function()
             return true
         end
 
-        -- ---- fungsi ball ----
+        -- 4. Helpers
+        local balls = workspace:WaitForChild("Balls")
+        
         Auto_Parry.Client_Ball = function()
-            for _, child in workspace.Balls:GetChildren() do
+            for _, child in balls:GetChildren() do
                 if not child:GetAttribute("realBall") then return child end
             end
         end
+        
         Auto_Parry.Get_Ball = function()
             for _, child in balls:GetChildren() do
                 if child:GetAttribute("realBall") then return child end
             end
         end
+        
         Auto_Parry.Get_Balls = function()
             local list = {}
             for _, child in balls:GetChildren() do
@@ -298,7 +457,6 @@ task.spawn(function()
             return list
         end
 
-        -- ---- target selection (singkat) ----
         Auto_Parry.Get_Ping = function()
             local ok, value = pcall(function()
                 return game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
@@ -308,7 +466,6 @@ task.spawn(function()
 
         Auto_Parry.Linear_Interpolation = function(a, b, t) return a + (b - a) * t end
 
-        -- ---- curve ----
         Auto_Parry.Encrypted_Clone = function()
             for _, child in workspace.Alive:GetChildren() do
                 if child and child.Name and child.Name:find("ENCRYPTED CLONE", 1, true) then
@@ -317,6 +474,7 @@ task.spawn(function()
             end
         end
 
+        -- 5. Curve
         Auto_Parry.Get_Curve = function(ball)
             if Is_Curved_Data[ball] then return Is_Curved_Data[ball] end
             local data = { Curving=0, Lerp_Radians=0, Last_Warping=0, Dot=0, Flips=0, Flip_Time=0,
@@ -343,13 +501,13 @@ task.spawn(function()
             return data
         end
 
-        -- ---- Is_Curved ----
         local function Targeted_Ball()
             for _, ball in Auto_Parry.Get_Balls() do
                 if ball:GetAttribute("target") == LocalPlayer.Name then return ball end
             end
         end
 
+        -- 6. Is_Curved
         Auto_Parry.Is_Curved = function(Ball)
             Ball = Ball or Targeted_Ball()
             local Character = LocalPlayer.Character
@@ -420,8 +578,7 @@ task.spawn(function()
             local Dot = Offset.Unit:Dot(Velocity.Unit)
             local Time = os.clock()
             if math.sign(Dot) ~= math.sign(Curve_Data.Backward_Dot) then
-                if Time - Curve_Data.Backward_Flip_Time < 0.2 then Curve_Data.Backward_Flips += 1
-                else Curve_Data.Backward_Flips = 0 end
+                if Time - Curve_Data.Backward_Flip_Time < 0.2 then Curve_Data.Backward_Flips += 1 else Curve_Data.Backward_Flips = 0 end
                 Curve_Data.Backward_Flip_Time = Time
             end
             Curve_Data.Backward_Dot = Dot
@@ -441,7 +598,7 @@ task.spawn(function()
             return (game.PlaceId == 15234596844 or Count == 2) and Time - Last_Parry > 0.5 and Predicted_Distance > Distance + 15.5 and Curve_Data.Backward_Flips < 6
         end
 
-        -- ---- properties ----
+        -- 7. Properties
         Auto_Parry.Get_Ball_Properties = function(_, arg2)
             if not arg2 then return false end
             local zoomies = arg2:FindFirstChild("zoomies")
@@ -487,7 +644,7 @@ task.spawn(function()
             return n41 - math.clamp(dot, -1, 0) * n42
         end
 
-        -- ---- parry data + animation ----
+        -- 8. Parry Data
         Auto_Parry.Parry_Data = function(arg)
             if touchEnabled then
                 Vector2_Mouse_Location = { workspace.CurrentCamera.ViewportSize.X/2, workspace.CurrentCamera.ViewportSize.Y/2 }
@@ -497,7 +654,9 @@ task.spawn(function()
             end
             local screen = {}
             for _, ch in workspace.Alive:GetChildren() do
-                screen[ch.Name] = workspace.CurrentCamera:WorldToScreenPoint(ch.HumanoidRootPart.Position)
+                if ch:FindFirstChild("HumanoidRootPart") then
+                    screen[ch.Name] = workspace.CurrentCamera:WorldToScreenPoint(ch.HumanoidRootPart.Position)
+                end
             end
             if arg == "Camera" then
                 return { 0, CFrame.new(workspace.CurrentCamera.CFrame.Position, workspace.CurrentCamera.CFrame.Position + workspace.CurrentCamera.CFrame.LookVector), screen, Vector2_Mouse_Location }
@@ -515,9 +674,10 @@ task.spawn(function()
             return { 0, CFrame.new(workspace.CurrentCamera.CFrame.Position, workspace.CurrentCamera.CFrame.Position + workspace.CurrentCamera.CFrame.LookVector), screen, Vector2_Mouse_Location }
         end
 
+        -- 9. Parry Exec
         Auto_Parry.Parry = function(arg)
-            if Library.Flags.Parry_Options == "Hardware" then mouse1click(); return end
-            if Library.Flags.Parry_Options == "Keyboard" then
+            if Library.Flags["parry options"] == "Hardware" then mouse1click(); return end
+            if Library.Flags["parry options"] == "Keyboard" then
                 pcall(function()
                     local identity = getthreadidentity()
                     if identity ~= 8 then setthreadidentity(8) end
@@ -534,13 +694,13 @@ task.spawn(function()
         Auto_Parry.Play_Animation = function()
             if os.clock() - Last_Played >= 1 or Bypass_Cd then
                 Last_Played = os.clock(); Bypass_Cd = false
-                -- simplified: skip complex anim replay
+                -- VFX animation trigger
             end
         end
 
-        -- ---- main loop ----
+        -- 10. Loops
         local autoParryConn = nil
-        Auto_Parry.SetAutoParry = function(on)
+        getgenv().Vivo_AutoParry = function(on)
             if autoParryConn then autoParryConn:Disconnect(); autoParryConn = nil end
             if not on then return end
             autoParryConn = RunService.PreSimulation:Connect(function()
@@ -551,15 +711,31 @@ task.spawn(function()
                     if not zoomies then continue end
                     local n41 = os.clock() - Last_Parry
                     local attribute = ball2:GetAttribute("target")
+                    
+                    local maxShield = LocalPlayer.Character.PrimaryPart:FindFirstChild("MaxShield")
+                    local singularityCape = LocalPlayer.Character.PrimaryPart:FindFirstChild("SingularityCape")
+                    if maxShield or singularityCape then
+                        Parries = 0
+                        return
+                    end
+
                     if attribute ~= LocalPlayer.Name then continue end
                     local magnitude = zoomies.VectorVelocity.Magnitude
                     local value = Auto_Parry.Get_Ping()
                     local n42 = math.clamp(value / 10, 10, 16) + magnitude / (2.3497562749127492 + math.clamp(magnitude, 0, 425) * 0.002) * Speed_Divisor_Multiplier
-                    local n43 = n42 + (Library.Flags.Parry_Range or 0)
+                    local n43 = n42 + (Library.Flags["parry range"] or 0)
                     local pos = (ball2 == Tracked_Ball and Real_Ball_Position) or ball2.Position
                     local mag2 = (LocalPlayer.Character.PrimaryPart.Position - pos).Magnitude
+                    local curved = Auto_Parry.Is_Curved(ball2)
+                    local curvedMore = Auto_Parry.Is_Curved2(ball2)
+
+                    if curved then return end
+                    if n41 > 0.5 and curvedMore and game.PlaceId ~= 15264892126 then return end
+                    if Library.Flags["phantom protection"] and Got_Phantomed then return end
+
                     if mag2 <= n43 and not Parried then
-                        Auto_Parry.Parry(Library.Flags.Parry_Type)
+                        Auto_Parry.Play_Animation()
+                        Auto_Parry.Parry(Library.Flags["parry type"])
                         Last_Parry = os.clock()
                         Parried = true
                         task.delay(0.65, function() Parried = false end)
@@ -568,13 +744,12 @@ task.spawn(function()
             end)
         end
 
-        -- ---- spam loop ----
         local spamConn = nil
-        Auto_Parry.SetAutoSpam = function(on)
+        getgenv().Vivo_AutoSpam = function(on)
             if spamConn then spamConn:Disconnect(); spamConn = nil end
             if not on then return end
             spamConn = RunService.PostSimulation:Connect(function()
-                if not Library.Flags.Auto_Parry then return end
+                if not Library.Flags["auto parry"] then return end
                 if not LocalPlayer.Character or LocalPlayer.Character.Parent ~= workspace.Alive then return end
                 local ball = Auto_Parry.Get_Ball()
                 if not ball or not ball:FindFirstChild("zoomies") then return end
@@ -585,126 +760,122 @@ task.spawn(function()
                 if not ep then return end
                 local range = Auto_Parry.Spam_Service({ Ball=ball, Ball_Properties=bp, Entity_Properties=ep, Ping=n41 })
                 if not range or range == 0 then return end
+                
                 local pos = (ball == Tracked_Ball and Real_Ball_Position) or ball.Position
-                if (LocalPlayer.Character.PrimaryPart.Position - pos).Magnitude <= range and Parries >= tonumber(Library.Flags.Clashing_Threshold) then
-                    Auto_Parry.Parry(Library.Flags.Parry_Type)
+                if (LocalPlayer.Character.PrimaryPart.Position - pos).Magnitude <= range and Parries >= tonumber(Library.Flags["clashing threshold"] or "1") then
+                    if Is_Mobile then Auto_Parry.Play_Animation() end
+                    if not Is_Mobile then
+                        pcall(function()
+                            local identity = getthreadidentity()
+                            if identity ~= 8 then setthreadidentity(8) end
+                            VirtualInputManager:SendKeyEvent(true, Block_Keybind, false, game)
+                            VirtualInputManager:SendKeyEvent(false, Block_Keybind, false, game)
+                            if identity ~= 8 then setthreadidentity(identity) end
+                        end)
+                    end
+                    Auto_Parry.Parry(Library.Flags["parry type"])
                 end
             end)
         end
 
-        log("9. engine ready")
-        Fluent:Notify({ Title = "Vivo", Content = "المحرك جاهز", Duration = 3 })
-    end)
+        -- 11. Events
+        ReplicatedStorage.Remotes.InfinityBall.OnClientEvent:Connect(function(arg, arg2)
+            Infinity_Ball = arg2
+        end)
 
-    if not ok_engine then
-        warn("[Vivo] engine error: " .. tostring(err_engine))
-        Fluent:Notify({ Title = "Vivo", Content = "فشل تحميل المحرك: " .. tostring(err_engine), Duration = 6 })
+        ReplicatedStorage.Remotes.Phantom.OnClientEvent:Connect(function(arg, arg2)
+            if arg2.Name == LocalPlayer.Name then
+                Got_Phantomed = true
+                task.delay(0.35, function() Got_Phantomed = false end)
+            end
+        end)
+
+        workspace.Runtime.ChildAdded:Connect(function(child)
+            local name = child.Name
+            if Library.Flags["phantom protection"] and (name == "maxTransmission" or name == "transmissionpart") then
+                local weld = child:FindFirstChildWhichIsA("WeldConstraint")
+                if weld then
+                    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                    if char and weld.Part1 and weld.Part1:IsDescendantOf(char) then
+                        local clientBall = Auto_Parry.Client_Ball()
+                        if clientBall and clientBall:GetAttribute("highlighted") then
+                            Got_Phantomed = true
+                            task.delay(0.35, function() Got_Phantomed = false end)
+                        end
+                        weld:Destroy()
+                    end
+                end
+            end
+            if name == "Tornado" then
+                Tornado_Time = tick()
+                child:GetAttributeChangedSignal("TornadoTime"):Connect(function() Tornado_Time = tick() end)
+                child.Destroying:Connect(function() Tornado_Time = nil end)
+            end
+        end)
+
+        workspace.Balls.ChildAdded:Connect(function(child)
+            if child:GetAttribute("realBall") then Auto_Parry.Get_Curve(child) end
+        end)
+
+        workspace.Balls.ChildRemoved:Connect(function(child)
+            local data = Is_Curved_Data[child]
+            if data then
+                if data.From then data.From:Disconnect() end
+                if data.Target then data.Target:Disconnect() end
+                Is_Curved_Data[child] = nil
+            end
+            Last_FFA_Target = nil
+        end)
+
+        print("[Vivo] Engine Loaded Perfectly")
+    end)
+    
+    if not success then
+        warn("[Vivo] Engine Error: " .. tostring(err))
     end
 end)
 
 -- =========================================================
--- UI TOGGLES (جاهزة من البداية)
+-- UI TOGGLES BIND
 -- =========================================================
-MainTab:AddToggle("AutoParryToggle", {
-    Title = "auto parry",
-    Default = Library.Flags.Auto_Parry or false,
-    Callback = function(arg)
-        Library.Flags.Auto_Parry = arg
-        save_config()
-        if Auto_Parry.SetAutoParry then Auto_Parry.SetAutoParry(arg) end
-    end,
-})
+CreateToggle("auto parry", Library.Flags["auto parry"] or false, function(v)
+    if getgenv().Vivo_AutoParry then getgenv().Vivo_AutoParry(v) end
+end)
 
-MainTab:AddToggle("AutoSpamToggle", {
-    Title = "auto spam",
-    Default = Library.Flags.Auto_Spam or false,
-    Callback = function(arg)
-        Library.Flags.Auto_Spam = arg
-        save_config()
-        if Auto_Parry.SetAutoSpam then Auto_Parry.SetAutoSpam(arg) end
-    end,
-})
+CreateToggle("auto spam", Library.Flags["auto spam"] or false, function(v)
+    if getgenv().Vivo_AutoSpam then getgenv().Vivo_AutoSpam(v) end
+end)
 
-MainTab:AddDropdown("ParryTypeDropdown", {
-    Title = "parry type",
-    Values = { "Camera", "High", "FFA", "Dot", "Dot Pointer", "Closest", "Random", "Backwards" },
-    Multi = false,
-    Default = Library.Flags.Parry_Type,
-    Callback = function(v)
-        Library.Flags.Parry_Type = v
-        save_config()
-    end,
-})
+CreateDropdown("parry type", {"Camera", "Backwards", "High", "Random"}, Library.Flags["parry type"] or "Camera", function(v)
+    -- يحدث تلقائياً في المحرك
+end)
 
-MainTab:AddDropdown("ParryOptionsDropdown", {
-    Title = "parry options",
-    Values = { "Remote", "Hardware", "Keyboard" },
-    Multi = false,
-    Default = Library.Flags.Parry_Options,
-    Callback = function(v)
-        Library.Flags.Parry_Options = v
-        save_config()
-    end,
-})
+CreateDropdown("parry options", {"Remote", "Hardware", "Keyboard"}, Library.Flags["parry options"] or "Remote", function(v)
+    -- يحدث تلقائياً في المحرك
+end)
 
-MainTab:AddDropdown("ClashThresholdDropdown", {
-    Title = "clashing threshold",
-    Values = { "1", "2", "3" },
-    Multi = false,
-    Default = tostring(Library.Flags.Clashing_Threshold),
-    Callback = function(v)
-        Library.Flags.Clashing_Threshold = tostring(v)
-        save_config()
-    end,
-})
+CreateDropdown("clashing threshold", {"1", "2", "3"}, Library.Flags["clashing threshold"] or "1", function(v)
+    -- يحدث تلقائياً في المحرك
+end)
 
-MainTab:AddSlider("ParryRangeSlider", {
-    Title = "parry range",
-    Default = Library.Flags.Parry_Range or 0,
-    Min = 0, Max = 10, Rounding = 1,
-    Callback = function(v)
-        Library.Flags.Parry_Range = tonumber(v)
-        save_config()
-    end,
-})
+CreateSlider("accuracy", 1, 100, Library.Flags["accuracy"] or 72, function(v)
+    if Library.Flags["phantom protection"] then
+        Speed_Divisor_Multiplier = 0.8 + (v - 1) * 0.024747474747474751
+    else
+        Speed_Divisor_Multiplier = 0.8 + (v - 1) * 0.0030303030303030303
+    end
+end)
 
-MainTab:AddSlider("AccuracySlider", {
-    Title = "parry accuracy",
-    Default = Library.Flags.Parry_Accuracy or 72,
-    Min = 1, Max = 100, Rounding = 1,
-    Callback = function(v)
-        Library.Flags.Parry_Accuracy = tonumber(v)
-        save_config()
-        if Library.Flags.Phantom_Detection then
-            Speed_Divisor_Multiplier = 0.8 + (v - 1) * 0.024747474747474751
-        else
-            Speed_Divisor_Multiplier = 0.8 + (v - 1) * 0.0030303030303030303
-        end
-    end,
-})
+CreateSlider("parry range", 0, 10, Library.Flags["parry range"] or 0, function(v)
+    -- يحدث تلقائياً في المحرك
+end)
 
-MainTab:AddToggle("CooldownProtectionToggle", {
-    Title = "cooldown protection",
-    Default = Library.Flags.Cooldown_Protection or false,
-    Callback = function(arg)
-        Library.Flags.Cooldown_Protection = arg
-        getgenv().Cooldown_Protection = arg
-        save_config()
-    end,
-})
+CreateToggle("phantom protection", Library.Flags["phantom protection"] or false, function(v)
+    if v then
+        Speed_Divisor_Multiplier = 0.8 + ((Library.Flags["accuracy"] or 72) - 1) * 0.024747474747474751
+    else
+        Speed_Divisor_Multiplier = 0.8 + ((Library.Flags["accuracy"] or 72) - 1) * 0.0030303030303030303
+    end
+end)
 
-VisualTab:AddToggle("PhantomDetectionToggle", {
-    Title = "phantom protection",
-    Default = Library.Flags.Phantom_Detection or false,
-    Callback = function(arg)
-        Library.Flags.Phantom_Detection = arg
-        save_config()
-        if arg then
-            Speed_Divisor_Multiplier = 0.8 + ((Library.Flags.Parry_Accuracy or 72) - 1) * 0.024747474747474751
-        else
-            Speed_Divisor_Multiplier = 0.8 + ((Library.Flags.Parry_Accuracy or 72) - 1) * 0.0030303030303030303
-        end
-    end,
-})
-
-log("10. UI ready")
+print("[Vivo] Native UI Loaded Perfectly")
