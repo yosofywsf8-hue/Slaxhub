@@ -5,7 +5,7 @@
     ╚██╗ ██╔╝██║╚██╗ ██╔╝██║   ██║
      ╚████╔╝ ██║ ╚████╔╝ ╚██████╔╝
       ╚═══╝  ╚═╝  ╚═══╝   ╚═════╝
-    UI: angeli (Fluent) | ENGINE: byte (VFX fix)
+    Vivo — UI angeli | ENGINE byte | Auto-Save + Parry Reliability
 ]]
 if not IB_OBFUSCATED then
     function IB_NO_VIRTUALIZE(Function) return Function end
@@ -25,73 +25,155 @@ end)()
 
 local Library = { Flags = {}, Keybinds = {} }
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
 
 -- =========================================================
--- BYTE: createParrySender
+-- CONFIG AUTO-SAVE
+-- =========================================================
+if not isfolder("Vivo") then makefolder("Vivo") end
+local CONFIG_PATH = "Vivo/config.json"
+
+local function save_config()
+    pcall(function()
+        writefile(CONFIG_PATH, HttpService:JSONEncode(Library.Flags))
+    end)
+end
+
+local function load_config()
+    pcall(function()
+        if isfile(CONFIG_PATH) then
+            local data = HttpService:JSONDecode(readfile(CONFIG_PATH))
+            for k, v in pairs(data) do
+                Library.Flags[k] = v
+            end
+        end
+    end)
+end
+load_config()
+
+task.spawn(function()
+    while task.wait(5) do
+        save_config()
+    end
+end)
+
+game:BindToClose(function()
+    save_config()
+end)
+
+-- =========================================================
+-- createParrySender (محصّن)
 -- =========================================================
 local function createParrySender()
-    local playerData = require(ReplicatedStorage.Packages.Replion).Client:WaitReplion("Data")
-    local serverInfo = require(ReplicatedStorage.ServerInfo)
-    local universeIds = require(ReplicatedStorage.Shared.UniverseIds)
-    local noobParry = not serverInfo.isDungeonsMatchServer()
-        and game.PlaceId ~= universeIds.RankedMatches.PlaceId
-        and game.PlaceId ~= universeIds.RankedMatchesNoAbility.PlaceId
-        and not serverInfo.isMedalServer()
-        and not serverInfo.isClanWarServer()
-        and not serverInfo.isTournamentMatchServer()
-        and require(ReplicatedStorage.Common.Utils).FFlag.GetInstantFFlag("NoobParryEnabled", true)
-    local parryFunction = require(ReplicatedStorage.Controllers["SwordsController \012"].PRY)
-    local encoder = debug.getupvalue(parryFunction, 4)
-    local hash = debug.getupvalue(parryFunction, 8)
-    local remote, key, timeKey
-    local timeHash = {}
-    local durations = {1.5, 1.25, 1, 0.75, 0.625}
-    local signal = require(ReplicatedStorage.Packages.Signal).new()
-    signal:Connect(parryFunction)
+    local ok, result = pcall(function()
+        local playerData = require(ReplicatedStorage.Packages.Replion).Client:WaitReplion("Data")
+        local serverInfo = require(ReplicatedStorage.ServerInfo)
+        local universeIds = require(ReplicatedStorage.Shared.UniverseIds)
+        local noobParry = not serverInfo.isDungeonsMatchServer()
+            and game.PlaceId ~= universeIds.RankedMatches.PlaceId
+            and game.PlaceId ~= universeIds.RankedMatchesNoAbility.PlaceId
+            and not serverInfo.isMedalServer()
+            and not serverInfo.isClanWarServer()
+            and not serverInfo.isTournamentMatchServer()
+            and require(ReplicatedStorage.Common.Utils).FFlag.GetInstantFFlag("NoobParryEnabled", true)
 
-    local function capture(event, eventHash, eventKey, proof, duration, direction, targets, aim, flag)
-        if eventHash == hash and type(eventKey) == "string" and type(proof) == "string"
-            and type(duration) == "number" and typeof(direction) == "CFrame"
-            and type(targets) == "table" and type(aim) == "table" and type(flag) == "boolean" then
-            remote, key = event, eventKey
-        end
-    end
-    local fireServer
-    fireServer = hookfunction(Instance.new("RemoteEvent").FireServer, newcclosure(IB_NO_VIRTUALIZE(function(event, ...)
-        if not remote and not checkcaller() then
-            capture(event, ...)
-        end
-        return fireServer(event, ...)
-    end)))
+        local parryFunction = require(ReplicatedStorage.Controllers["SwordsController \012"].PRY)
+        local encoder = debug.getupvalue(parryFunction, 4)
+        local hash = debug.getupvalue(parryFunction, 8)
 
-    return function(direction, targets, aim)
-        local duration = durations[(playerData:Get("timesParried") or 0) + 1] or 0.5
-        if noobParry then
-            local kills = playerData:Get("TotalStats.Kills") or 0
-            duration = kills < 20 and duration * kills / 20 or duration
+        if type(encoder) ~= "function" or type(hash) ~= "string" then
+            warn("[Vivo] encoder/hash غير متوفرين — parry محلي فقط")
         end
-        if not key then
-            signal:Fire(duration, direction, targets, aim, false)
+
+        local remote, key, timeKey
+        local timeHash = {}
+        local durations = {1.5, 1.25, 1, 0.75, 0.625}
+        local signal = require(ReplicatedStorage.Packages.Signal).new()
+        signal:Connect(parryFunction)
+
+        Player.CharacterAdded:Connect(function()
+            remote, key, timeKey = nil, nil, nil
+        end)
+
+        local function capture(event, eventHash, eventKey, proof, duration, direction, targets, aim, flag)
+            if eventHash == hash and type(eventKey) == "string" and type(proof) == "string"
+                and type(duration) == "number" and typeof(direction) == "CFrame"
+                and type(targets) == "table" and type(aim) == "table" and type(flag) == "boolean" then
+                remote, key = event, eventKey
+            end
+        end
+
+        local fireServer
+        fireServer = hookfunction(Instance.new("RemoteEvent").FireServer, newcclosure(IB_NO_VIRTUALIZE(function(event, ...)
+            if not remote and not checkcaller() then
+                capture(event, ...)
+            end
+            return fireServer(event, ...)
+        end)))
+
+        return function(direction, targets, aim)
+            local idx = math.min((playerData:Get("timesParried") or 0) + 1, #durations)
+            local duration = durations[idx] or 0.5
+            if noobParry then
+                local kills = playerData:Get("TotalStats.Kills") or 0
+                duration = kills < 20 and duration * kills / 20 or duration
+            end
+
+            if not key then
+                pcall(function() signal:Fire(duration, direction, targets, aim, false) end)
+                return false
+            end
+
+            local okE, tk = pcall(function() return encoder(key, "TIME") end)
+            if not okE or type(tk) ~= "string" then
+                local ok2, tk2 = pcall(function() return encoder(key, "NONCE") end)
+                if ok2 and type(tk2) == "string" then
+                    timeKey = tk2
+                else
+                    pcall(function() signal:Fire(duration, direction, targets, aim, false) end)
+                    return false
+                end
+            else
+                timeKey = tk
+            end
+
+            local stamp = tostring(math.floor(workspace:GetServerTimeNow() * 100))
+            table.clear(timeHash)
+            local ok3 = pcall(function()
+                for index = 1, #stamp do
+                    timeHash[index] = string.char(bit32.bxor(
+                        (string.byte(stamp, index) + index) % 256,
+                        string.byte(timeKey, (index - 1) % #timeKey + 1)
+                    ))
+                end
+            end)
+            if not ok3 then
+                pcall(function() signal:Fire(duration, direction, targets, aim, false) end)
+                return false
+            end
+
+            local ok4 = pcall(function()
+                fireServer(remote, hash, key, table.concat(timeHash), duration, direction, targets, aim, false)
+            end)
+            if not ok4 then
+                pcall(function() signal:Fire(duration, direction, targets, aim, false) end)
+                return false
+            end
             return true
         end
-        timeKey = timeKey or encoder(key, "TIME")
-        local stamp = tostring(math.floor(workspace:GetServerTimeNow() * 100))
-        table.clear(timeHash)
-        for index = 1, #stamp do
-            timeHash[index] = string.char(bit32.bxor(
-                (string.byte(stamp, index) + index) % 256,
-                string.byte(timeKey, (index - 1) % #timeKey + 1)
-            ))
-        end
-        fireServer(remote, hash, key, table.concat(timeHash), duration, direction, targets, aim, false)
-        return true
+    end)
+
+    if not ok then
+        warn("[Vivo] createParrySender gagal: " .. tostring(result))
+        return function() return false end
     end
+    return result
 end
 
 local sendParry = createParrySender()
 
 -- =========================================================
--- BYTE: state + Connections
+-- STATE + Connections
 -- =========================================================
 local Connections_Manager = {}
 local Auto_Parry = {}
@@ -102,7 +184,6 @@ local UserInputService = game:GetService("UserInputService")
 local touchEnabled = UserInputService.TouchEnabled
 local ReplicatedInstances = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ReplicatedInstances")
 local Swords = require(ReplicatedInstances:WaitForChild("Swords"))
-
 local Saved_Sword_Model = Swords:GetSword(Player:GetAttribute("CurrentlyEquippedSword"))
 
 local Play_Parry, Sword_Function, Block_Keybind, Real_Ball_Position, Tracked_Ball
@@ -170,7 +251,7 @@ for _, connection in getconnections(ReplicatedStorage.Remotes.ParrySuccessAll.On
 end
 
 -- =========================================================
--- BYTE: state variables
+-- Variables
 -- =========================================================
 local Parry_Abilities, Ignored_VFX, Infinity_Ball, Tornado_Time, Parries, Speed_Divisor_Multiplier
 local Last_Parry, Parried
@@ -201,7 +282,7 @@ do
 end
 
 -- =========================================================
--- ★ VFX FIX — Weapon Changer Event (byte)
+-- VFX FIX
 -- =========================================================
 Connections_Manager["Weapon Changer Event"] = ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(...)
     local varargs = { ... }
@@ -216,11 +297,9 @@ Connections_Manager["Weapon Changer Event"] = ReplicatedStorage.Remotes.ParrySuc
     return Play_Parry(unpack(varargs))
 end)
 
--- =========================================================
--- ★ VFX FIX — Parry Animation Fix (byte)
--- =========================================================
 Connections_Manager["Parry Animation Fix"] = ReplicatedStorage.Remotes.ParrySuccess.OnClientEvent:Connect(function()
     Bypass_Cd = true
+    Parried = false
     local character = Player.Character
     local humanoid = character and character:FindFirstChild("Humanoid")
     local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
@@ -235,7 +314,7 @@ Connections_Manager["Parry Animation Fix"] = ReplicatedStorage.Remotes.ParrySucc
 end)
 
 -- =========================================================
--- BYTE: ball finders
+-- Ball Finders
 -- =========================================================
 Auto_Parry.Client_Ball = function()
     for _, child in workspace.Balls:GetChildren() do
@@ -258,7 +337,7 @@ Auto_Parry.Get_Balls = function()
 end
 
 -- =========================================================
--- BYTE: target selection
+-- Target Selection
 -- =========================================================
 do
     local chosen = nil
@@ -405,7 +484,7 @@ do
 end
 
 -- =========================================================
--- BYTE: Parry_Data
+-- Parry_Data
 -- =========================================================
 Auto_Parry.Parry_Data = function(arg)
     if touchEnabled then
@@ -494,7 +573,7 @@ Auto_Parry.Parry_Data = function(arg)
 end
 
 -- =========================================================
--- BYTE: Parry + Animation
+-- Parry + Animation
 -- =========================================================
 do
     Auto_Parry.Parry = function(arg)
@@ -556,7 +635,7 @@ do
 end
 
 -- =========================================================
--- BYTE: curve cache
+-- Curve Cache
 -- =========================================================
 Auto_Parry.Get_Curve = function(ball)
     if Is_Curved_Data[ball] then return Is_Curved_Data[ball] end
@@ -607,7 +686,7 @@ local function Targeted_Ball()
 end
 
 -- =========================================================
--- BYTE: Is_Curved + Is_Curved2
+-- Is_Curved + Is_Curved2 (محصّن)
 -- =========================================================
 function Auto_Parry.Is_Curved(Ball)
     Ball = Ball or Targeted_Ball()
@@ -653,6 +732,7 @@ function Auto_Parry.Is_Curved(Ball)
         Ball_Distance_Threshold = math.max(Ball_Distance_Threshold - 15, 15)
     end
     if Curve_Data.Flips >= 5 then return false end
+    if Distance < 10 then return false end
     if Dot < 0 then return true end
     if Distance < Ball_Distance_Threshold then return false end
     if Dot_Difference < Dot_Threshold then return true end
@@ -709,7 +789,7 @@ function Auto_Parry.Is_Curved2(Ball)
 end
 
 -- =========================================================
--- BYTE: ball/entity/spam properties
+-- Ball/Entity Properties
 -- =========================================================
 Auto_Parry.Get_Ball_Properties = function(arg, arg2)
     if not arg2 then return false end
@@ -745,25 +825,31 @@ Auto_Parry.Get_Entity_Properties = function()
     }
 end
 
+-- =========================================================
+-- Spam_Service (محصّن — math.min + هامش 50%)
+-- =========================================================
 Auto_Parry.Spam_Service = function(arg)
     local ball = arg.Ball
-    if not ball then return false end
+    if not ball then return 0 end
     local zoomies = ball:FindFirstChild("zoomies")
-    if not zoomies then return false end
+    if not zoomies then return 0 end
     local vectorVelocity = zoomies.VectorVelocity
     local magnitude = vectorVelocity.Magnitude
     local position = (ball == Tracked_Ball and Real_Ball_Position) or ball.Position
     local dot = (Player.Character.HumanoidRootPart.Position - position).Unit:Dot(vectorVelocity.Unit)
     local n41 = arg.Ping + math.min(magnitude / 5.8, 100)
-    if arg.Entity_Properties.Distance > n41 or arg.Ball_Properties.Distance > n41 then
+
+    local closestDistance = math.min(arg.Entity_Properties.Distance, arg.Ball_Properties.Distance)
+    if closestDistance > n41 * 1.5 then
         return 0
     end
+
     local n42 = 5 - math.min(magnitude / 5, 5)
     return n41 - math.clamp(dot, -1, 0) * n42
 end
 
 -- =========================================================
--- BYTE: Triggerbot
+-- Triggerbot
 -- =========================================================
 do
     local pendingBall, pendingTarget
@@ -840,7 +926,7 @@ do
 end
 
 -- =========================================================
--- BYTE: workspace events
+-- Workspace Events
 -- =========================================================
 Connections_Manager["Infinity Ball"] = ReplicatedStorage.Remotes.InfinityBall.OnClientEvent:Connect(function(arg, arg2)
     Infinity_Ball = arg2
@@ -907,7 +993,7 @@ Connections_Manager["Ball Removed"] = workspace.Balls.ChildRemoved:Connect(funct
 end)
 
 -- =========================================================
--- UI: angeli (Fluent) — فقط
+-- UI (angeli — Fluent)
 -- =========================================================
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local Window = Fluent:CreateWindow({
@@ -923,22 +1009,23 @@ local Window = Fluent:CreateWindow({
 local MainTab = Window:AddTab({ Title = "main", Icon = "shield" })
 local VisualTab = Window:AddTab({ Title = "visual", Icon = "eye" })
 
--- defaults byte
-Library.Flags.Parry_Type = "Camera"
-Library.Flags.Parry_Options = "Remote"
-Library.Flags.Clashing_Threshold = "1"
-Library.Flags.Parry_Range = 0
-Library.Flags.Parry_Accuracy = 72
-Speed_Divisor_Multiplier = 0.8 + (72 - 1) * 0.0030303030303030303
+-- defaults + load
+Library.Flags.Parry_Type = Library.Flags.Parry_Type or "Camera"
+Library.Flags.Parry_Options = Library.Flags.Parry_Options or "Remote"
+Library.Flags.Clashing_Threshold = Library.Flags.Clashing_Threshold or "1"
+Library.Flags.Parry_Range = Library.Flags.Parry_Range or 0
+Library.Flags.Parry_Accuracy = Library.Flags.Parry_Accuracy or 72
+Speed_Divisor_Multiplier = 0.8 + (Library.Flags.Parry_Accuracy - 1) * (Library.Flags.Phantom_Detection and 0.024747474747474751 or 0.0030303030303030303)
 
 -- =========================================================
--- Auto Parry — byte exact
+-- Auto Parry Toggle
 -- =========================================================
 MainTab:AddToggle("AutoParryToggle", {
     Title = "auto parry",
-    Default = false,
+    Default = Library.Flags.Auto_Parry or false,
     Callback = function(arg)
         Library.Flags.Auto_Parry = arg
+        save_config()
         if arg then
             if Connections_Manager["Auto Parry"] then
                 Connections_Manager["Auto Parry"]:Disconnect()
@@ -977,7 +1064,7 @@ MainTab:AddToggle("AutoParryToggle", {
                     local magnitude = zoomies.VectorVelocity.Magnitude
                     local value = Auto_Parry.Get_Ping()
                     local n42 = math.clamp(value / 10, 10, 16) + magnitude / (2.3497562749127492 + math.clamp(magnitude, 0, 425) * 0.002) * Speed_Divisor_Multiplier
-                    local n43 = n42 + Library.Flags.Parry_Range or 0
+                    local n43 = n42 + (Library.Flags.Parry_Range or 0)
                     local position
 
                     if ball2 == Tracked_Ball and Real_Ball_Position then
@@ -1039,6 +1126,12 @@ MainTab:AddToggle("AutoParryToggle", {
                         Parried = true
                         local now3 = os.clock()
 
+                        task.delay(1.5, function()
+                            if os.clock() - Last_Parry >= 1.0 then
+                                Parried = false
+                            end
+                        end)
+
                         task.spawn(function()
                             local n44 = math.clamp(value / 10, 5, 17)
                             local ballProperties = Auto_Parry:Get_Ball_Properties(ball2)
@@ -1082,13 +1175,14 @@ MainTab:AddToggle("AutoParryToggle", {
 })
 
 -- =========================================================
--- Auto Spam — byte exact
+-- Auto Spam Toggle
 -- =========================================================
 MainTab:AddToggle("AutoSpamToggle", {
     Title = "auto spam",
-    Default = false,
+    Default = Library.Flags.Auto_Spam or false,
     Callback = function(arg)
         Library.Flags.Auto_Spam = arg
+        save_config()
         if arg then
             if Connections_Manager["Auto Spam"] then
                 Connections_Manager["Auto Spam"]:Disconnect()
@@ -1157,6 +1251,7 @@ MainTab:AddKeybind("TriggerbotKey", {
     Default = "T",
     Callback = function(arg)
         Library.Flags.Triggerbot = arg
+        save_config()
         Auto_Parry.Start_Triggerbot()
     end,
 })
@@ -1168,37 +1263,52 @@ MainTab:AddDropdown("ParryTypeDropdown", {
     Title = "parry type",
     Values = { "Camera", "High", "FFA", "Dot", "Dot Pointer", "Closest", "Random", "Backwards" },
     Multi = false,
-    Default = "Camera",
-    Callback = function(v) Library.Flags.Parry_Type = v end,
+    Default = Library.Flags.Parry_Type,
+    Callback = function(v)
+        Library.Flags.Parry_Type = v
+        save_config()
+    end,
 })
 
 MainTab:AddDropdown("ParryOptionsDropdown", {
     Title = "parry options",
     Values = { "Remote", "Hardware", "Keyboard" },
     Multi = false,
-    Default = "Remote",
-    Callback = function(v) Library.Flags.Parry_Options = v end,
+    Default = Library.Flags.Parry_Options,
+    Callback = function(v)
+        Library.Flags.Parry_Options = v
+        save_config()
+    end,
 })
 
 MainTab:AddDropdown("ClashThresholdDropdown", {
     Title = "clashing threshold",
     Values = { "1", "2", "3" },
     Multi = false,
-    Default = "1",
-    Callback = function(v) Library.Flags.Clashing_Threshold = tostring(v) end,
+    Default = tostring(Library.Flags.Clashing_Threshold),
+    Callback = function(v)
+        Library.Flags.Clashing_Threshold = tostring(v)
+        save_config()
+    end,
 })
 
 MainTab:AddSlider("ParryRangeSlider", {
     Title = "parry range",
-    Default = 0, Min = 0, Max = 10, Rounding = 1,
-    Callback = function(v) Library.Flags.Parry_Range = tonumber(v) end,
+    Default = Library.Flags.Parry_Range or 0,
+    Min = 0, Max = 10, Rounding = 1,
+    Callback = function(v)
+        Library.Flags.Parry_Range = tonumber(v)
+        save_config()
+    end,
 })
 
 MainTab:AddSlider("AccuracySlider", {
     Title = "parry accuracy",
-    Default = 72, Min = 1, Max = 100, Rounding = 1,
+    Default = Library.Flags.Parry_Accuracy or 72,
+    Min = 1, Max = 100, Rounding = 1,
     Callback = function(v)
         Library.Flags.Parry_Accuracy = tonumber(v)
+        save_config()
         if Library.Flags.Phantom_Detection then
             Speed_Divisor_Multiplier = 0.8 + (v - 1) * 0.024747474747474751
         else
@@ -1209,21 +1319,30 @@ MainTab:AddSlider("AccuracySlider", {
 
 MainTab:AddToggle("CooldownProtectionToggle", {
     Title = "cooldown protection",
-    Default = false,
-    Callback = function(arg) getgenv().Cooldown_Protection = arg end,
+    Default = Library.Flags.Cooldown_Protection or false,
+    Callback = function(arg)
+        Library.Flags.Cooldown_Protection = arg
+        getgenv().Cooldown_Protection = arg
+        save_config()
+    end,
 })
 
 MainTab:AddToggle("AutoAbilityToggle", {
     Title = "auto ability",
-    Default = false,
-    Callback = function(arg) getgenv().Auto_Ability = arg end,
+    Default = Library.Flags.Auto_Ability or false,
+    Callback = function(arg)
+        Library.Flags.Auto_Ability = arg
+        getgenv().Auto_Ability = arg
+        save_config()
+    end,
 })
 
 VisualTab:AddToggle("PhantomDetectionToggle", {
     Title = "phantom protection",
-    Default = false,
+    Default = Library.Flags.Phantom_Detection or false,
     Callback = function(arg)
         Library.Flags.Phantom_Detection = arg
+        save_config()
         if arg then
             Speed_Divisor_Multiplier = 0.8 + ((Library.Flags.Parry_Accuracy or 72) - 1) * 0.024747474747474751
         else
@@ -1253,5 +1372,20 @@ Connections_Manager["Keybinds Parry Types"] = UserInputService.InputBegan:Connec
     end
     if parryType then
         Library.Flags.Parry_Type = parryType
+        save_config()
     end
+end)
+
+-- =========================================================
+-- إشعار أول مرة
+-- =========================================================
+task.spawn(function()
+    task.wait(3)
+    pcall(function()
+        Fluent:Notify({
+            Title = "Vivo",
+            Content = "إذا لم يعمل parry تلقائياً، اضغط Block يدوياً مرة واحدة لتفعيل الـ hook",
+            Duration = 6,
+        })
+    end)
 end)
