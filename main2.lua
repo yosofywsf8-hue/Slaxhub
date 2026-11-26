@@ -1,189 +1,355 @@
+-- ============================================================
+-- OXY AUTHENTIC REBUILD (DRAWING UI + ORIGINAL LOGIC)
+-- ============================================================
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local Stats = game:GetService("Stats")
-local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
-local DataPing = Stats.Network.ServerStatsItem["Data Ping"]
+local Mouse = LocalPlayer:GetMouse()
 
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+-- ============================================================
+-- 1. CUSTOM UI (DRAWING API)
+-- ============================================================
+local OxyUI = Instance.new("ScreenGui")
+OxyUI.Name = "OxyCustomUI"
+OxyUI.ResetOnSpawn = false
+OxyUI.Parent = game:GetService("CoreGui")
 
-local Window = Fluent:CreateWindow({
-    Title = "Oxy | Premium",
-    SubTitle = "Predictive AI Engine",
-    TabWidth = 145,
-    Size = UDim2.fromOffset(480, 320),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
-})
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 300, 0, 250)
+MainFrame.Position = UDim2.new(0.5, -150, 0.5, -125)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = OxyUI
 
-local Tabs = {
-    Combat = Window:AddTab({ Title = "Combat", Icon = "crosshair" }),
-    Visual = Window:AddTab({ Title = "Visual", Icon = "eye" }),
-    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
-}
+local UICorner = Instance.new("UICorner", MainFrame)
+UICorner.CornerRadius = UDim.new(0, 10)
 
-local CONFIG = {
-    AutoParry = false,
-    Accuracy = 100,
-    Range = 45,
-    HumanReaction = 0.1,
-}
+local TopBar = Instance.new("Frame", MainFrame)
+TopBar.Size = UDim2.new(1, 0, 0, 35)
+TopBar.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+TopBar.BorderSizePixel = 0
+local TopCorner = Instance.new("UICorner", TopBar)
+TopCorner.CornerRadius = UDim.new(0, 10)
 
-local token_fn = nil
+local Title = Instance.new("TextLabel", TopBar)
+Title.Size = UDim2.new(1, -10, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "Oxy | Rebuild"
+Title.TextColor3 = Color3.fromRGB(170, 0, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+local ToggleBtn = Instance.new("TextButton", MainFrame)
+ToggleBtn.Size = UDim2.new(1, -40, 0, 40)
+ToggleBtn.Position = UDim2.new(0, 20, 0, 60)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+ToggleBtn.Text = "Auto Parry: OFF"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.TextSize = 14
+local BtnCorner = Instance.new("UICorner", ToggleBtn)
+BtnCorner.CornerRadius = UDim.new(0, 5)
+
+local StatusLbl = Instance.new("TextLabel", MainFrame)
+StatusLbl.Size = UDim2.new(1, -40, 0, 20)
+StatusLbl.Position = UDim2.new(0, 20, 0, 110)
+StatusLbl.BackgroundTransparency = 1
+StatusLbl.Text = "Status: Initializing..."
+StatusLbl.TextColor3 = Color3.fromRGB(150, 150, 150)
+StatusLbl.Font = Enum.Font.Gotham
+StatusLbl.TextSize = 12
+StatusLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+-- ============================================================
+-- 2. ORIGINAL OXY LOGIC (EVENT CAPTURE & TOKEN BYPASS)
+-- ============================================================
+local Runtime = {}
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+local Balls = workspace:WaitForChild("Balls")
+local Alive = workspace:WaitForChild("Alive")
+local LocalName = LocalPlayer.Name
+
+local ParryConnections = {}
+local PlayParry = nil
+local SwordFn = nil
+
+if Remotes and type(getconnections) == "function" then
+    local ParrySuccessAll = Remotes:WaitForChild("ParrySuccessAll", 10)
+    if ParrySuccessAll then
+        local success, conns = pcall(getconnections, ParrySuccessAll.OnClientEvent)
+        if success and type(conns) == "table" then
+            for _, conn in ipairs(conns) do
+                local s, func = pcall(function() return conn.Function end)
+                if s and type(func) == "function" then
+                    table.insert(ParryConnections, conn)
+                    PlayParry = func
+                end
+            end
+        end
+    end
+    local FireSwordInfo = Remotes:WaitForChild("FireSwordInfo", 10)
+    if FireSwordInfo then
+        local success, conns = pcall(getconnections, FireSwordInfo.OnClientEvent)
+        if success and type(conns) == "table" then
+            for _, conn in ipairs(conns) do
+                local s, func = pcall(function() return conn.Function end)
+                if s and type(func) == "function" then
+                    SwordFn = func
+                end
+            end
+        end
+    end
+end
+
+local EventCapture = { Captured = {}, Hooked = {}, Originals = {}, TokenFn = nil }
+
 for _, fn in getgc(true) do
     if type(fn) == "function" and debug.info(fn, "s"):find("PRY", 1, true) then
         for _, upval in debug.getupvalues(fn) do
             if type(upval) == "function" then
-                token_fn = upval
+                EventCapture.TokenFn = upval
                 break
             end
         end
+        if EventCapture.TokenFn then break end
     end
-    if token_fn then break end
 end
 
-if not token_fn then
-    Window:Dialog({ Title = "Error", Content = "Executor not supported.", Buttons = {{Title = "OK", Callback = function() end}} })
-    return
-end
-
-local function generateToken(data)
-    local timeStr = tostring(math.floor(Workspace:GetServerTimeNow() * 100))
-    local secret = token_fn(data, "TIME")
-    local output = {}
+EventCapture.Tokenize = function(data)
+    if not EventCapture.TokenFn then return data end
+    local timeStr = tostring(math.floor(workspace:GetServerTimeNow() * 100))
+    local secret = EventCapture.TokenFn(data, "TIME")
+    local out = {}
     for i = 1, #timeStr do
-        output[i] = string.char(bit32.bxor((string.byte(timeStr, i) + i) % 256, string.byte(secret, (i - 1) % #secret + 1)))
+        out[i] = string.char(bit32.bxor((string.byte(timeStr, i) + i) % 256, string.byte(secret, (i - 1) % #secret + 1)))
     end
-    return table.concat(output)
+    return table.concat(out)
 end
 
-local captured_remote, captured_args = nil, nil
-local hooked_mts = {}
-local function hookRemote(remote)
+EventCapture.Hook = function(remote)
     local mt = getrawmetatable(remote)
-    if hooked_mts[mt] then return end
-    hooked_mts[mt] = true
+    if EventCapture.Hooked[mt] then return end
+    EventCapture.Hooked[mt] = true
     setreadonly(mt, false)
-    local old_index = mt.__index
+    local oldIndex = mt.__index
+    EventCapture.Originals[mt] = oldIndex
     mt.__index = function(self, key)
-        if key == "FireServer" then
+        if key == "FireServer" and self:IsA("RemoteEvent") then
             return function(obj, ...)
                 local args = {...}
                 if #args == 8 and typeof(args[5]) == "CFrame" and type(args[6]) == "table" then
-                    captured_remote = obj
-                    captured_args = args
+                    EventCapture.Captured[self] = args
                 end
-                return old_index(obj, key)(obj, ...)
+                return oldIndex(obj, key)(obj, ...)
             end
         end
-        return old_index(self, key)
+        return oldIndex(self, key)
     end
     setreadonly(mt, true)
 end
 
 for _, obj in ReplicatedStorage:GetDescendants() do
     if obj:IsA("RemoteEvent") then
-        pcall(hookRemote, obj)
+        pcall(EventCapture.Hook, obj)
     end
 end
 
-local last_parry = 0
-local function fireParry()
-    if not (captured_remote and captured_args) then return end
-    if tick() - last_parry < 0.1 then return end
+-- ============================================================
+-- 3. CORE PARRY FUNCTION
+-- ============================================================
+local ParryController = { Count = 0, FirstSignal = nil }
+local Config = { AutoParry = false, Accuracy = 100 }
+
+local function FireParry()
+    if not EventCapture.TokenFn then return end
+    local Camera = workspace.CurrentCamera
+    local Target = nil
+    for _, v in Alive:GetChildren() do
+        if v.Name ~= LocalName and v.PrimaryPart then
+            Target = v
+            break
+        end
+    end
     
-    local new_token = generateToken(captured_args[2])
-    captured_args[3] = new_token
-    captured_args[8] = false
+    local ScreenPos = {}
+    local MousePos = {Mouse.X, Mouse.Y}
     
-    pcall(function()
-        captured_remote:FireServer(unpack(captured_args))
-    end)
-    last_parry = tick()
+    for _, v in Alive:GetChildren() do
+        if v.PrimaryPart then
+            local sp = Camera:WorldToScreenPoint(v.PrimaryPart.Position)
+            if sp.Z > 0 then ScreenPos[v.Name] = sp end
+        end
+    end
+
+    if next(EventCapture.Captured) == nil then
+        if not ParryController.FirstSignal then
+            -- Fallback if PRY controller is not found
+            local success, PRY = pcall(function() return require(ReplicatedStorage.Controllers["SwordsController \12"].PRY) end)
+            if success then
+                ParryController.FirstSignal = require(ReplicatedStorage.Packages.Signal).new()
+                ParryController.FirstSignal:Connect(PRY)
+            end
+        end
+        if ParryController.FirstSignal then
+            ParryController.FirstSignal:Fire(0.5, Camera.CFrame, ScreenPos, MousePos, false)
+        end
+    else
+        for remote, args in pairs(EventCapture.Captured) do
+            local newArgs = {
+                args[1],
+                args[2],
+                EventCapture.Tokenize(args[2]),
+                0.5,
+                Camera.CFrame,
+                ScreenPos,
+                MousePos,
+                false
+            }
+            if remote:IsA("RemoteEvent") then
+                remote:FireServer(unpack(newArgs))
+            elseif remote:IsA("RemoteFunction") then
+                remote:InvokeServer(unpack(newArgs))
+            end
+        end
+    end
 end
 
-local BallsFolder = Workspace:WaitForChild("Balls")
-RunService.PreSimulation:Connect(function()
-    if not CONFIG.AutoParry then return end
+-- ============================================================
+-- 4. BALL PREDICTION & TRIGGER LOOP
+-- ============================================================
+local BallState = { Positions = {}, State = { LastWarping = tick(), Curving = tick() } }
+local Replicator = nil
+
+local net = ReplicatedStorage:FindFirstChild("Packages") and ReplicatedStorage.Packages:FindFirstChild("_Index") and ReplicatedStorage.Packages._Index:FindFirstChild("sleitnick_net@0.1.0") and ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"]:FindFirstChild("net")
+if net then
+    for _, v in net:GetChildren() do
+        if v:IsA("UnreliableRemoteEvent") and v.Name ~= "URE/ReplicateBallPosition" then
+            Replicator = v
+            break
+        end
+    end
+end
+
+if Replicator then
+    Replicator.OnClientEvent:Connect(function(ball, pos)
+        if ball and ball.Parent == Balls and ball:GetAttribute("realBall") then
+            BallState.Positions[ball] = pos
+        end
+    end)
+end
+
+local function GetBall()
+    for _, v in Balls:GetChildren() do
+        if v:GetAttribute("realBall") then return v end
+    end
+    return nil
+end
+
+local function GetBallPos(ball)
+    if ball then return BallState.Positions[ball] or ball.Position end
+    return Vector3.zero
+end
+
+local function IsCurved(ball)
+    local b = ball or GetBall()
+    if b then
+        local zoomies = b:FindFirstChild("zoomies")
+        if not zoomies then return false end
+        local now = tick()
+        local ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+        local vel = zoomies.VectorVelocity
+        local unit = vel.Unit
+        local myPos = LocalPlayer.Character.PrimaryPart.Position
+        local bPos = GetBallPos(b)
+        local dir = (myPos - bPos).Unit
+        local dot = dir:Dot(unit)
+        local speed = vel.Magnitude
+        local dist = (myPos - bPos).Magnitude
+        
+        local extra = math.min(speed / 100, 40)
+        local threshold = 0.5 - ping / 1000
+        local timeThreshold = dist / speed - ping / 1000
+        local safeDist = 15 - math.min(dist / 1000, 15) + extra
+        
+        if speed > 100 and timeThreshold > ping / 10 then
+            safeDist = math.max(safeDist - 15, 15)
+        end
+        if dist < safeDist then return false end
+        if dot < threshold then return true end
+        if now - BallState.State.LastWarping < timeThreshold / 1.5 then return true end
+        if now - BallState.State.Curving < timeThreshold / 1.5 then return true end
+        return dot < threshold
+    end
+    return false
+end
+
+-- ============================================================
+-- 5. MAIN LOOP (OXY LOGIC)
+-- ============================================================
+local ParryDebounce = false
+local ParryUntil = 0
+local AccuracyMult = 1
+
+RunService.PostSimulation:Connect(function()
+    if not Config.AutoParry then return end
     local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    if not char or not char.PrimaryPart then return end
     
-    local hrp = char.HumanoidRootPart
-    local ping = DataPing:GetValue()
-    local accuracyMult = 1 + ((100 - CONFIG.Accuracy) / 100)
+    local now = tick()
+    if ParryDebounce or now < ParryUntil then return end
     
-    for _, ball in BallsFolder:GetChildren() do
-        if ball:GetAttribute("realBall") then
-            local zoomies = ball:FindFirstChild("zoomies")
-            if zoomies then
-                local velocity = zoomies.VectorVelocity
-                local speed = velocity.Magnitude
-                if speed > 5 then
-                    local distance = (hrp.Position - ball.Position).Magnitude
-                    if distance <= CONFIG.Range then
-                        local timeToImpact = distance / speed
-                        local predictTime = (timeToImpact - (ping / 1000) - CONFIG.HumanReaction) * accuracyMult
-                        
-                        if predictTime <= 0.05 and predictTime > -0.2 then
-                            fireParry()
-                        end
-                    end
-                end
-            end
+    local myPos = char.PrimaryPart.Position
+    local pingDist = math.clamp(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() / 10 / 10, 5, 17)
+    local targetAttr = GetBall()
+    targetAttr = targetAttr and targetAttr:GetAttribute("target")
+    
+    for _, ball in Balls:GetChildren() do
+        if not ball then continue end
+        local zoomies = ball:FindFirstChild("zoomies")
+        if not zoomies then continue end
+        
+        local bTarget = ball:GetAttribute("target")
+        local speed = zoomies.VectorVelocity.Magnitude
+        local dist = (myPos - GetBallPos(ball)).Magnitude
+        
+        local aero = 0.002
+        local calcA = (2.4 + math.min(math.max(speed - 9.5, 0), 650) * aero) * AccuracyMult
+        
+        if ball:FindFirstChild("AeroDynamicSlashVFX") then
+            game:GetService("Debris"):AddItem(ball.AeroDynamicSlashVFX, 0)
+            BallState.State.AerodynamicTime = now
+        end
+        
+        local tornado = workspace:FindFirstChild("Runtime") and workspace.Runtime:FindFirstChild("Tornado")
+        local tornadoTime = tornado and (tornado:GetAttribute("TornadoTime") or 1)
+        if tornado and now - BallState.State.AerodynamicTime < tornadoTime + 0.314159 then
+            continue
+        end
+        
+        if targetAttr == LocalName and IsCurved(ball) then
+            continue
+        end
+        
+        if bTarget == LocalName and dist <= pingDist + math.max(speed / calcA, 9.5) then
+            FireParry()
+            ParryDebounce = true
+            ParryUntil = now + 1
         end
     end
 end)
 
-local CombatSection = Tabs.Combat:AddSection("Combat Settings")
+-- UI Interactivity
+ToggleBtn.MouseButton1Click:Connect(function()
+    Config.AutoParry = not Config.AutoParry
+    ToggleBtn.Text = "Auto Parry: " .. (Config.AutoParry and "ON" or "OFF")
+    ToggleBtn.TextColor3 = Config.AutoParry and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 255, 255)
+    StatusLbl.Text = "Status: Active"
+end)
 
-CombatSection:AddToggle("AutoParryToggle", {
-    Title = "Auto Parry [Predictive]",
-    Default = CONFIG.AutoParry,
-    Callback = function(state)
-        CONFIG.AutoParry = state
-        Fluent:Notify({ Title = "Oxy Premium", Content = state and "Auto-Parry: ENABLED" or "Auto-Parry: DISABLED", Duration = 3 })
-    end
-})
-
-CombatSection:AddSlider("AccuracySlider", {
-    Title = "Accuracy",
-    Min = 1,
-    Max = 100,
-    Default = CONFIG.Accuracy,
-    Rounding = 0,
-    Callback = function(val)
-        CONFIG.Accuracy = val
-    end
-})
-
-CombatSection:AddSlider("RangeSlider", {
-    Title = "Max Range",
-    Min = 10,
-    Max = 100,
-    Default = CONFIG.Range,
-    Rounding = 1,
-    Callback = function(val)
-        CONFIG.Range = val
-    end
-})
-
-CombatSection:AddSlider("ReactionSlider", {
-    Title = "Human Reaction (s)",
-    Min = 0.01,
-    Max = 0.5,
-    Default = CONFIG.HumanReaction,
-    Rounding = 2,
-    Callback = function(val)
-        CONFIG.HumanReaction = val
-    end
-})
-
-local InfoSection = Tabs.Settings:AddSection("Information")
-InfoSection:AddParagraph({
-    Title = "Oxy Premium | God Mode",
-    Content = "Developed for Blade Ball.\nPredictive TTI Engine integrated."
-})
-
-Fluent:Notify({ Title = "Oxy Premium", Content = "Interface Loaded successfully.", Duration = 5 })
+StatusLbl.Text = "Status: Loaded & Hooked"
