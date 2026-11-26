@@ -1,6 +1,3 @@
--- ============================================================
--- OXY V2 | FLUENT UI + PREDICTIVE TTI
--- ============================================================
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -9,37 +6,31 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local DataPing = Stats.Network.ServerStatsItem["Data Ping"]
 
--- 1. تحميل واجهة Fluent
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
 local Window = Fluent:CreateWindow({
-    Title = "Oxy | V2 God Mode",
-    SubTitle = "Predictive AI",
+    Title = "Oxy | Premium",
+    SubTitle = "Predictive AI Engine",
     TabWidth = 145,
-    Size = UDim2.fromOffset(440, 315),
+    Size = UDim2.fromOffset(480, 320),
     Acrylic = true,
     Theme = "Dark",
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
 local Tabs = {
-    Combat = Window:AddTab({ Title = "Combat", Icon = "swords" }),
+    Combat = Window:AddTab({ Title = "Combat", Icon = "crosshair" }),
     Visual = Window:AddTab({ Title = "Visual", Icon = "eye" }),
-    Misc = Window:AddTab({ Title = "Misc", Icon = "settings" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
 }
 
--- 2. الإعدادات
 local CONFIG = {
     AutoParry = false,
     Accuracy = 100,
     Range = 45,
     HumanReaction = 0.1,
-    RandomTarget = false
 }
 
--- 3. استخراج دالة التوكن (Anti-Cheat Bypass)
 local token_fn = nil
 for _, fn in getgc(true) do
     if type(fn) == "function" and debug.info(fn, "s"):find("PRY", 1, true) then
@@ -54,7 +45,7 @@ for _, fn in getgc(true) do
 end
 
 if not token_fn then
-    Window:Dialog({ Title = "Error", Content = "Executor lu ga support getgc! Pake Synapse/Codex.", Buttons = {{Title = "OK", Callback = function() end}} })
+    Window:Dialog({ Title = "Error", Content = "Executor not supported.", Buttons = {{Title = "OK", Callback = function() end}} })
     return
 end
 
@@ -68,7 +59,6 @@ local function generateToken(data)
     return table.concat(output)
 end
 
--- 4. اعتراض الـ Remotes
 local captured_remote, captured_args = nil, nil
 local hooked_mts = {}
 local function hookRemote(remote)
@@ -99,7 +89,6 @@ for _, obj in ReplicatedStorage:GetDescendants() do
     end
 end
 
--- 5. إطلاق الباري
 local last_parry = 0
 local function fireParry()
     if not (captured_remote and captured_args) then return end
@@ -115,7 +104,6 @@ local function fireParry()
     last_parry = tick()
 end
 
--- 6. العقل المدبر (Predictive TTI)
 local BallsFolder = Workspace:WaitForChild("Balls")
 RunService.PreSimulation:Connect(function()
     if not CONFIG.AutoParry then return end
@@ -148,15 +136,14 @@ RunService.PreSimulation:Connect(function()
     end
 end)
 
--- 7. بناء الواجهة (Fluent UI)
-local CombatSection = Tabs.Combat:AddSection("Parry Settings")
+local CombatSection = Tabs.Combat:AddSection("Combat Settings")
 
 CombatSection:AddToggle("AutoParryToggle", {
-    Title = "Predictive Auto Parry",
+    Title = "Auto Parry [Predictive]",
     Default = CONFIG.AutoParry,
     Callback = function(state)
         CONFIG.AutoParry = state
-        Fluent:Notify({ Title = "Oxy V2", Content = state and "Auto-Parry: ON" or "Auto-Parry: OFF", Duration = 3 })
+        Fluent:Notify({ Title = "Oxy Premium", Content = state and "Auto-Parry: ENABLED" or "Auto-Parry: DISABLED", Duration = 3 })
     end
 })
 
@@ -193,38 +180,10 @@ CombatSection:AddSlider("ReactionSlider", {
     end
 })
 
-CombatSection:AddToggle("RandomTargetToggle", {
-    Title = "Random Target",
-    Default = CONFIG.RandomTarget,
-    Callback = function(state)
-        CONFIG.RandomTarget = state
-    end
+local InfoSection = Tabs.Settings:AddSection("Information")
+InfoSection:AddParagraph({
+    Title = "Oxy Premium | God Mode",
+    Content = "Developed for Blade Ball.\nPredictive TTI Engine integrated."
 })
 
-local VisualSection = Tabs.Visual:AddSection("ESP")
-VisualSection:AddToggle("AbilityESP", {
-    Title = "Ability ESP",
-    Default = false,
-    Callback = function(state)
-        -- (ESP Logic can be added here)
-    end
-})
-
-local MiscSection = Tabs.Misc:AddSection("Miscellaneous")
-MiscSection:AddParagraph({
-    Title = "Oxy V2 | God Mode",
-    Content = "Predictive TTI Engine\nBuilt for Blade Ball"
-})
-
--- 8. تحميل إعدادات الواجهة
-SaveManager:SetLibrary(Fluent)
-InterfaceManager:SetLibrary(Fluent)
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({})
-InterfaceManager:SetFolder("OxyV2")
-SaveManager:SetFolder("OxyV2/Configs")
-InterfaceManager:BuildInterfaceSection(Tabs.Misc)
-SaveManager:BuildConfigSection(Tabs.Misc)
-SaveManager:LoadAutoloadConfig()
-
-Fluent:Notify({ Title = "Oxy V2 Loaded", Content = "UI is ready. Toggle Auto-Parry in Combat tab.", Duration = 5 })
+Fluent:Notify({ Title = "Oxy Premium", Content = "Interface Loaded successfully.", Duration = 5 })
